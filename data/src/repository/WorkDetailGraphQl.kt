@@ -1,0 +1,1361 @@
+package moe.yumeyuka.yumehub.data.repository
+
+import java.util.Locale
+import kotlinx.serialization.json.*
+import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.api.dto.*
+import org.jsoup.Jsoup
+
+internal fun String.workTaskProgress(): WorkTaskProgressDto? {
+    if (!contains("task-list-item-checkbox") && !contains("tlb-")) return null
+    val tasks =
+        Jsoup.parseBodyFragment(this)
+            .select(
+                "input.task-list-item-checkbox, input.tlb-checkbox, input.tlb-issue-reference-number",
+            )
+    if (tasks.isEmpty()) return null
+    return WorkTaskProgressDto(
+        completed = tasks.count { it.hasAttr("checked") },
+        total = tasks.size,
+    )
+}
+
+internal class WorkDetailGraphQl(
+    private val session: GithubGraphQlSession,
+    private val owner: String,
+    private val repository: String,
+    private val kind: CollaborationKind,
+    private val number: Int,
+) {
+    private val properties =
+        WorkPropertiesGraphQl(owner, repository, kind, number) { query, variables, write ->
+            session.execute(query, variables, write)
+        }
+
+    suspend fun properties(): WorkProperties = properties.load()
+
+    suspend fun linkedOptions(query: String, after: String?) =
+        properties.linkedOptions(query, after)
+
+    suspend fun subIssueOptions(query: String, after: String?) =
+        properties.subIssueOptions(query, after)
+
+    suspend fun propertyOptions(property: WorkProperty): List<WorkPropertyOption> =
+        properties.options(property)
+
+    suspend fun saveProperty(
+        property: WorkProperty,
+        original: List<WorkPropertyOption>,
+        selected: List<WorkPropertyOption>,
+    ) {
+        properties.save(property, original, selected)
+    }
+
+    suspend fun editPullRequest(id: String, field: String, value: String) {
+        require(field == "title" || field == "baseRefName")
+        session
+            .execute(
+                """
+                mutation EditPullRequest(${'$'}input: UpdatePullRequestInput!) {
+                    updatePullRequest(input: ${'$'}input) { pullRequest { id } }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    put(
+                        "input",
+                        buildJsonObject {
+                            put("pullRequestId", id)
+                            put(field, value)
+                        },
+                    )
+                },
+                write = true,
+            )
+            .graphObject("updatePullRequest")
+            .graphObject("pullRequest")
+            .graphRequiredText("id")
+    }
+
+    suspend fun editBody(id: String, body: String) {
+        val operation = if (kind == CollaborationKind.Issue) "updateIssue" else "updatePullRequest"
+        val inputField = if (kind == CollaborationKind.Issue) "id" else "pullRequestId"
+        val resultField = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
+        session
+            .execute(
+                """
+            mutation EditWorkBody(${'$'}id: ID!, ${'$'}body: String) {
+                $operation(input: {$inputField: ${'$'}id, body: ${'$'}body}) {
+                    $resultField { id }
+                }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("body", body)
+                },
+                write = true,
+            )
+            .graphObject(operation)
+            .graphObject(resultField)
+            .graphRequiredText("id")
+    }
+
+    suspend fun editTitle(id: String, title: String) {
+        val operation = if (kind == CollaborationKind.Issue) "updateIssue" else "updatePullRequest"
+        val inputField = if (kind == CollaborationKind.Issue) "id" else "pullRequestId"
+        val resultField = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
+        session
+            .execute(
+                """
+            mutation EditWorkTitle(${'$'}id: ID!, ${'$'}title: String!) {
+                $operation(input: {$inputField: ${'$'}id, title: ${'$'}title}) {
+                    $resultField { id }
+                }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("title", title)
+                },
+                write = true,
+            )
+            .graphObject(operation)
+            .graphObject(resultField)
+            .graphRequiredText("id")
+    }
+
+    suspend fun closeIssue(id: String) {
+        session
+            .execute(
+                """
+                mutation CloseWorkIssue(${'$'}id: ID!) {
+                    closeIssue(input: {issueId: ${'$'}id}) { issue { id state } }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject { put("id", id) },
+                write = true,
+            )
+            .graphObject("closeIssue")
+            .graphObject("issue")
+            .graphRequiredText("id")
+    }
+
+    suspend fun setLocked(id: String, locked: Boolean) {
+        val operation = if (locked) "lockLockable" else "unlockLockable"
+        val inputType = if (locked) "LockLockableInput" else "UnlockLockableInput"
+        val record = if (locked) "lockedRecord" else "unlockedRecord"
+        session
+            .execute(
+                """
+            mutation LockWork(${'$'}input: $inputType!) {
+                $operation(input: ${'$'}input) { $record { locked } }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject { put("input", buildJsonObject { put("lockableId", id) }) },
+                write = true,
+            )
+            .graphObject(operation)
+            .graphObject(record)
+    }
+
+    suspend fun requestReview(id: String, login: String) {
+        val user =
+            session
+                .execute(
+                    """
+                    query ReviewRequestUser(${'$'}login: String!) { user(login: ${'$'}login) { id } }
+                    """
+                        .trimIndent(),
+                    buildJsonObject { put("login", login) },
+                )
+                .graphObject("user")
+                .graphRequiredText("id")
+        session
+            .execute(
+                """
+                mutation RequestWorkReview(${'$'}id: ID!, ${'$'}user: ID!) {
+                    requestReviews(input: {pullRequestId: ${'$'}id, userIds: [${'$'}user], union: true}) { pullRequest { id } }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("user", user)
+                },
+                write = true,
+            )
+            .graphObject("requestReviews")
+            .graphObject("pullRequest")
+            .graphRequiredText("id")
+    }
+
+    suspend fun closePullRequest(id: String) {
+        session
+            .execute(
+                """
+                mutation CloseWorkPullRequest(${'$'}id: ID!) {
+                    closePullRequest(input: {pullRequestId: ${'$'}id}) { pullRequest { id state } }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject { put("id", id) },
+                write = true,
+            )
+            .graphObject("closePullRequest")
+            .graphObject("pullRequest")
+            .graphRequiredText("id")
+    }
+
+    private fun variables(extra: JsonObjectBuilder.() -> Unit = {}) = buildJsonObject {
+        put("owner", owner)
+        put("name", repository)
+        put("number", number)
+        extra()
+    }
+
+    suspend fun detail(): CollaborationItemDto {
+        val data = session.execute(DetailQuery, variables())
+        val repo = data.graphObject("repository")
+        val node = repo.graphObject("issueOrPullRequest")
+        val type = node.graphRequiredText("__typename")
+        if (type != if (kind == CollaborationKind.Issue) "Issue" else "PullRequest") {
+            throw WorkDetailTypeMismatchException()
+        }
+        val isPull = type == "PullRequest"
+        val labels = linkedMapOf<String, CollaborationLabelDto>()
+        var connection = node.graphObject("labels")
+        var after: String? = null
+        val cursors = mutableSetOf<String>()
+        while (true) {
+            connection.graphNodes().forEach {
+                val name = it.graphRequiredText("name")
+                labels[name] = CollaborationLabelDto(name, it.graphRequiredText("color"))
+            }
+            val next = connection.graphCursor(after) ?: break
+            if (!cursors.add(next) || cursors.size >= 1_000) throw GithubPageException()
+            val current =
+                session
+                    .execute(
+                        LabelsQuery,
+                        buildJsonObject {
+                            put("id", node.graphRequiredText("id"))
+                            put("after", next)
+                        },
+                    )
+                    .graphObject("node")
+            if (current.graphRequiredText("updatedAt") != node.graphRequiredText("updatedAt")) {
+                throw WorkDetailReviewChangedException()
+            }
+            after = next
+            connection = current.graphObject("labels")
+        }
+        // 评审人与最新评审都是详情的一部分，直接复用上面这份响应；再各发一次
+        // node + connection 查询只会让每次打开 PR 多等两个往返。
+        val reviewRequests = if (isPull) node["reviewRequests"] as? JsonObject else null
+        val latestReviews = if (isPull) node["latestReviews"] as? JsonObject else null
+        val bodyHtml = node.graphText("bodyHTML")
+        return CollaborationItemDto(
+            number = node.requiredInt("number"),
+            title = node.graphRequiredText("title"),
+            state =
+                (node.graphText("issueState") ?: node.graphRequiredText("pullRequestState"))
+                    .lowercase(Locale.ROOT),
+            body = node.graphText("body"),
+            bodyHtml = bodyHtml,
+            taskProgress = bodyHtml?.workTaskProgress(),
+            nodeId = node.graphRequiredText("id"),
+            htmlUrl = node.graphRequiredText("url"),
+            updatedAt = node.graphText("updatedAt"),
+            user = node.actor(),
+            locked = node.flag("locked"),
+            draft = isPull && node.flag("isDraft"),
+            merged = isPull && node.flag("merged"),
+            head =
+                if (isPull)
+                    PullRequestHeadDto(
+                        node.graphRequiredText("headRefOid"),
+                        node.graphText("headRefName"),
+                    )
+                else null,
+            baseRefName = if (isPull) node.graphText("baseRefName") else null,
+            baseRefOid = if (isPull) node.graphText("baseRefOid") else null,
+            labels = labels.values.toList(),
+            createdAt = node.graphText("createdAt"),
+            mergedAt = if (isPull) node.graphText("mergedAt") else null,
+            commitCount =
+                if (isPull) node.graphObject("commits").requiredInt("totalCount") else null,
+            reviewCount =
+                if (isPull) (node["reviews"] as? JsonObject)?.requiredInt("totalCount") else null,
+            changedFiles = if (isPull) node.requiredInt("changedFiles") else null,
+            additions = if (isPull) node.requiredInt("additions") else null,
+            deletions = if (isPull) node.requiredInt("deletions") else null,
+            mergeable = if (isPull) node.graphRequiredText("mergeable") else null,
+            viewerCanEdit = node.flag("viewerCanUpdate"),
+            viewerCanReact = node.flag("viewerCanReact"),
+            reactions =
+                if (node["reactionGroups"] == JsonNull) emptyList() else node.commentReactions(),
+            viewerCanClose = node.flag("viewerCanClose"),
+            viewerCanModerate =
+                repo.graphText("viewerPermission") in setOf("WRITE", "MAINTAIN", "ADMIN"),
+            viewerCanChangeBase =
+                isPull && repo.graphText("viewerPermission") in setOf("WRITE", "MAINTAIN", "ADMIN"),
+            viewerCanMerge =
+                isPull && repo.graphText("viewerPermission") in setOf("WRITE", "MAINTAIN", "ADMIN"),
+            mergeCommitAllowed = isPull && repo.flag("mergeCommitAllowed"),
+            squashMergeAllowed = isPull && repo.flag("squashMergeAllowed"),
+            rebaseMergeAllowed = isPull && repo.flag("rebaseMergeAllowed"),
+            reviewDecision = if (isPull) node.graphText("reviewDecision") else null,
+            mergeStateStatus = if (isPull) node.graphText("mergeStateStatus") else null,
+            reviewRequestCount = if (isPull) reviewRequests?.requiredInt("totalCount") else null,
+            requestedReviewers =
+                if (isPull) {
+                    reviewRequests.connectionNodes().mapNotNull { request ->
+                        val reviewer = request["requestedReviewer"] as? JsonObject
+                        reviewer?.graphText("login") ?: reviewer?.graphText("name")
+                    }
+                } else {
+                    emptyList()
+                },
+            latestReviews =
+                if (isPull) {
+                    latestReviews.connectionNodes().map { review ->
+                        PullRequestReviewSummaryDto(
+                            state = review.graphRequiredText("state"),
+                            user = review.actor(),
+                        )
+                    }
+                } else {
+                    emptyList()
+                },
+            reviewsLoaded = isPull,
+            requiredStatusCheckCount =
+                if (isPull) node.graphObject("requiredStatusChecks").requiredInt("totalCount")
+                else null,
+            allStatusChecksPassed =
+                isPull &&
+                    node.graphObject("requiredStatusChecks").requiredInt("totalCount") > 0 &&
+                    node.graphObject("requiredStatusChecks").graphNodes().all {
+                        it.graphRequiredText("state") == "SUCCESS"
+                    },
+            requiredStatusChecks =
+                if (isPull)
+                    node.graphObject("requiredStatusChecks").graphNodes().map {
+                        PullRequestStatusCheckDto(
+                            name = it.graphRequiredText("context"),
+                            state = it.graphRequiredText("state"),
+                            description = it.graphText("description"),
+                        )
+                    }
+                else emptyList(),
+        )
+    }
+
+    suspend fun timeline(
+        direction: ThreadDirection,
+        cursor: String?,
+    ): ThreadPage<WorkTimelineEntry> {
+        val query =
+            if (kind == CollaborationKind.Issue) IssueTimelineQuery else PullRequestTimelineQuery
+        val data =
+            session.execute(
+                query,
+                variables {
+                    if (direction == ThreadDirection.Newer) {
+                        put("first", 30)
+                        put("after", requireNotNull(cursor))
+                    } else {
+                        put("last", 30)
+                        cursor?.let { put("before", it) }
+                    }
+                },
+            )
+        val field = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
+        val workItem = data.graphObject("repository").graphObject(field)
+        val itemId = workItem.graphRequiredText("id")
+        val connection = workItem.graphObject("timelineItems")
+        val info = connection.graphObject("pageInfo")
+        return ThreadPage(
+            connection.graphNodes().mapNotNull { timelineEntry(it, itemId) },
+            info.threadCursor(previous = true),
+            info.threadCursor(previous = false),
+        )
+    }
+
+    suspend fun comments(after: String?): GithubGraphQlPage<CollaborationCommentDto> {
+        val data =
+            session.execute(
+                CommentsQuery,
+                variables { put("after", after?.let(::JsonPrimitive) ?: JsonNull) },
+            )
+        val connection =
+            data.graphObject("repository").graphObject("issueOrPullRequest").graphObject("comments")
+        return GithubGraphQlPage(
+            connection.graphNodes().map(::comment),
+            connection.graphCursor(after),
+        )
+    }
+
+    suspend fun reviews(after: String?): GithubGraphQlPage<PullRequestReviewDto> {
+        val data =
+            session.execute(
+                ReviewsQuery,
+                variables { put("after", after?.let(::JsonPrimitive) ?: JsonNull) },
+            )
+        val connection =
+            data.graphObject("repository").graphObject("pullRequest").graphObject("reviews")
+        return GithubGraphQlPage(
+            connection.graphNodes().map(::review),
+            connection.graphCursor(after),
+        )
+    }
+
+    suspend fun commits(head: String, after: String?): GithubGraphQlPage<RepositoryActivityEntry> {
+        val data =
+            session.execute(
+                """
+            query PullRequestCommits(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
+                repository(owner: ${'$'}owner, name: ${'$'}name) {
+                    pullRequest(number: ${'$'}number) {
+                        headRefOid commits(first: 30, after: ${'$'}after) {
+                            $PageInfo nodes { commit { $CommitFields } }
+                        }
+                    }
+                }
+            }
+        """
+                    .trimIndent(),
+                variables { put("after", after?.let(::JsonPrimitive) ?: JsonNull) },
+            )
+        val request = data.graphObject("repository").graphObject("pullRequest")
+        if (request.graphRequiredText("headRefOid") != head)
+            throw WorkDetailReviewChangedException()
+        val connection = request.graphObject("commits")
+        return GithubGraphQlPage(
+            connection.graphNodes().map { commitEntry(it.graphObject("commit")) },
+            connection.graphCursor(after),
+        )
+    }
+
+    suspend fun checks(head: String, after: String?): GithubGraphQlPage<PullRequestCheckRunDto> {
+        val data =
+            session.execute(
+                ChecksQuery,
+                buildJsonObject {
+                    put("owner", owner)
+                    put("name", repository)
+                    put("number", number)
+                    put("after", after?.let(::JsonPrimitive) ?: JsonNull)
+                },
+            )
+        val request = data.graphObject("repository").graphObject("pullRequest")
+        if (request.graphRequiredText("headRefOid") != head)
+            throw WorkDetailReviewChangedException()
+        val commit =
+            request.graphObject("commits").graphNodes().singleOrNull()?.graphObject("commit")
+                ?: return GithubGraphQlPage(emptyList(), null)
+        if (commit.graphRequiredText("oid") != head) throw WorkDetailReviewChangedException()
+        val rollup = commit["statusCheckRollup"]
+        if (rollup == null || rollup == JsonNull) return GithubGraphQlPage(emptyList(), null)
+        val connection =
+            (rollup as? JsonObject ?: throw GithubPageException()).graphObject("contexts")
+        val checks =
+            connection.graphNodes().mapNotNull { node ->
+                val type = node.graphRequiredText("__typename")
+                val isRequired = (node["isRequired"] as? JsonPrimitive)?.booleanOrNull ?: false
+                when (type) {
+                    "CheckRun" -> {
+                        val suite = node.graphObject("checkSuite")
+                        val run = suite["workflowRun"] as? JsonObject
+                        PullRequestCheckRunDto(
+                            id = node.graphRequiredText("id"),
+                            name = node.graphRequiredText("name"),
+                            status = node.graphRequiredText("status").lowercase(Locale.ROOT),
+                            conclusion = node.graphText("conclusion")?.lowercase(Locale.ROOT),
+                            required = isRequired,
+                            suiteId = suite.graphRequiredText("id"),
+                            appName = (suite["app"] as? JsonObject)?.graphText("name"),
+                            workflowName = run?.graphObject("workflow")?.graphText("name"),
+                            runNumber = run?.requiredInt("runNumber"),
+                            runUrl = run?.graphRequiredText("url"),
+                        )
+                    }
+                    "StatusContext" ->
+                        PullRequestCheckRunDto(
+                            id = node.graphRequiredText("id"),
+                            name = node.graphRequiredText("context"),
+                            status = node.graphRequiredText("state").lowercase(Locale.ROOT),
+                            required = isRequired,
+                            description = node.graphText("description"),
+                        )
+                    else -> null
+                }
+            }
+        return GithubGraphQlPage(checks, connection.graphCursor(after))
+    }
+
+    suspend fun mergeMessage(id: String, method: String): WorkMergeMessage {
+        val node =
+            session
+                .execute(
+                    """
+                    query MergeRequirements(${'$'}id: ID!, ${'$'}method: PullRequestMergeMethod!) {
+                        node(id: ${'$'}id) {
+                            ... on PullRequest {
+                                id
+                                mergeRequirements(
+                                    mergeAction: DIRECT_MERGE
+                                    mergeMethod: ${'$'}method
+                                    bypassRequirements: false
+                                ) {
+                                    commitMessageHeadline
+                                    commitMessageBody
+                                }
+                            }
+                        }
+                    }
+                    """
+                        .trimIndent(),
+                    buildJsonObject {
+                        put("id", id)
+                        put("method", method)
+                    },
+                )
+                .graphObject("node")
+        if (node.graphRequiredText("id") != id) throw GithubPageException()
+        val requirements = node.graphObject("mergeRequirements")
+        return WorkMergeMessage(
+            requirements.graphRequiredText("commitMessageHeadline"),
+            requirements.graphText("commitMessageBody").orEmpty(),
+        )
+    }
+
+    suspend fun merge(id: String, head: String, method: String, message: WorkMergeMessage?) {
+        val data =
+            session.execute(
+                """
+                mutation MergeWork(${'$'}input: MergePullRequestInput!) {
+                    mergePullRequest(input: ${'$'}input) {
+                        pullRequest { id merged }
+                    }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    putJsonObject("input") {
+                        put("pullRequestId", id)
+                        put("expectedHeadOid", head)
+                        put("mergeMethod", method)
+                        if (message != null) {
+                            put("commitHeadline", message.headline)
+                            put("commitBody", message.body)
+                        }
+                    }
+                },
+                write = true,
+            )
+        val merged = data.graphObject("mergePullRequest").graphObject("pullRequest")
+        if (merged.graphRequiredText("id") != id || !merged.flag("merged"))
+            throw GithubPageException()
+    }
+
+    suspend fun createComment(id: String, body: String): CollaborationCommentDto {
+        val data =
+            session.execute(
+                """
+            mutation WorkComment(${'$'}id: ID!, ${'$'}body: String!) {
+                addComment(input: {subjectId: ${'$'}id, body: ${'$'}body}) {
+                    commentEdge { node { $CommentFields } }
+                }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("body", body)
+                },
+                write = true,
+            )
+        return comment(
+            data.graphObject("addComment").graphObject("commentEdge").graphObject("node"),
+        )
+    }
+
+    suspend fun updateComment(id: String, body: String): CollaborationCommentDto {
+        val data =
+            session.execute(
+                """
+            mutation EditWorkComment(${'$'}id: ID!, ${'$'}body: String!) {
+                updateIssueComment(input: {id: ${'$'}id, body: ${'$'}body}) {
+                    issueComment { $CommentFields }
+                }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("body", body)
+                },
+                write = true,
+            )
+        return comment(data.graphObject("updateIssueComment").graphObject("issueComment"))
+    }
+
+    suspend fun toggleCommentReaction(
+        id: String,
+        content: String,
+        reacted: Boolean,
+    ): List<CollaborationReactionDto> {
+        require(content in GithubReactionContent.entries.map { it.name })
+        val field = if (reacted) "removeReaction" else "addReaction"
+        val data =
+            session.execute(
+                """
+                mutation ToggleWorkCommentReaction(${'$'}id: ID!, ${'$'}content: ReactionContent!) {
+                    $field(input: {subjectId: ${'$'}id, content: ${'$'}content}) {
+                        subject { id viewerCanReact $CommentReactionFields }
+                    }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("content", content)
+                },
+                write = true,
+            )
+        val subject = data.graphObject(field).graphObject("subject")
+        if (subject.graphRequiredText("id") != id || !subject.flag("viewerCanReact"))
+            throw GithubPageException()
+        val reactions = subject.commentReactions()
+        if (reactions.firstOrNull { it.content == content }?.viewerReacted == reacted)
+            throw GithubPageException()
+        return reactions
+    }
+
+    suspend fun readComment(id: String): CollaborationCommentDto {
+        val data =
+            session.execute(
+                """
+            query WorkCommentVersion(${'$'}id: ID!) {
+                node(id: ${'$'}id) { ... on IssueComment { $CommentFields } }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject { put("id", id) },
+            )
+        return comment(data.graphObject("node"))
+    }
+
+    suspend fun deleteComment(id: String) {
+        session
+            .execute(
+                """
+                mutation DeleteWorkComment(${'$'}id: ID!) {
+                    deleteIssueComment(input: {id: ${'$'}id}) { clientMutationId }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject { put("id", id) },
+                write = true,
+            )
+            .graphObject("deleteIssueComment")
+    }
+
+    suspend fun minimizeComment(id: String, classifier: String) {
+        require(
+            classifier in setOf("ABUSE", "DUPLICATE", "OFF_TOPIC", "OUTDATED", "RESOLVED", "SPAM"),
+        )
+        val data =
+            session.execute(
+                """
+                mutation HideWorkComment(${'$'}id: ID!, ${'$'}classifier: ReportedContentClassifiers!) {
+                    minimizeComment(input: {subjectId: ${'$'}id, classifier: ${'$'}classifier}) {
+                        minimizedComment { isMinimized }
+                    }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("classifier", classifier)
+                },
+                write = true,
+            )
+        if (
+            !data.graphObject("minimizeComment").graphObject("minimizedComment").flag("isMinimized")
+        ) {
+            throw GithubPageException()
+        }
+    }
+
+    suspend fun createReview(
+        id: String,
+        commit: String,
+        event: String,
+        body: String?,
+    ): PullRequestReviewDto {
+        val data =
+            session.execute(
+                """
+            mutation WorkReview(${'$'}id: ID!, ${'$'}commit: GitObjectID!, ${'$'}event: PullRequestReviewEvent!, ${'$'}body: String) {
+                addPullRequestReview(input: {pullRequestId: ${'$'}id, commitOID: ${'$'}commit, event: ${'$'}event, body: ${'$'}body}) {
+                    pullRequestReview { $ReviewFields }
+                }
+            }
+        """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("commit", commit)
+                    put("event", event)
+                    put("body", body?.let(::JsonPrimitive) ?: JsonNull)
+                },
+                write = true,
+            )
+        return review(data.graphObject("addPullRequestReview").graphObject("pullRequestReview"))
+    }
+
+    suspend fun createLineComment(
+        id: String,
+        body: String,
+        path: String,
+        line: Int,
+        side: String,
+    ): PullRequestReviewCommentDto {
+        val data =
+            session.execute(
+                """
+                mutation WorkReviewThread(${'$'}id: ID!, ${'$'}body: String!, ${'$'}path: String!, ${'$'}line: Int!, ${'$'}side: DiffSide!) {
+                    addPullRequestReviewThread(input: {pullRequestId: ${'$'}id, body: ${'$'}body, path: ${'$'}path, line: ${'$'}line, side: ${'$'}side}) {
+                        thread { comments(last: 1) { nodes {
+                            id databaseId body bodyHTML(unfurlReferences: true) path line diffSide url
+                            commit { oid } author { login avatarUrl __typename }
+                        } } }
+                    }
+                }
+                """
+                    .trimIndent(),
+                buildJsonObject {
+                    put("id", id)
+                    put("body", body)
+                    put("path", path)
+                    put("line", line)
+                    put("side", side)
+                },
+                write = true,
+            )
+        val node =
+            data
+                .graphObject("addPullRequestReviewThread")
+                .graphObject("thread")
+                .graphObject("comments")
+                .graphNodes()
+                .singleOrNull() ?: throw GithubPageException()
+        return PullRequestReviewCommentDto(
+            id = node.databaseId(),
+            nodeId = node.graphRequiredText("id"),
+            body = node.graphText("body"),
+            bodyHtml = node.graphText("bodyHTML"),
+            path = node.graphRequiredText("path"),
+            line = node.requiredInt("line"),
+            side = node.graphText("diffSide"),
+            htmlUrl = node.graphText("url"),
+            commitId = node.graphObject("commit").graphRequiredText("oid"),
+            user = node.actor(),
+        )
+    }
+}
+
+private fun JsonObject.databaseId(): Long =
+    (get("databaseId") as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }
+        ?: throw GithubPageException()
+
+private fun JsonObject.requiredInt(key: String): Int =
+    (get(key) as? JsonPrimitive)?.intOrNull ?: throw GithubPageException()
+
+private fun JsonObject.flag(key: String): Boolean =
+    (get(key) as? JsonPrimitive)?.booleanOrNull ?: throw GithubPageException()
+
+private fun JsonObject.actor(): UserDto? =
+    (get("author") as? JsonObject)?.let {
+        UserDto(
+            login = it.graphRequiredText("login"),
+            avatarUrl = it.graphText("avatarUrl"),
+            type = it.graphText("__typename"),
+        )
+    }
+
+/** 字段缺失时按空连接处理：详情主查询不该因为某一项可选连接不可见而整页失败。 */
+private fun JsonObject?.connectionNodes(): List<JsonObject> =
+    ((this?.get("nodes")) as? JsonArray)?.mapNotNull { it as? JsonObject } ?: emptyList()
+
+private fun comment(node: JsonObject) =
+    CollaborationCommentDto(
+        id = node.databaseId(),
+        nodeId = node.graphRequiredText("id"),
+        body = node.graphText("body"),
+        bodyHtml = node.graphText("bodyHTML"),
+        createdAt = node.graphText("createdAt"),
+        updatedAt = node.graphText("updatedAt"),
+        user = node.actor(),
+        url = node.graphText("url"),
+        isMinimized = node.flag("isMinimized"),
+        minimizedReason = node.graphText("minimizedReason"),
+        viewerCanMinimize = node.flag("viewerCanMinimize"),
+        viewerCanReact = node.flag("viewerCanReact"),
+        reactions = node.commentReactions(),
+    )
+
+private fun JsonObject.commentReactions(): List<CollaborationReactionDto> =
+    ((this["reactionGroups"] as? JsonArray) ?: throw GithubPageException()).mapNotNull { value ->
+        val group = value as? JsonObject ?: throw GithubPageException()
+        val count = group.graphObject("reactors").requiredInt("totalCount")
+        if (count == 0) return@mapNotNull null
+        val content = group.graphRequiredText("content")
+        if (content !in GithubReactionContent.entries.map { it.name }) throw GithubPageException()
+        CollaborationReactionDto(
+            content = content,
+            count = count,
+            viewerReacted = group.flag("viewerHasReacted"),
+        )
+    }
+
+private fun review(node: JsonObject) =
+    PullRequestReviewDto(
+        id = node.databaseId(),
+        nodeId = node.graphRequiredText("id"),
+        state = node.graphRequiredText("state"),
+        body = node.graphText("body"),
+        bodyHtml = node.graphText("bodyHTML"),
+        submittedAt = node.graphText("submittedAt"),
+        user = node.actor(),
+    )
+
+private fun commitEntry(node: JsonObject): RepositoryActivityEntry {
+    val oid = node.graphRequiredText("oid")
+    val author = node["author"] as? JsonObject
+    return RepositoryActivityEntry(
+        id = oid,
+        title = node.graphRequiredText("message").lineSequence().first(),
+        subtitle = oid.take(7),
+        url = node.graphRequiredText("url"),
+        login =
+            (author?.get("user") as? JsonObject)?.graphText("login") ?: author?.graphText("name"),
+        avatarUrl = author?.graphText("avatarUrl"),
+        timestamp = node.graphRequiredText("committedDate"),
+    )
+}
+
+private fun timelineEntry(node: JsonObject, itemId: String): WorkTimelineEntry? {
+    val type = node.graphRequiredText("__typename")
+    return when (type) {
+        "IssueComment" -> WorkTimelineEntry.Comment(comment(node))
+        "PullRequestReview" ->
+            if (node.graphRequiredText("state") == "PENDING") null
+            else WorkTimelineEntry.Review(review(node))
+        "PullRequestCommit" -> WorkTimelineEntry.Commit(commitEntry(node.graphObject("commit")))
+        else -> {
+            val kind = node.timelineEventKind() ?: return null
+            val actor = node["actor"] as? JsonObject ?: node["enqueuer"] as? JsonObject
+            WorkTimelineEntry.Event(
+                id = node.graphRequiredText("id"),
+                kind = kind,
+                actor = actor?.graphText("login"),
+                avatarUrl = actor?.graphText("avatarUrl"),
+                timestamp = node.graphText("createdAt"),
+                subject = node.timelineEventSubject(kind),
+                detail = node.timelineEventDetail(kind),
+                labelColor = (node["label"] as? JsonObject)?.graphText("color"),
+                forcePushedRefName = (node["ref"] as? JsonObject)?.graphText("name"),
+                target = node.timelineEventTarget(kind, itemId),
+            )
+        }
+    }
+}
+
+private fun JsonObject.timelineEventKind(): WorkTimelineEventKind? =
+    when (graphRequiredText("__typename")) {
+        "RenamedTitleEvent" -> WorkTimelineEventKind.RenamedTitle
+        "ClosedEvent" -> WorkTimelineEventKind.Closed
+        "ReopenedEvent" -> WorkTimelineEventKind.Reopened
+        "MergedEvent" -> WorkTimelineEventKind.Merged
+        "LabeledEvent" -> WorkTimelineEventKind.Labeled
+        "UnlabeledEvent" -> WorkTimelineEventKind.Unlabeled
+        "AssignedEvent" -> WorkTimelineEventKind.Assigned
+        "UnassignedEvent" -> WorkTimelineEventKind.Unassigned
+        "LockedEvent" -> WorkTimelineEventKind.Locked
+        "UnlockedEvent" -> WorkTimelineEventKind.Unlocked
+        "MilestonedEvent" -> WorkTimelineEventKind.Milestoned
+        "DemilestonedEvent" -> WorkTimelineEventKind.Demilestoned
+        "CrossReferencedEvent" -> WorkTimelineEventKind.CrossReferenced
+        "ReferencedEvent" -> WorkTimelineEventKind.Referenced
+        "HeadRefDeletedEvent" -> WorkTimelineEventKind.HeadRefDeleted
+        "HeadRefRestoredEvent" -> WorkTimelineEventKind.HeadRefRestored
+        "ReviewRequestedEvent" -> WorkTimelineEventKind.ReviewRequested
+        "ReviewRequestRemovedEvent" -> WorkTimelineEventKind.ReviewRequestRemoved
+        "ReviewDismissedEvent" -> WorkTimelineEventKind.ReviewDismissed
+        "ReadyForReviewEvent" -> WorkTimelineEventKind.ReadyForReview
+        "ConvertToDraftEvent" -> WorkTimelineEventKind.ConvertedToDraft
+        "CommentDeletedEvent" -> WorkTimelineEventKind.CommentDeleted
+        "DeployedEvent" -> WorkTimelineEventKind.Deployed
+        "HeadRefForcePushedEvent" -> WorkTimelineEventKind.HeadRefForcePushed
+        "BaseRefForcePushedEvent" -> WorkTimelineEventKind.BaseRefForcePushed
+        "BaseRefChangedEvent" -> WorkTimelineEventKind.BaseRefChanged
+        "MarkedAsDuplicateEvent" -> WorkTimelineEventKind.MarkedAsDuplicate
+        "DeploymentEnvironmentChangedEvent" -> WorkTimelineEventKind.DeploymentEnvironmentChanged
+        "AutoMergeEnabledEvent" -> WorkTimelineEventKind.AutoMergeEnabled
+        "AutoMergeDisabledEvent" -> WorkTimelineEventKind.AutoMergeDisabled
+        "AutoRebaseEnabledEvent" -> WorkTimelineEventKind.AutoRebaseEnabled
+        "AutoSquashEnabledEvent" -> WorkTimelineEventKind.AutoSquashEnabled
+        "UserBlockedEvent" -> WorkTimelineEventKind.UserBlocked
+        "AddedToMergeQueueEvent" -> WorkTimelineEventKind.AddedToMergeQueue
+        "RemovedFromMergeQueueEvent" -> WorkTimelineEventKind.RemovedFromMergeQueue
+        "ConnectedEvent" -> WorkTimelineEventKind.Connected
+        "DisconnectedEvent" -> WorkTimelineEventKind.Disconnected
+        "AutomaticBaseChangeSucceededEvent" -> WorkTimelineEventKind.AutomaticBaseChanged
+        "AddedToProjectEvent",
+        "AddedToProjectV2Event" -> WorkTimelineEventKind.AddedToProject
+        "MovedColumnsInProjectEvent",
+        "ProjectV2ItemStatusChangedEvent" -> WorkTimelineEventKind.MovedColumnsInProject
+        "RemovedFromProjectEvent",
+        "RemovedFromProjectV2Event" -> WorkTimelineEventKind.RemovedFromProject
+        "PinnedEvent" -> WorkTimelineEventKind.Pinned
+        "UnpinnedEvent" -> WorkTimelineEventKind.Unpinned
+        "TransferredEvent" -> WorkTimelineEventKind.Transferred
+        "ConvertedToDiscussionEvent" -> WorkTimelineEventKind.ConvertedToDiscussion
+        "SubIssueAddedEvent" -> WorkTimelineEventKind.SubIssueAdded
+        "SubIssueRemovedEvent" -> WorkTimelineEventKind.SubIssueRemoved
+        "CopilotWorkStartedEvent" -> WorkTimelineEventKind.CopilotWorkStarted
+        "CopilotWorkFinishedEvent" -> WorkTimelineEventKind.CopilotWorkFinished
+        "CopilotWorkFinishedFailureEvent" -> WorkTimelineEventKind.CopilotWorkFinishedFailure
+        else -> null
+    }
+
+private fun JsonObject.timelineEventSubject(kind: WorkTimelineEventKind): String? =
+    when (kind) {
+        WorkTimelineEventKind.RenamedTitle -> graphText("previousTitle")
+        WorkTimelineEventKind.Closed -> graphText("stateReason")
+        WorkTimelineEventKind.Labeled,
+        WorkTimelineEventKind.Unlabeled -> (get("label") as? JsonObject)?.graphText("name")
+        WorkTimelineEventKind.Assigned,
+        WorkTimelineEventKind.Unassigned -> (get("assignee") as? JsonObject)?.graphText("login")
+        WorkTimelineEventKind.Locked -> graphText("lockReason")
+        WorkTimelineEventKind.Milestoned,
+        WorkTimelineEventKind.Demilestoned -> graphText("milestoneTitle")
+        WorkTimelineEventKind.Merged -> graphText("mergeRefName")
+        WorkTimelineEventKind.HeadRefDeleted -> graphText("headRefName")
+        WorkTimelineEventKind.HeadRefRestored ->
+            (get("pullRequest") as? JsonObject)?.graphText("headRefName")
+        WorkTimelineEventKind.ReviewRequested,
+        WorkTimelineEventKind.ReviewRequestRemoved ->
+            (get("requestedReviewer") as? JsonObject)?.let {
+                it.graphText("login") ?: it.graphText("name")
+            }
+        WorkTimelineEventKind.ReviewDismissed ->
+            ((get("review") as? JsonObject)?.get("author") as? JsonObject)?.graphText("login")
+        WorkTimelineEventKind.CommentDeleted ->
+            (get("deletedCommentAuthor") as? JsonObject)?.graphText("login")
+        WorkTimelineEventKind.Deployed ->
+            (get("deployment") as? JsonObject)?.graphText("environment")
+        WorkTimelineEventKind.HeadRefForcePushed,
+        WorkTimelineEventKind.BaseRefForcePushed ->
+            (get("beforeCommit") as? JsonObject)?.graphText("abbreviatedOid")
+        WorkTimelineEventKind.BaseRefChanged -> graphText("previousRefName")
+        WorkTimelineEventKind.DeploymentEnvironmentChanged ->
+            (get("deploymentStatus") as? JsonObject)?.graphText("environmentUrl")
+        WorkTimelineEventKind.AutoMergeDisabled -> graphText("reasonCode")
+        WorkTimelineEventKind.UserBlocked -> (get("userSubject") as? JsonObject)?.graphText("login")
+        WorkTimelineEventKind.RemovedFromMergeQueue -> graphText("reason")
+        WorkTimelineEventKind.AutomaticBaseChanged -> graphText("oldBase")
+        WorkTimelineEventKind.MovedColumnsInProject ->
+            (graphText("previousProjectColumnName") ?: graphText("previousStatus"))?.takeIf(
+                String::isNotBlank,
+            )
+        WorkTimelineEventKind.Transferred ->
+            (get("fromRepository") as? JsonObject)?.graphText("nameWithOwner")
+        WorkTimelineEventKind.CopilotWorkStarted,
+        WorkTimelineEventKind.CopilotWorkFinished,
+        WorkTimelineEventKind.CopilotWorkFinishedFailure ->
+            (get("agent") as? JsonObject)?.graphText("displayName")
+        else -> null
+    }
+
+private fun JsonObject.timelineEventDetail(kind: WorkTimelineEventKind): String? =
+    when (kind) {
+        WorkTimelineEventKind.RenamedTitle -> graphText("currentTitle")
+        WorkTimelineEventKind.Merged ->
+            (get("mergeCommit") as? JsonObject)?.graphText("abbreviatedOid")
+        WorkTimelineEventKind.Deployed ->
+            ((get("deployment") as? JsonObject)?.get("latestStatus") as? JsonObject)?.graphText(
+                "state",
+            )
+        WorkTimelineEventKind.HeadRefForcePushed,
+        WorkTimelineEventKind.BaseRefForcePushed ->
+            (get("afterCommit") as? JsonObject)?.graphText("abbreviatedOid")
+        WorkTimelineEventKind.BaseRefChanged -> graphText("currentRefName")
+        WorkTimelineEventKind.DeploymentEnvironmentChanged ->
+            (get("deploymentStatus") as? JsonObject)?.graphText("state")
+        WorkTimelineEventKind.AutomaticBaseChanged -> graphText("newBase")
+        WorkTimelineEventKind.MovedColumnsInProject ->
+            (graphText("projectColumnName") ?: graphText("status"))?.takeIf(String::isNotBlank)
+        WorkTimelineEventKind.CopilotWorkFinishedFailure -> graphText("failureMessage")
+        else -> null
+    }
+
+private fun JsonObject.timelineEventTarget(
+    kind: WorkTimelineEventKind,
+    itemId: String,
+): WorkTimelineEntry.Target? {
+    val field =
+        when (kind) {
+            WorkTimelineEventKind.CrossReferenced -> "source"
+            WorkTimelineEventKind.Referenced -> "referenceCommit"
+            WorkTimelineEventKind.MarkedAsDuplicate -> "canonical"
+            WorkTimelineEventKind.Connected,
+            WorkTimelineEventKind.Disconnected -> "subject"
+            WorkTimelineEventKind.AddedToProject,
+            WorkTimelineEventKind.MovedColumnsInProject,
+            WorkTimelineEventKind.RemovedFromProject -> "project"
+            WorkTimelineEventKind.ConvertedToDiscussion -> "discussion"
+            WorkTimelineEventKind.SubIssueAdded,
+            WorkTimelineEventKind.SubIssueRemoved -> "subIssue"
+            else -> return null
+        }
+    val candidate = get(field) as? JsonObject
+    val node =
+        when (field) {
+            "subject" ->
+                candidate?.takeUnless { it.graphText("id") == itemId }
+                    ?: get("source") as? JsonObject
+            "project" -> candidate ?: get("projectV2") as? JsonObject
+            else -> candidate
+        } ?: return null
+    if (node.graphText("id") == itemId) return null
+    val type = node.graphText("__typename")
+    val targetKind =
+        when (type) {
+            "Issue" -> WorkTimelineEntry.Target.Kind.Issue
+            "PullRequest" -> WorkTimelineEntry.Target.Kind.PullRequest
+            "Discussion" -> WorkTimelineEntry.Target.Kind.Discussion
+            "Project",
+            "ProjectV2" -> WorkTimelineEntry.Target.Kind.Project
+            "Commit" -> WorkTimelineEntry.Target.Kind.Commit
+            else -> return null
+        }
+    val (titleField, identifier) =
+        when (type) {
+            "Commit" -> "messageHeadline" to node.graphText("abbreviatedOid")
+            "Project" -> "name" to node.graphText("number")?.let { "#$it" }
+            else -> "title" to node.graphText("number")?.let { "#$it" }
+        }
+    val title = node.graphText(titleField)?.takeIf(String::isNotBlank) ?: identifier ?: return null
+    return WorkTimelineEntry.Target(
+        kind = targetKind,
+        title = title,
+        identifier = identifier?.takeUnless { it == title },
+        url = node.graphText("url")?.takeIf(String::isNotBlank),
+        closed = (node["closed"] as? JsonPrimitive)?.booleanOrNull == true,
+        draft = (node["isDraft"] as? JsonPrimitive)?.booleanOrNull == true,
+        merged = (node["merged"] as? JsonPrimitive)?.booleanOrNull == true,
+        stateReason = node.graphText("stateReason"),
+    )
+}
+
+private const val CommentReactionFields =
+    "reactionGroups { content viewerHasReacted reactors(first: 1) { totalCount } }"
+private const val CommentFields =
+    "id databaseId body bodyHTML(unfurlReferences: true) createdAt updatedAt url isMinimized minimizedReason viewerCanMinimize viewerCanReact $CommentReactionFields author { login avatarUrl __typename }"
+private const val ReviewFields =
+    "id databaseId state body bodyHTML(unfurlReferences: true) submittedAt author { login avatarUrl __typename }"
+private const val PageInfo = "pageInfo { hasNextPage endCursor }"
+private const val CommitFields =
+    "oid message url committedDate author { name avatarUrl user { login } }"
+private const val EventFields = "id createdAt actor { login avatarUrl }"
+private const val TimelineIssueTarget = "__typename id number title url closed stateReason"
+private const val TimelineWorkTarget =
+    """
+    ... on Issue { $TimelineIssueTarget }
+    ... on PullRequest { __typename id number title url closed merged isDraft }
+"""
+private const val TimelineClassicProject = "__typename name number url closed"
+private const val TimelineProjectV2 = "__typename title number url closed"
+private const val CommonTimelineTypes =
+    """
+    ISSUE_COMMENT RENAMED_TITLE_EVENT ASSIGNED_EVENT UNASSIGNED_EVENT
+    CLOSED_EVENT REOPENED_EVENT LABELED_EVENT UNLABELED_EVENT LOCKED_EVENT
+    UNLOCKED_EVENT MILESTONED_EVENT DEMILESTONED_EVENT CROSS_REFERENCED_EVENT
+    REFERENCED_EVENT COMMENT_DELETED_EVENT TRANSFERRED_EVENT
+    MARKED_AS_DUPLICATE_EVENT USER_BLOCKED_EVENT
+    CONVERTED_TO_DISCUSSION_EVENT CONNECTED_EVENT DISCONNECTED_EVENT
+    ADDED_TO_PROJECT_EVENT MOVED_COLUMNS_IN_PROJECT_EVENT REMOVED_FROM_PROJECT_EVENT
+    ADDED_TO_PROJECT_V2_EVENT PROJECT_V2_ITEM_STATUS_CHANGED_EVENT REMOVED_FROM_PROJECT_V2_EVENT
+"""
+private const val CommonTimelineFields =
+    """
+    __typename
+    ... on IssueComment { $CommentFields }
+    ... on RenamedTitleEvent { $EventFields previousTitle currentTitle }
+    ... on AssignedEvent { $EventFields assignee { ... on Actor { login avatarUrl } } }
+    ... on UnassignedEvent { $EventFields assignee { ... on Actor { login avatarUrl } } }
+    ... on ClosedEvent { $EventFields stateReason }
+    ... on ReopenedEvent { $EventFields }
+    ... on LabeledEvent { $EventFields label { name color } }
+    ... on UnlabeledEvent { $EventFields label { name color } }
+    ... on LockedEvent { $EventFields lockReason }
+    ... on UnlockedEvent { $EventFields }
+    ... on MilestonedEvent { $EventFields milestoneTitle }
+    ... on DemilestonedEvent { $EventFields milestoneTitle }
+    ... on CrossReferencedEvent { $EventFields source { $TimelineWorkTarget } }
+    ... on ReferencedEvent {
+        $EventFields referenceCommit: commit { __typename abbreviatedOid messageHeadline url }
+    }
+    ... on CommentDeletedEvent {
+        $EventFields deletedCommentAuthor { ... on Actor { login avatarUrl } }
+    }
+    ... on TransferredEvent { $EventFields fromRepository { nameWithOwner } }
+    ... on MarkedAsDuplicateEvent { $EventFields canonical { $TimelineWorkTarget } }
+    ... on UserBlockedEvent {
+        $EventFields userSubject: subject { ... on Actor { login avatarUrl } }
+        blockDuration
+    }
+    ... on ConvertedToDiscussionEvent {
+        $EventFields discussion { __typename number title url closed }
+    }
+    ... on ConnectedEvent {
+        $EventFields source { $TimelineWorkTarget } subject { $TimelineWorkTarget }
+    }
+    ... on DisconnectedEvent {
+        $EventFields source { $TimelineWorkTarget } subject { $TimelineWorkTarget }
+    }
+    ... on AddedToProjectEvent { $EventFields project { $TimelineClassicProject } }
+    ... on MovedColumnsInProjectEvent {
+        $EventFields project { $TimelineClassicProject } previousProjectColumnName projectColumnName
+    }
+    ... on RemovedFromProjectEvent { $EventFields project { $TimelineClassicProject } }
+    ... on AddedToProjectV2Event { $EventFields projectV2: project { $TimelineProjectV2 } }
+    ... on ProjectV2ItemStatusChangedEvent {
+        $EventFields projectV2: project { $TimelineProjectV2 } previousStatus status
+    }
+    ... on RemovedFromProjectV2Event { $EventFields projectV2: project { $TimelineProjectV2 } }
+"""
+private const val TimelineVariables = "\$before: String, \$last: Int, \$after: String, \$first: Int"
+private const val TimelineArguments =
+    "before: \$before, last: \$last, after: \$after, first: \$first"
+private const val TimelinePageInfo =
+    "pageInfo { hasPreviousPage startCursor hasNextPage endCursor }"
+private val IssueTimelineQuery =
+    """
+    query IssueTimeline(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, $TimelineVariables) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            issue(number: ${'$'}number) {
+                id
+                timelineItems($TimelineArguments, itemTypes: [
+                    $CommonTimelineTypes
+                    PINNED_EVENT UNPINNED_EVENT SUB_ISSUE_ADDED_EVENT SUB_ISSUE_REMOVED_EVENT
+                ]) {
+                    $TimelinePageInfo nodes {
+                        $CommonTimelineFields
+                        ... on PinnedEvent { $EventFields }
+                        ... on UnpinnedEvent { $EventFields }
+                        ... on SubIssueAddedEvent {
+                            $EventFields subIssue { $TimelineIssueTarget }
+                        }
+                        ... on SubIssueRemovedEvent {
+                            $EventFields subIssue { $TimelineIssueTarget }
+                        }
+                    }
+                }
+            }
+        }
+    }
+"""
+        .trimIndent()
+private val PullRequestTimelineQuery =
+    """
+    query PullRequestTimeline(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, $TimelineVariables) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            pullRequest(number: ${'$'}number) {
+                id
+                timelineItems($TimelineArguments, itemTypes: [
+                    $CommonTimelineTypes PULL_REQUEST_REVIEW PULL_REQUEST_COMMIT
+                    MERGED_EVENT HEAD_REF_DELETED_EVENT HEAD_REF_RESTORED_EVENT
+                    REVIEW_REQUESTED_EVENT REVIEW_REQUEST_REMOVED_EVENT
+                    REVIEW_DISMISSED_EVENT READY_FOR_REVIEW_EVENT
+                    CONVERT_TO_DRAFT_EVENT DEPLOYED_EVENT
+                    HEAD_REF_FORCE_PUSHED_EVENT BASE_REF_FORCE_PUSHED_EVENT BASE_REF_CHANGED_EVENT
+                    DEPLOYMENT_ENVIRONMENT_CHANGED_EVENT AUTO_MERGE_ENABLED_EVENT
+                    AUTO_MERGE_DISABLED_EVENT AUTO_REBASE_ENABLED_EVENT
+                    AUTO_SQUASH_ENABLED_EVENT ADDED_TO_MERGE_QUEUE_EVENT
+                    REMOVED_FROM_MERGE_QUEUE_EVENT
+                    AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT
+                ]) {
+                    $TimelinePageInfo nodes {
+                        $CommonTimelineFields
+                        ... on PullRequestReview { $ReviewFields }
+                        ... on PullRequestCommit { commit { $CommitFields } }
+                        ... on MergedEvent {
+                            $EventFields mergeRefName mergeCommit: commit { abbreviatedOid }
+                        }
+                        ... on HeadRefDeletedEvent { $EventFields headRefName }
+                        ... on HeadRefRestoredEvent {
+                            $EventFields pullRequest { headRefName }
+                        }
+                        ... on ReviewRequestedEvent {
+                            $EventFields requestedReviewer {
+                                ... on Actor { login avatarUrl }
+                                ... on Team { name }
+                                ... on EnterpriseTeam { name }
+                            }
+                        }
+                        ... on ReviewRequestRemovedEvent {
+                            $EventFields requestedReviewer {
+                                ... on Actor { login avatarUrl }
+                                ... on Team { name }
+                                ... on EnterpriseTeam { name }
+                            }
+                        }
+                        ... on ReviewDismissedEvent {
+                            $EventFields review { author { login avatarUrl } }
+                        }
+                        ... on ReadyForReviewEvent { $EventFields }
+                        ... on ConvertToDraftEvent { $EventFields }
+                        ... on DeployedEvent {
+                            $EventFields deployment {
+                                environment latestStatus { state }
+                            }
+                        }
+                        ... on HeadRefForcePushedEvent {
+                            $EventFields ref { name } beforeCommit { abbreviatedOid }
+                            afterCommit { abbreviatedOid }
+                        }
+                        ... on BaseRefForcePushedEvent {
+                            $EventFields ref { name } beforeCommit { abbreviatedOid }
+                            afterCommit { abbreviatedOid }
+                        }
+                        ... on BaseRefChangedEvent {
+                            $EventFields previousRefName currentRefName
+                        }
+                        ... on DeploymentEnvironmentChangedEvent {
+                            $EventFields deploymentStatus { environmentUrl state }
+                        }
+                        ... on AutoMergeEnabledEvent { $EventFields }
+                        ... on AutoMergeDisabledEvent { $EventFields reasonCode }
+                        ... on AutoRebaseEnabledEvent { $EventFields }
+                        ... on AutoSquashEnabledEvent { $EventFields }
+                        ... on AddedToMergeQueueEvent {
+                            id createdAt enqueuer { login avatarUrl }
+                        }
+                        ... on RemovedFromMergeQueueEvent {
+                            id createdAt enqueuer { login avatarUrl } reason
+                        }
+                        ... on AutomaticBaseChangeSucceededEvent {
+                            id createdAt oldBase newBase
+                        }
+                    }
+                }
+            }
+        }
+    }
+"""
+        .trimIndent()
+
+private const val WorkFields =
+    """
+    id number title body bodyHTML(unfurlReferences: true) url createdAt updatedAt locked viewerCanUpdate viewerCanClose
+    viewerCanReact $CommentReactionFields
+    author { login avatarUrl __typename }
+    labels(first: 100) { pageInfo { hasNextPage endCursor } nodes { name color } }
+"""
+private val LabelsQuery =
+    """
+    query WorkLabels(${'$'}id: ID!, ${'$'}after: String) {
+        node(id: ${'$'}id) {
+            ... on Issue { updatedAt labels(first: 100, after: ${'$'}after) { $PageInfo nodes { name color } } }
+            ... on PullRequest { updatedAt labels(first: 100, after: ${'$'}after) { $PageInfo nodes { name color } } }
+        }
+    }
+"""
+        .trimIndent()
+private val DetailQuery =
+    """
+    query WorkDetail(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            viewerPermission mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed
+            issueOrPullRequest(number: ${'$'}number) {
+                __typename
+                ... on Issue { $WorkFields issueState: state }
+                ... on PullRequest {
+                    $WorkFields pullRequestState: state isDraft merged mergedAt
+                    headRefOid headRefName baseRefOid baseRefName
+                    commits { totalCount }
+                    reviews(states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) { totalCount }
+                    changedFiles additions deletions mergeable reviewDecision mergeStateStatus
+                    reviewRequests(first: 25) {
+                        totalCount
+                        nodes {
+                            requestedReviewer {
+                                ... on User { login avatarUrl }
+                                ... on Team { name }
+                                ... on EnterpriseTeam { name }
+                            }
+                        }
+                    }
+                    latestReviews(first: 3) { nodes { state author { login avatarUrl __typename } } }
+                    requiredStatusChecks(first: 25) { totalCount nodes { context state description } }
+                }
+            }
+        }
+    }
+"""
+        .trimIndent()
+private val CommentsQuery =
+    """
+    query WorkComments(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            issueOrPullRequest(number: ${'$'}number) {
+                ... on Issue { comments(first: 30, after: ${'$'}after) { $PageInfo nodes { $CommentFields } } }
+                ... on PullRequest { comments(first: 30, after: ${'$'}after) { $PageInfo nodes { $CommentFields } } }
+            }
+        }
+    }
+"""
+        .trimIndent()
+private val ReviewsQuery =
+    """
+    query WorkReviews(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            pullRequest(number: ${'$'}number) {
+                reviews(first: 30, after: ${'$'}after) { $PageInfo nodes { $ReviewFields } }
+            }
+        }
+    }
+"""
+        .trimIndent()
+private val ChecksQuery =
+    """
+    query WorkChecks(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
+        repository(owner: ${'$'}owner, name: ${'$'}name) {
+            pullRequest(number: ${'$'}number) {
+                headRefOid
+                commits(last: 1) { nodes { commit { oid statusCheckRollup {
+                    contexts(first: 30, after: ${'$'}after) {
+                        $PageInfo nodes {
+                            __typename
+                            ... on CheckRun {
+                                id name status conclusion isRequired(pullRequestNumber: ${'$'}number)
+                                checkSuite { id app { name } workflowRun { url runNumber workflow { name } } }
+                            }
+                            ... on StatusContext { id context state description isRequired(pullRequestNumber: ${'$'}number) }
+                        }
+                    }
+                } } } }
+            }
+        }
+    }
+"""
+        .trimIndent()

@@ -1,0 +1,66 @@
+package moe.yumeyuka.yumehub.locale
+
+public data class GithubStrings_Markdown(
+    val LoadFailed: String,
+    val RenderingFailed: String,
+    val UnsupportedContent: String,
+    val PreviewLoadFailed: String,
+    val Preview: String,
+    val ViewSource: String,
+    val CopyCode: String,
+    val CopiedCode: String,
+    val ApplySuggestion: String,
+    val ApplyingSuggestion: String,
+    val DetailsExpand: String,
+    val DetailsCollapse: String,
+    val PlayMedia: String,
+    val PauseMedia: String,
+    val MediaLoadFailed: String,
+    val MediaProgress: String,
+    val ImageLoadFailed: String,
+    val Retry: String = "",
+)
+
+internal val ZhHansMarkdownStrings: GithubStrings_Markdown =
+    GithubStrings_Markdown(
+        LoadFailed = "内容加载失败",
+        RenderingFailed = "内容显示失败",
+        UnsupportedContent = "此内容暂时无法显示",
+        PreviewLoadFailed = "预览加载失败",
+        Preview = "预览",
+        ViewSource = "查看源码",
+        CopyCode = "复制代码",
+        CopiedCode = "已复制代码",
+        ApplySuggestion = "应用建议",
+        ApplyingSuggestion = "正在应用建议",
+        DetailsExpand = "展开内容",
+        DetailsCollapse = "折叠内容",
+        PlayMedia = "播放媒体",
+        PauseMedia = "暂停媒体",
+        MediaLoadFailed = "媒体加载失败",
+        MediaProgress = "播放进度",
+        ImageLoadFailed = "图片加载失败",
+        Retry = "重试",
+    )
+
+internal val EnMarkdownStrings: GithubStrings_Markdown =
+    GithubStrings_Markdown(
+        LoadFailed = "Unable to load content",
+        RenderingFailed = "Unable to display content",
+        UnsupportedContent = "This content cannot be displayed yet",
+        PreviewLoadFailed = "Unable to load preview",
+        Preview = "Preview",
+        ViewSource = "View source",
+        CopyCode = "Copy code",
+        CopiedCode = "Code copied",
+        ApplySuggestion = "Apply suggestion",
+        ApplyingSuggestion = "Applying suggestion",
+        DetailsExpand = "Expand content",
+        DetailsCollapse = "Collapse content",
+        PlayMedia = "Play media",
+        PauseMedia = "Pause media",
+        MediaLoadFailed = "Unable to load media",
+        MediaProgress = "Playback progress",
+        ImageLoadFailed = "Unable to load image",
+        Retry = "Retry",
+    )

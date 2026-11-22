@@ -1,0 +1,123 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - Moe
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: android-ci-${{ github.event_name == 'push' && format('push-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  format:
+    name: ktfmt
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+      - name: Setup Java
+        uses: actions/setup-java@v6.1.0
+        with:
+          distribution: zulu
+          java-version: "25"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: "platform-tools platforms;android-37.2 build-tools;37.0.0"
+      - name: Cache Gradle
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: >-
+            ${{ runner.os }}-gradle-${{ hashFiles(
+            'gradle/**', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      - name: Configure local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+      - name: ktfmt check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ./gradlew --no-daemon ktfmtCheck
+
+  build:
+    name: Unit tests and APK
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+      - name: Setup Java
+        uses: actions/setup-java@v6.1.0
+        with:
+          distribution: zulu
+          java-version: "25"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: >-
+            platform-tools platforms;android-37.2 build-tools;37.0.0
+            ndk;27.1.12297006 cmake;3.22.1
+      - name: Cache Gradle
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: >-
+            ${{ runner.os }}-gradle-${{ hashFiles(
+            'gradle/**', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      - name: Configure local.properties
+        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+      - name: Unit tests
+        if: github.event_name != 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          bash ./gradlew --no-daemon --max-workers=2 --no-parallel
+          -Pkotlin.compiler.execution.strategy=in-process
+          :data:testDebugUnitTest :ui:testDebugUnitTest
+          :core:model:testDebugUnitTest :markdown:core:test
+          :markdown:compose:testDebugUnitTest
+          :feature:markdown:testDebugUnitTest
+      - name: Assemble debug
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          bash ./gradlew --no-daemon --max-workers=2 --no-parallel
+          -Pkotlin.compiler.execution.strategy=in-process
+          :app:assembleDebug
+      - name: Verify APK signature
+        run: |
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            "${ANDROID_SDK_ROOT}/build-tools/37.0.0/apksigner" \
+              verify --verbose "$apk"
+          done
+      - name: Upload APK
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: ${{ github.event_name == 'push' && 'apk-debug' || 'apk-debug-pr' }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

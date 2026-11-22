@@ -1,0 +1,3 @@
+[submodule "glasmio"]
+	path = third_party/glasmio
+	url = https://github.com/YumeYuka/Glasmio.git

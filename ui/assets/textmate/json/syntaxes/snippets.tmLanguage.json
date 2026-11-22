@@ -1,0 +1,7 @@
+{
+  "name": "Snippets",
+  "scopeName": "source.json.comments.snippets",
+  "patterns": [
+    {"include":"source.json.comments"}
+  ]
+}

@@ -1,0 +1,37 @@
+# Normalize line endings: LF in the repository, CRLF only for Windows scripts.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Kotlin sources and build scripts are always LF.
+*.kt text eol=lf
+*.kts text eol=lf
+
+# Binary files.
+*.jar binary
+*.aar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.so binary
+*.apk binary
+*.aab binary
+*.jks binary
+*.keystore binary
+
+# Generated / vendored content does not belong in diffs or language stats.
+gradlew text eol=lf linguist-vendored
+gradlew.bat text eol=crlf linguist-vendored
+app/build/** linguist-generated=true
+build/** linguist-generated=true
+docs/** linguist-documentation

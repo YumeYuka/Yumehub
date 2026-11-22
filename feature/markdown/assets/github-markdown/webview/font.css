@@ -1,0 +1,17 @@
+@font-face {
+    font-family: inter;
+    src: url("Inter.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: inter;
+    src: url("Inter-Italic.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: italic;
+}
+
+.markdown-body {
+    font-family: inter, sans-serif;
+}

@@ -1,0 +1,3555 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "date": "2026-11-14",
+    "referenceAssets": "feature/markdown/assets/github-markdown/webview",
+    "referenceAssetsSampleVersion": "GitHub Android 1.283.0 (existing repository sample)",
+    "githubMermaidVersion": "12.2.0",
+    "githubMermaidVersionStatus": "CAPTURED",
+    "candidateMermaidDocsVersion": "12.3.0",
+    "candidateMermaidDocsVersionScope": "documentation catalogue only; not a GitHub runtime compatibility claim",
+    "provenance": "All fixture content is synthetic. No private repository content is present.",
+    "officialSources": [
+      "https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams",
+      "https://mermaid.js.org/intro/",
+      "https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions"
+    ],
+    "githubReferenceStatus": "MERMAID_AND_MATH_SYNTHETIC_REFERENCE_CAPTURED",
+    "githubMermaidVersionEvidence": {
+      "sourceUrl": "https://viewscreen.githubusercontent.com/markdown/mermaid?docs_host=https%3A%2F%2Fdocs.github.com",
+      "syntheticInput": "info",
+      "capturedAtUtc": "2026-11-13T22:53:45.324Z",
+      "versionSvgText": "v12.2.0",
+      "files": [
+        "github-mermaid-info.json",
+        "github-mermaid-info.svg",
+        "github-mermaid-info.png"
+      ],
+      "deploymentId": "5b99bd9a2037271fa4cf",
+      "scope": "Production viewscreen response observed for synthetic info on capture date; native/visual/interaction acceptance is not implied.",
+      "cacheRelativeDirectory": "yumehub-native-html/reference",
+      "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache"
+    },
+    "githubMathJaxVersion": "4.1.3",
+    "githubMathJaxVersionStatus": "CAPTURED_FROM_DEPLOYED_CONVERTER",
+    "githubMathJaxOutputFormat": "MathML",
+    "githubMathJaxVersionEvidence": {
+      "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+      "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+      "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+      "files": [
+        "github-math-reference.json",
+        "github-math-reference.png",
+        "github-math-wrapper-check.json",
+        "viewscreen-bundle/manifest.json"
+      ],
+      "cacheRelativeDirectory": "yumehub-native-html/reference",
+      "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+      "scope": "Unchanged production converter invoked by a test-only module bridge; MathML laid out in isolated desktop browser. Full GitHub shell/error styling and Android/native visual acceptance are not implied."
+    }
+  },
+  "defaultContext": {
+    "pageUrl": "https://fixture.invalid/html/fixture.html",
+    "repositoryRootUrl": "https://fixture.invalid/",
+    "readme": false,
+    "ref": "fixture"
+  },
+  "mediaPolicy": {
+    "mode": "local-only",
+    "host": "fixture.invalid",
+    "assetDirectory": "media",
+    "externalNetworkAllowed": false
+  },
+  "environments": {
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widthsDp": [
+      360,
+      600
+    ],
+    "fontScales": [
+      1.0,
+      1.3,
+      2.0
+    ]
+  },
+  "cases": [
+    {
+      "name": "basic",
+      "file": "html/basic.html",
+      "capabilities": [
+        "paragraph",
+        "headings",
+        "inline-styles",
+        "links",
+        "nested-lists",
+        "blockquote",
+        "code",
+        "code-highlight",
+        "whitespace",
+        "kbd",
+        "subscript",
+        "superscript",
+        "thematic-break"
+      ],
+      "expectedVisibleText": [
+        "Native HTML 验收",
+        "中文与 English 混排",
+        "strong",
+        "emphasis",
+        "removed",
+        "inserted",
+        "controlled link",
+        "nested item A",
+        "第四项"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/html/linked.html"
+        }
+      ],
+      "expectedSemantics": {
+        "headings": [
+          {
+            "level": 1,
+            "id": "overview"
+          },
+          {
+            "level": 2,
+            "id": "code"
+          }
+        ],
+        "orderedListStart": 3,
+        "codeText": "fun hello() {\n    val text = \"中文 & English\"\n\tprintln(text)\n}\n",
+        "codeTokenClasses": [
+          "pl-k",
+          "pl-en",
+          "pl-s"
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "overview",
+        "basic-p-1",
+        "basic-p-2",
+        "basic-blockquote-1",
+        "basic-p-3",
+        "basic-blockquote-2",
+        "basic-p-4",
+        "basic-ol-1",
+        "basic-li-1",
+        "basic-ul-1",
+        "basic-li-2",
+        "basic-li-3",
+        "basic-li-4",
+        "basic-hr-1",
+        "code",
+        "basic-pre-1"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "table",
+      "file": "html/table.html",
+      "capabilities": [
+        "table",
+        "table-alignment",
+        "table-colspan",
+        "table-rowspan",
+        "horizontal-scroll",
+        "table-inline",
+        "anchors"
+      ],
+      "expectedVisibleText": [
+        "Tables",
+        "名称 Name",
+        "中文第二行",
+        "跨两列 colspan",
+        "合并两行 rowspan",
+        "After table"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/item/1"
+        }
+      ],
+      "expectedSemantics": {
+        "columnCount": 3,
+        "bodyRows": 4,
+        "alignments": [
+          "left",
+          "center",
+          "right"
+        ],
+        "mergedCells": [
+          {
+            "row": 2,
+            "column": 0,
+            "colspan": 2
+          },
+          {
+            "row": 2,
+            "column": 2,
+            "rowspan": 2
+          }
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "table",
+        "table-table-1",
+        "table-th-1",
+        "table-th-2",
+        "table-th-3",
+        "table-td-1",
+        "table-td-2",
+        "table-td-3",
+        "table-td-4",
+        "table-td-5",
+        "table-td-6",
+        "table-td-7",
+        "table-td-8",
+        "table-td-9",
+        "table-td-10",
+        "after-table"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "details",
+      "file": "html/details.html",
+      "capabilities": [
+        "details",
+        "nested-details",
+        "anchors",
+        "relayout"
+      ],
+      "expectedVisibleText": [
+        "Details",
+        "展开：Closed summary",
+        "Initially open",
+        "Open content",
+        "After details"
+      ],
+      "expectedHiddenText": [
+        "Closed content 中文",
+        "Nested summary",
+        "Nested content"
+      ],
+      "expectedActions": [
+        {
+          "kind": "toggleDetails",
+          "id": "closed-details",
+          "afterExpandedText": "Closed content 中文"
+        },
+        {
+          "kind": "toggleDetails",
+          "summary": "Nested summary",
+          "afterExpandedText": "Nested content"
+        }
+      ],
+      "expectedSemantics": {
+        "details": [
+          {
+            "id": "closed-details",
+            "initiallyOpen": false
+          },
+          {
+            "id": "open-details",
+            "initiallyOpen": true
+          }
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "details-title",
+        "closed-details",
+        "details-summary-1",
+        "inside-closed",
+        "details-details-2",
+        "details-summary-2",
+        "details-p-2",
+        "open-details",
+        "details-summary-3",
+        "inside-open",
+        "after-details"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "alerts",
+      "file": "html/alerts.html",
+      "capabilities": [
+        "alerts",
+        "alert-note",
+        "alert-tip",
+        "alert-important",
+        "alert-warning",
+        "alert-caution",
+        "inline-code"
+      ],
+      "expectedVisibleText": [
+        "Note",
+        "Tip",
+        "Important",
+        "Warning",
+        "Caution",
+        "Note body 中文。",
+        "Caution body 中文。"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "alertKinds": [
+          "note",
+          "tip",
+          "important",
+          "warning",
+          "caution"
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "alert-note",
+        "alerts-p-1",
+        "alerts-p-2",
+        "alert-tip",
+        "alerts-p-3",
+        "alerts-p-4",
+        "alert-important",
+        "alerts-p-5",
+        "alerts-p-6",
+        "alert-warning",
+        "alerts-p-7",
+        "alerts-p-8",
+        "alert-caution",
+        "alerts-p-9",
+        "alerts-p-10"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "tasks",
+      "file": "html/tasks.html",
+      "capabilities": [
+        "task-list",
+        "mobile-task-block",
+        "task-order",
+        "callback-capabilities"
+      ],
+      "expectedVisibleText": [
+        "Tasks",
+        "Open task 中文",
+        "Completed task",
+        "Mobile task block",
+        "Native mobile task",
+        "Referenced issue",
+        "#42"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "taskChanged",
+          "enabledOnlyWhen": "onTaskChanged",
+          "position": 0,
+          "checkedAfterClick": true
+        },
+        {
+          "kind": "taskChanged",
+          "enabledOnlyWhen": "onTaskChanged",
+          "position": 1,
+          "checkedAfterClick": false
+        },
+        {
+          "kind": "taskChanged",
+          "enabledOnlyWhen": "onTaskChanged",
+          "position": 2,
+          "checkedAfterClick": true
+        },
+        {
+          "kind": "taskChanged",
+          "enabledOnlyWhen": "onTaskChanged",
+          "position": 3,
+          "checkedAfterClick": true
+        },
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/issues/42"
+        }
+      ],
+      "expectedSemantics": {
+        "taskCount": 4,
+        "tasks": [
+          {
+            "position": 0,
+            "id": "task-open",
+            "checked": false
+          },
+          {
+            "position": 1,
+            "id": "task-done",
+            "checked": true
+          },
+          {
+            "position": 2,
+            "id": "task-mobile",
+            "checked": false
+          },
+          {
+            "position": 3,
+            "id": "task-reference",
+            "checked": false
+          }
+        ],
+        "defaultWithoutBusinessCallbacks": "read-only"
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "notes": "任务结构是合成夹具；三类 selector 均来自现有 markdown.js 的任务排序契约，不把该结构声明为最新服务端回包快照。",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "tasks-h2-1",
+        "tasks-ul-1",
+        "tasks-li-1",
+        "tasks-li-2",
+        "task-block-1",
+        "tasks-div-2",
+        "tasks-h3-1",
+        "tasks-ol-1",
+        "tasks-li-3",
+        "tasks-div-3",
+        "tasks-li-4",
+        "tasks-div-4"
+      ],
+      "objectNodeIds": [
+        "tasks-object-1",
+        "tasks-object-2",
+        "tasks-object-3",
+        "tasks-object-4"
+      ]
+    },
+    {
+      "name": "suggestion",
+      "file": "html/suggestion.html",
+      "capabilities": [
+        "suggestion",
+        "diff-line-numbers",
+        "diff-markers",
+        "diff-inline-highlight",
+        "callback-capabilities"
+      ],
+      "expectedVisibleText": [
+        "Suggestion",
+        "Suggested change 中文",
+        "val count = 1",
+        "val count = 2",
+        "println(\"中文\")"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "commitSuggestion",
+          "enabledOnlyWhen": "onCommitSuggestion",
+          "suggestionId": "suggestion-fixture-42",
+          "previewHtmlContains": [
+            "data-line-number=\"41\"",
+            "blob-code-deletion",
+            "blob-code-addition"
+          ]
+        }
+      ],
+      "expectedSemantics": {
+        "suggestionId": "suggestion-fixture-42",
+        "lineNumbers": [
+          41,
+          41,
+          42
+        ],
+        "lineKinds": [
+          "deletion",
+          "addition",
+          "addition"
+        ],
+        "generatedLineMarkers": [
+          "- ",
+          "+ ",
+          "+ "
+        ],
+        "defaultWithoutBusinessCallbacks": "no-commit-button"
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "suggestion-h2-1",
+        "suggestion-fixture-42",
+        "suggestion-div-2",
+        "suggestion-div-3",
+        "suggestion-table-1",
+        "suggestion-td-1",
+        "suggestion-td-2",
+        "suggestion-td-3",
+        "suggestion-td-4",
+        "suggestion-td-5",
+        "suggestion-td-6",
+        "suggestion-div-4"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "media",
+      "file": "html/media.html",
+      "capabilities": [
+        "images",
+        "svg-image",
+        "image-dimensions",
+        "theme-images",
+        "picture",
+        "srcset",
+        "figure",
+        "relative-media",
+        "image-alignment"
+      ],
+      "expectedVisibleText": [
+        "Media",
+        "inline image label",
+        "Figure caption 中文"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "resourcePolicy": "local-only",
+        "resolvedResources": [
+          "https://fixture.invalid/media/checker.png",
+          "https://fixture.invalid/media/shape.svg",
+          "https://fixture.invalid/media/light.png",
+          "https://fixture.invalid/media/dark.png"
+        ],
+        "themeVisibility": {
+          "light": [
+            "Light-only image"
+          ],
+          "dark": [
+            "Dark-only image"
+          ]
+        }
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "media-h2-1",
+        "media-p-1",
+        "media-p-2",
+        "media-p-3",
+        "media-figure-1",
+        "media-figcaption-1"
+      ],
+      "objectNodeIds": [
+        "media-object-1",
+        "media-object-2",
+        "media-object-3",
+        "media-object-4",
+        "media-object-5",
+        "media-object-6"
+      ]
+    },
+    {
+      "name": "anchors",
+      "file": "html/anchors.html",
+      "capabilities": [
+        "anchors",
+        "fragment-case",
+        "unicode-fragment",
+        "legacy-anchor-name",
+        "same-document-links"
+      ],
+      "expectedVisibleText": [
+        "Anchors",
+        "Exact-case fragment",
+        "Unicode fragment",
+        "Legacy name",
+        "Same-document URL",
+        "Unicode target 中文",
+        "Legacy target"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "scrollToAnchor",
+          "fragment": "CaseSensitiveAnchor"
+        },
+        {
+          "kind": "scrollToAnchor",
+          "fragment": "user-content-大小写-A"
+        },
+        {
+          "kind": "scrollToAnchor",
+          "fragment": "legacy-name"
+        }
+      ],
+      "expectedSemantics": {
+        "anchorNames": [
+          "CaseSensitiveAnchor",
+          "user-content-大小写-A",
+          "legacy-name"
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "CaseSensitiveAnchor",
+        "anchors-p-1",
+        "user-content-大小写-A",
+        "anchors-p-2"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "footnotes",
+      "file": "html/footnotes.html",
+      "capabilities": [
+        "footnotes",
+        "anchors",
+        "superscript",
+        "accessibility"
+      ],
+      "expectedVisibleText": [
+        "Footnote source",
+        "First footnote 中文",
+        "Second footnote"
+      ],
+      "expectedHiddenText": [
+        "Footnotes"
+      ],
+      "expectedActions": [
+        {
+          "kind": "scrollToAnchor",
+          "fragment": "user-content-fn-1"
+        },
+        {
+          "kind": "scrollToAnchor",
+          "fragment": "user-content-fnref-1"
+        }
+      ],
+      "expectedSemantics": {
+        "footnoteCount": 2,
+        "anchorNames": [
+          "user-content-fn-1",
+          "user-content-fnref-1",
+          "user-content-fn-2",
+          "user-content-fnref-2"
+        ]
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "footnotes-p-1",
+        "footnotes-section-1",
+        "footnote-label",
+        "footnotes-ol-1",
+        "user-content-fn-1",
+        "footnotes-p-2",
+        "user-content-fn-2",
+        "footnotes-p-3"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "html-only-readme",
+      "file": "html/html-only-readme.html",
+      "capabilities": [
+        "html-only-input",
+        "readme",
+        "ready-after-layout",
+        "relative-media"
+      ],
+      "expectedVisibleText": [
+        "HTML-only README",
+        "原文为空时仍然显示这段服务端 HTML。",
+        "README details"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "rawMarkdown": "",
+        "onReady": "current-revision-first-valid-layout",
+        "mediaCanRelayoutAfterReady": true
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "context": {
+        "pageUrl": "https://fixture.invalid/html/fixture.html",
+        "repositoryRootUrl": "https://fixture.invalid/",
+        "readme": true,
+        "ref": "fixture"
+      },
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "html-only-readme",
+        "html-only-readme-p-1",
+        "html-only-readme-p-2",
+        "html-only-readme-details-1",
+        "html-only-readme-summary-1",
+        "html-only-readme-p-3"
+      ],
+      "objectNodeIds": [
+        "html-only-readme-object-1"
+      ]
+    },
+    {
+      "name": "relative-media",
+      "file": "html/relative-media.html",
+      "capabilities": [
+        "relative-media",
+        "repository-context",
+        "ref",
+        "srcset-filtering",
+        "url-policy"
+      ],
+      "expectedVisibleText": [
+        "Repository media resolution",
+        "Relative guide"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "resourcePolicy": "local-only",
+        "imageSourceInputs": [
+          "../images/diagram.png",
+          "/assets/banner.png",
+          "https://fixture.invalid/media/checker.png"
+        ],
+        "noExternalFetch": true
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "context": {
+        "pageUrl": "https://github.com/octo-org/octo-repo/blob/fixture/docs/README.md",
+        "repositoryRootUrl": "https://github.com/octo-org/octo-repo/",
+        "readme": true,
+        "ref": "fixture"
+      },
+      "notes": "URL 期望应按现有 adapter 与仓库 ref 契约确认；宿主只能本地截获资源，不访问 GitHub 或 raw host。",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "relative-media-h2-1",
+        "relative-media-p-1",
+        "relative-media-p-2",
+        "relative-media-p-3",
+        "relative-media-p-4"
+      ],
+      "objectNodeIds": [
+        "relative-media-object-1",
+        "relative-media-object-2",
+        "relative-media-object-3"
+      ]
+    },
+    {
+      "name": "security",
+      "file": "html/security.html",
+      "capabilities": [
+        "active-content-filtering",
+        "event-filtering",
+        "url-policy",
+        "resource-policy",
+        "no-network"
+      ],
+      "expectedVisibleText": [
+        "Safe content",
+        "Visible safe text",
+        "Unsafe link text",
+        "Safe link",
+        "Safe styled text"
+      ],
+      "expectedHiddenText": [
+        "SCRIPT_SENTINEL",
+        "IFRAME_SENTINEL",
+        "FORM_SENTINEL",
+        "STYLE_SENTINEL",
+        "OBJECT_SENTINEL",
+        "EVENT_SENTINEL",
+        "URL_SENTINEL",
+        "IMAGE_SENTINEL",
+        "ERROR_SENTINEL"
+      ],
+      "expectedActions": [
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/safe"
+        }
+      ],
+      "expectedSemantics": {
+        "forbiddenActiveTags": [
+          "script",
+          "iframe",
+          "form",
+          "style",
+          "object"
+        ],
+        "forbiddenAttributePrefixes": [
+          "on"
+        ],
+        "forbiddenAttributes": [
+          "ping",
+          "action",
+          "srcdoc"
+        ],
+        "invalidProtocols": [
+          "javascript:"
+        ],
+        "noScriptExecution": true
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "safe",
+        "security-p-1",
+        "security-p-2",
+        "security-p-3"
+      ],
+      "objectNodeIds": [
+        "security-object-1"
+      ]
+    },
+    {
+      "name": "unknown",
+      "file": "html/unknown.html",
+      "capabilities": [
+        "unknown-diagnostics",
+        "preserve-readable-content"
+      ],
+      "expectedVisibleText": [
+        "Unknown semantic",
+        "Readable nested content 中文",
+        "Future child text"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "requiredDiagnostic": "unknown-semantic",
+        "unknownTag": "github-future-widget",
+        "mustNotPretendFullSupport": true
+      },
+      "engineCases": [],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "existing-assets",
+      "geometryNodeIds": [
+        "unknown-h2-1",
+        "unknown-p-1"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "math",
+      "file": "html/math.html",
+      "capabilities": [
+        "math-inline",
+        "math-display",
+        "math-baseline",
+        "math-fraction",
+        "math-matrix"
+      ],
+      "expectedVisibleText": [
+        "Math",
+        "Inline baseline before",
+        "after 中文。"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {},
+      "engineCases": [
+        {
+          "kind": "math",
+          "id": "inline-root",
+          "source": "\\sqrt{3x-1}",
+          "display": false,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "b2139dd40ad469cbcbb2da8b18179aeb606f0459b8ebf7bf6c1f820c1913d35a"
+        },
+        {
+          "kind": "math",
+          "id": "inline-script",
+          "source": "x_i^2 + y_j^3",
+          "display": false,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "705fa4a0fafcacc0698592913d058e55c46482a5a415b0e78a174eb1945c56c0"
+        },
+        {
+          "kind": "math",
+          "id": "display-fraction",
+          "source": "\\frac{1}{1+\\frac{1}{x}}",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "c3b963048bd7a4902c62182b4a722865e9c54191c744b82df035f0601f9a9e53"
+        },
+        {
+          "kind": "math",
+          "id": "display-matrix",
+          "source": "\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "946c39e44ce0c2476b0aeb145b88e4717a46cbf2478865e45d84ab420489e0f0"
+        }
+      ],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "githubSupported": true,
+      "compatibilityScope": "github-math-reference-captured-synthetic-input",
+      "referenceScope": "GitHub deployed MathJax 4.1.3 converter + MathML browser layout for this synthetic input; native and error-UI visual tests remain NOT_RUN.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-math-reference.json",
+        "png": "github-math-reference.png",
+        "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+        "version": "4.1.3",
+        "outputFormat": "MathML",
+        "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+        "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "math-h2-1",
+        "math-p-1"
+      ],
+      "objectNodeIds": [
+        "math-object-1",
+        "math-object-2",
+        "math-object-3",
+        "math-object-4"
+      ]
+    },
+    {
+      "name": "math-inline-baseline",
+      "file": "html/math-inline-baseline.html",
+      "capabilities": [
+        "math-inline",
+        "math-baseline",
+        "cjk",
+        "font-scale"
+      ],
+      "expectedVisibleText": [
+        "Aa 中文 before",
+        "after descender gjpq。"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {},
+      "engineCases": [
+        {
+          "kind": "math",
+          "source": "\\frac{x_1^2}{y+1}",
+          "display": false,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "3df1ebe2938e0d39bdeca9040f5c61292dc16ecd8864ae948c33f348842ace8b"
+        }
+      ],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "githubSupported": true,
+      "compatibilityScope": "github-math-reference-captured-synthetic-input",
+      "referenceScope": "GitHub deployed MathJax 4.1.3 converter + MathML browser layout for this synthetic input; native and error-UI visual tests remain NOT_RUN.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-math-reference.json",
+        "png": "github-math-reference.png",
+        "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+        "version": "4.1.3",
+        "outputFormat": "MathML",
+        "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+        "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "inline-baseline"
+      ],
+      "objectNodeIds": [
+        "math-inline-baseline-object-1"
+      ]
+    },
+    {
+      "name": "math-complex",
+      "file": "html/math-complex.html",
+      "capabilities": [
+        "math-aligned",
+        "math-cases",
+        "math-cjk-text",
+        "math-operators",
+        "math-macros"
+      ],
+      "expectedVisibleText": [
+        "Complex math"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {},
+      "engineCases": [
+        {
+          "kind": "math",
+          "id": "aligned",
+          "source": "\\begin{aligned}a+b &= c \\\\ x+y &= z\\end{aligned}",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "014051fc4b900572c3e98ad0492072035655b7a075b55bf8eb6514adfd1ac6e7"
+        },
+        {
+          "kind": "math",
+          "id": "cases",
+          "source": "f(x)=\\begin{cases}x^2 & x\\ge 0\\\\-x & x<0\\end{cases}",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "c523b99eb98056a0d1014244b1e8e7fddec15e78101b4a1a4cbe46e8d7d6af90"
+        },
+        {
+          "kind": "math",
+          "id": "text-cjk",
+          "source": "\\text{中文说明}+\\text{Latin text}",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "f1feba790526176668591319b3ec8f2cd29006bf25baf991e29256a0e2b07634"
+        },
+        {
+          "kind": "math",
+          "id": "sum-integral",
+          "source": "\\sum_{i=1}^{n} i^2 + \\int_0^1 x^2\\,dx",
+          "display": true,
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "3c931d17c545742278601e56cd4bbe2300f9119d14f31b63f8d9678a2704435e"
+        },
+        {
+          "kind": "math",
+          "id": "macro",
+          "source": "\\newcommand{\\vect}[1]{\\mathbf{#1}}\\vect{x}+\\vect{y}",
+          "display": true,
+          "expectedOutcome": "structured-error-without-source-fallback",
+          "syntaxValidationStatus": "INVALID_FOR_GITHUB_REFERENCE",
+          "referenceSupportStatus": "REJECTED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "structured-error",
+          "referenceMathmlSha256": "87fd9bfc3e9197e29540f0de9ee6305d20c69be847dbe0887663c3f395d91cd5",
+          "referenceError": "You can't use 'macro parameter character #' in math mode"
+        }
+      ],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_ERROR",
+      "githubSupported": null,
+      "compatibilityScope": "github-math-reference-captured-synthetic-input",
+      "referenceScope": "GitHub deployed MathJax 4.1.3 converter + MathML browser layout for this synthetic input; native and error-UI visual tests remain NOT_RUN.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-math-reference.json",
+        "png": "github-math-reference.png",
+        "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+        "version": "4.1.3",
+        "outputFormat": "MathML",
+        "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+        "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+        "errors": [
+          {
+            "id": "macro",
+            "error": "You can't use 'macro parameter character #' in math mode"
+          }
+        ]
+      },
+      "notes": "aligned/cases/CJK/sum-integral render in the captured converter. The synthetic parameterized newcommand input is rejected; reproduce a structured error instead of claiming rendered native math for that expression.",
+      "geometryNodeIds": [
+        "math-complex-h2-1"
+      ],
+      "objectNodeIds": [
+        "math-complex-object-1",
+        "math-complex-object-2",
+        "math-complex-object-3",
+        "math-complex-object-4",
+        "math-complex-object-5"
+      ]
+    },
+    {
+      "name": "math-chemistry",
+      "file": "html/math-chemistry.html",
+      "capabilities": [
+        "math-chemistry",
+        "math-extension"
+      ],
+      "expectedVisibleText": [
+        "Chemistry"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {},
+      "engineCases": [
+        {
+          "kind": "math",
+          "source": "\\ce{2H2 + O2 -> 2H2O}",
+          "display": true,
+          "extension": "mhchem",
+          "expectedOutcome": "rendered-native-math",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE",
+          "referenceSupportStatus": "VALIDATED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "rendered-mathml",
+          "referenceMathmlSha256": "d23c64f4797eb013ff076e4f207bba6426e527df07084f39417b2760a653ea82"
+        }
+      ],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "notes": "The captured GitHub converter renders this native-mhchem sample; candidate native-engine chemistry support remains NOT_RUN.",
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "githubSupported": true,
+      "compatibilityScope": "github-math-reference-captured-synthetic-input",
+      "referenceScope": "GitHub deployed MathJax 4.1.3 converter + MathML browser layout for this synthetic input; native and error-UI visual tests remain NOT_RUN.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-math-reference.json",
+        "png": "github-math-reference.png",
+        "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+        "version": "4.1.3",
+        "outputFormat": "MathML",
+        "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+        "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "math-chemistry-h2-1"
+      ],
+      "objectNodeIds": [
+        "math-chemistry-object-1"
+      ]
+    },
+    {
+      "name": "math-invalid",
+      "file": "html/math-invalid.html",
+      "capabilities": [
+        "math-errors",
+        "diagnostics"
+      ],
+      "expectedVisibleText": [
+        "Invalid math"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {},
+      "engineCases": [
+        {
+          "kind": "math",
+          "source": "\\frac{1}{",
+          "display": true,
+          "expectedOutcome": "structured-error-without-source-fallback",
+          "syntaxValidationStatus": "INVALID_FOR_GITHUB_REFERENCE",
+          "referenceSupportStatus": "REJECTED_BY_GITHUB_CONVERTER",
+          "referenceOutcome": "structured-error",
+          "referenceMathmlSha256": "14125b4bfe2db2605a425465d885d0c5166fc483a9b759d2e67903bc7a6cb5d8",
+          "referenceError": "Missing close brace"
+        }
+      ],
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_ERROR",
+      "githubSupported": null,
+      "compatibilityScope": "github-math-reference-captured-synthetic-input",
+      "referenceScope": "GitHub deployed MathJax 4.1.3 converter + MathML browser layout for this synthetic input; native and error-UI visual tests remain NOT_RUN.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-math-reference.json",
+        "png": "github-math-reference.png",
+        "capturedAtUtc": "2026-11-13T23:08:50.249Z",
+        "version": "4.1.3",
+        "outputFormat": "MathML",
+        "sourceUrl": "https://github.githubassets.com/assets/chunk-y-c2484922dc87bcd3.js",
+        "sourceSha256": "20c1f5c6259133269b55bccdf30fa9f59213d0fa974003d1e38b33bebf8219b8",
+        "errors": [
+          {
+            "id": null,
+            "error": "Missing close brace"
+          }
+        ]
+      },
+      "geometryNodeIds": [
+        "math-invalid-h2-1"
+      ],
+      "objectNodeIds": [
+        "math-invalid-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-flowchart",
+      "file": "html/mermaid-flowchart.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-flowchart",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-flowchart"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "flowchart TD\n  start[Start 中文] --> choice{Ready?}\n  choice -->|yes| done[Done]\n  choice -->|no| start\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "flowchart",
+          "source": "flowchart TD\n  start[Start 中文] --> choice{Ready?}\n  choice -->|yes| done[Done]\n  choice -->|no| start\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/flowchart.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-flowchart.json",
+        "svg": "github-mermaid-flowchart.svg",
+        "png": "github-mermaid-flowchart.png",
+        "capturedAtUtc": "2026-11-13T22:56:43.702Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "5943434643d69ea442cfecfca6486b43867213dd796a1c4bf3bdcbae0de7746f",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-flowchart-h2-1",
+        "mermaid-flowchart-section-1",
+        "mermaid-flowchart-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-flowchart-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-swimlane",
+      "file": "html/mermaid-swimlane.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-swimlane",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-swimlane"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "swimlane-beta LR\nsubgraph Reader\n  A[Open]\nend\nsubgraph Renderer\n  B[Display]\nend\nA --> B\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "swimlane",
+          "source": "swimlane-beta LR\nsubgraph Reader\n  A[Open]\nend\nsubgraph Renderer\n  B[Display]\nend\nA --> B\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/swimlanes.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-swimlane.json",
+        "svg": "github-mermaid-swimlane.svg",
+        "png": "github-mermaid-swimlane.png",
+        "capturedAtUtc": "2026-11-13T22:56:45.035Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "85816e83d197f8f5fa6d9a9840ae86824e56fe42c4e6da228ded74f277feb4a7",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-swimlane-h2-1",
+        "mermaid-swimlane-section-1",
+        "mermaid-swimlane-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-swimlane-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-sequence",
+      "file": "html/mermaid-sequence.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-sequence",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-sequence"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "sequenceDiagram\n  participant Reader\n  participant App\n  Reader->>App: Open document 中文\n  App-->>Reader: Content ready\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "sequence",
+          "source": "sequenceDiagram\n  participant Reader\n  participant App\n  Reader->>App: Open document 中文\n  App-->>Reader: Content ready\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/sequenceDiagram.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-sequence.json",
+        "svg": "github-mermaid-sequence.svg",
+        "png": "github-mermaid-sequence.png",
+        "capturedAtUtc": "2026-11-13T22:56:46.068Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "43323c29db484341fcbfa49cfaeef5a34d360e59908e4ba40e3021c25de619cd",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-sequence-h2-1",
+        "mermaid-sequence-section-1",
+        "mermaid-sequence-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-sequence-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-class",
+      "file": "html/mermaid-class.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-class",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-class"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "classDiagram\n  class Document {\n    +String title\n    +render()\n  }\n  class Renderer\n  Renderer --> Document : reads\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "class",
+          "source": "classDiagram\n  class Document {\n    +String title\n    +render()\n  }\n  class Renderer\n  Renderer --> Document : reads\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/classDiagram.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-class.json",
+        "svg": "github-mermaid-class.svg",
+        "png": "github-mermaid-class.png",
+        "capturedAtUtc": "2026-11-13T22:56:47.235Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "c56b0c20735fdb121bef28e210ef986ae118980810ae3907e30afaeb07a95001",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-class-h2-1",
+        "mermaid-class-section-1",
+        "mermaid-class-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-class-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-state",
+      "file": "html/mermaid-state.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-state",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-state"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "stateDiagram-v2\n  [*] --> Loading\n  Loading --> Ready: loaded\n  Ready --> [*]\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "state",
+          "source": "stateDiagram-v2\n  [*] --> Loading\n  Loading --> Ready: loaded\n  Ready --> [*]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/stateDiagram.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-state.json",
+        "svg": "github-mermaid-state.svg",
+        "png": "github-mermaid-state.png",
+        "capturedAtUtc": "2026-11-13T22:56:48.384Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "679f73b856002d5d907aa159da9a87bfe57e484b166c7c6b82fc13ace00cdf20",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-state-h2-1",
+        "mermaid-state-section-1",
+        "mermaid-state-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-state-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-er",
+      "file": "html/mermaid-er.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-er",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-er"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "erDiagram\n  READER ||--o{ DOCUMENT : opens\n  READER {\n    int id\n    string name\n  }\n  DOCUMENT {\n    int id\n    string title\n  }\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "er",
+          "source": "erDiagram\n  READER ||--o{ DOCUMENT : opens\n  READER {\n    int id\n    string name\n  }\n  DOCUMENT {\n    int id\n    string title\n  }\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/entityRelationshipDiagram.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-er.json",
+        "svg": "github-mermaid-er.svg",
+        "png": "github-mermaid-er.png",
+        "capturedAtUtc": "2026-11-13T22:56:49.553Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "5cec04e85c4528bf768cdd5a0693b3b5f02ec7728df86b830e0b8d1b7ed689dd",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-er-h2-1",
+        "mermaid-er-section-1",
+        "mermaid-er-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-er-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-journey",
+      "file": "html/mermaid-journey.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-journey",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-journey"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "journey\n  title Read a document\n  section Open\n    Load content: 4: Reader\n    Read content: 5: Reader\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "journey",
+          "source": "journey\n  title Read a document\n  section Open\n    Load content: 4: Reader\n    Read content: 5: Reader\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/userJourney.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-journey.json",
+        "svg": "github-mermaid-journey.svg",
+        "png": "github-mermaid-journey.png",
+        "capturedAtUtc": "2026-11-13T22:56:50.586Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "1807165738569588c1007c2ce26c32df166ce95cd740df1823db7cd50c8424cf",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-journey-h2-1",
+        "mermaid-journey-section-1",
+        "mermaid-journey-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-journey-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-gantt",
+      "file": "html/mermaid-gantt.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-gantt",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-gantt"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "gantt\n  title Fixture plan\n  dateFormat YYYY-MM-DD\n  section Native\n  Parse :a1, 2026-11-01, 2d\n  Draw :after a1, 2d\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "gantt",
+          "source": "gantt\n  title Fixture plan\n  dateFormat YYYY-MM-DD\n  section Native\n  Parse :a1, 2026-11-01, 2d\n  Draw :after a1, 2d\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/gantt.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-gantt.json",
+        "svg": "github-mermaid-gantt.svg",
+        "png": "github-mermaid-gantt.png",
+        "capturedAtUtc": "2026-11-13T22:56:51.620Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "310e1d46dd67d2c8a420722645ec36d3f9cd503d20fc110a01cadb098918d97f",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-gantt-h2-1",
+        "mermaid-gantt-section-1",
+        "mermaid-gantt-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-gantt-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-pie",
+      "file": "html/mermaid-pie.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-pie",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-pie"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "pie title Fixture results\n  \"Ready\" : 3\n  \"Pending\" : 2\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "pie",
+          "source": "pie title Fixture results\n  \"Ready\" : 3\n  \"Pending\" : 2\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/pie.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-pie.json",
+        "svg": "github-mermaid-pie.svg",
+        "png": "github-mermaid-pie.png",
+        "capturedAtUtc": "2026-11-13T22:56:52.970Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "9b7d9d049a603f867ff63794e7e59bed970e1649e17b4ceb5acad9c5b63d2c2b",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-pie-h2-1",
+        "mermaid-pie-section-1",
+        "mermaid-pie-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-pie-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-quadrant",
+      "file": "html/mermaid-quadrant.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-quadrant",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-quadrant"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "quadrantChart\n  title Reading experience\n  x-axis Low effort --> High effort\n  y-axis Low value --> High value\n  quadrant-1 Invest\n  quadrant-2 Keep\n  quadrant-3 Revisit\n  quadrant-4 Simplify\n  Native: [0.7, 0.8]\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "quadrant",
+          "source": "quadrantChart\n  title Reading experience\n  x-axis Low effort --> High effort\n  y-axis Low value --> High value\n  quadrant-1 Invest\n  quadrant-2 Keep\n  quadrant-3 Revisit\n  quadrant-4 Simplify\n  Native: [0.7, 0.8]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/quadrantChart.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-quadrant.json",
+        "svg": "github-mermaid-quadrant.svg",
+        "png": "github-mermaid-quadrant.png",
+        "capturedAtUtc": "2026-11-13T22:56:54.002Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "6a1a76997c1cf7e2f2310b2fe83d556cb27260d9dd65578ebd86ac08afc90f08",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-quadrant-h2-1",
+        "mermaid-quadrant-section-1",
+        "mermaid-quadrant-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-quadrant-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-requirement",
+      "file": "html/mermaid-requirement.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-requirement",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-requirement"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "requirementDiagram\n  requirement content_visible {\n    id: 1\n    text: content is visible\n    risk: low\n    verifymethod: test\n  }\n  element fixture {\n    type: \"test fixture\"\n  }\n  fixture - verifies -> content_visible\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "requirement",
+          "source": "requirementDiagram\n  requirement content_visible {\n    id: 1\n    text: content is visible\n    risk: low\n    verifymethod: test\n  }\n  element fixture {\n    type: \"test fixture\"\n  }\n  fixture - verifies -> content_visible\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/requirementDiagram.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-requirement.json",
+        "svg": "github-mermaid-requirement.svg",
+        "png": "github-mermaid-requirement.png",
+        "capturedAtUtc": "2026-11-13T23:00:55.752Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "9092ccdbe1fe8845b2d1865041b7f5f0d7b42cea3d377498f5aeece61de053b8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-requirement-h2-1",
+        "mermaid-requirement-section-1",
+        "mermaid-requirement-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-requirement-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-usecase",
+      "file": "html/mermaid-usecase.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-usecase",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-usecase"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "usecase-beta\nactor Reader\nRead(\"Read note\")\nReader --> Read\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "usecase",
+          "source": "usecase-beta\nactor Reader\nRead(\"Read note\")\nReader --> Read\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/usecase.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-usecase.json",
+        "svg": "github-mermaid-usecase.svg",
+        "png": "github-mermaid-usecase.png",
+        "capturedAtUtc": "2026-11-13T22:56:56.201Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "0e84851fd9fff46b444aa936ce0f775a947d1516246dad9e84ef69541851ab33",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-usecase-h2-1",
+        "mermaid-usecase-section-1",
+        "mermaid-usecase-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-usecase-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-gitgraph",
+      "file": "html/mermaid-gitgraph.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-gitgraph",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-gitgraph"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "gitGraph\n  commit id: \"base\"\n  branch native\n  checkout native\n  commit id: \"renderer\"\n  checkout main\n  merge native\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "gitgraph",
+          "source": "gitGraph\n  commit id: \"base\"\n  branch native\n  checkout native\n  commit id: \"renderer\"\n  checkout main\n  merge native\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/gitgraph.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-gitgraph.json",
+        "svg": "github-mermaid-gitgraph.svg",
+        "png": "github-mermaid-gitgraph.png",
+        "capturedAtUtc": "2026-11-13T22:56:57.564Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "ec0d45ffa1baf1d9d5b8692096164ea2f60324bc76e76af8fd5fd5e51f77408e",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-gitgraph-h2-1",
+        "mermaid-gitgraph-section-1",
+        "mermaid-gitgraph-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-gitgraph-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-c4-context",
+      "file": "html/mermaid-c4-context.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-c4-context",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-c4-context"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "C4Context\n  title Fixture context\n  Person(reader, \"Reader\", \"Opens documents\")\n  System(app, \"Native reader\", \"Displays GitHub HTML\")\n  Rel(reader, app, \"Reads\")\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "c4-context",
+          "source": "C4Context\n  title Fixture context\n  Person(reader, \"Reader\", \"Opens documents\")\n  System(app, \"Native reader\", \"Displays GitHub HTML\")\n  Rel(reader, app, \"Reads\")\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/c4.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-c4-context.json",
+        "svg": "github-mermaid-c4-context.svg",
+        "png": "github-mermaid-c4-context.png",
+        "capturedAtUtc": "2026-11-13T22:56:58.669Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "6dbac43c4a01c6ec02c5db15ed2483a4d87735bba0d61cee89e16d0497333430",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-c4-context-h2-1",
+        "mermaid-c4-context-section-1",
+        "mermaid-c4-context-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-c4-context-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-mindmap",
+      "file": "html/mermaid-mindmap.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-mindmap",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-mindmap"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "mindmap\n  root((Document))\n    Parse\n      HTML\n    Render\n      Compose\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "mindmap",
+          "source": "mindmap\n  root((Document))\n    Parse\n      HTML\n    Render\n      Compose\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/mindmap.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-mindmap.json",
+        "svg": "github-mermaid-mindmap.svg",
+        "png": "github-mermaid-mindmap.png",
+        "capturedAtUtc": "2026-11-13T22:57:00.035Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "fbdcdca68bb8edcfd43752697f36d153d97c3a4107422c8d8c3aa94ebb6e6409",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-mindmap-h2-1",
+        "mermaid-mindmap-section-1",
+        "mermaid-mindmap-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-mindmap-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-timeline",
+      "file": "html/mermaid-timeline.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-timeline",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-timeline"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "timeline\n  title Fixture timeline\n  2026 : Parse\n       : Render\n  2027 : Verify\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "timeline",
+          "source": "timeline\n  title Fixture timeline\n  2026 : Parse\n       : Render\n  2027 : Verify\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/timeline.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-timeline.json",
+        "svg": "github-mermaid-timeline.svg",
+        "png": "github-mermaid-timeline.png",
+        "capturedAtUtc": "2026-11-13T22:57:01.067Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "1321c3e16b40e44bc731b5124324353ee9d6c4c228b4476ddc4fa8709e2abe36",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-timeline-h2-1",
+        "mermaid-timeline-section-1",
+        "mermaid-timeline-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-timeline-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-zenuml",
+      "file": "html/mermaid-zenuml.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-zenuml",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-zenuml"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "zenuml\n  Reader->App: Open\n  App->Renderer: Draw\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true,
+        "requiredDiagnostic": "unsupported-mermaid-family"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "zenuml",
+          "source": "zenuml\n  Reader->App: Open\n  App->Renderer: Draw\n",
+          "expectedOutcome": "structured-unsupported-diagnostic",
+          "sourceDocs": "https://mermaid.js.org/syntax/zenuml.html",
+          "syntaxValidationStatus": "UNSUPPORTED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "UNSUPPORTED_BY_REFERENCE",
+      "compatibilityScope": "unsupported-by-github-reference",
+      "githubSupported": false,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-zenuml.json",
+        "svg": null,
+        "png": "github-mermaid-zenuml.png",
+        "capturedAtUtc": "2026-11-13T22:57:01.828Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "71e1897a869999cf6341083933991734e8486c269170494cf21406d1bb140545",
+        "errors": [
+          "No diagram type detected matching given configuration for text: zenuml\n  Reader->App: Open\n  App->Renderer: Draw\n"
+        ]
+      },
+      "geometryNodeIds": [
+        "mermaid-zenuml-h2-1",
+        "mermaid-zenuml-section-1",
+        "mermaid-zenuml-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-zenuml-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-sankey",
+      "file": "html/mermaid-sankey.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-sankey",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-sankey"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "sankey-beta\nInput,Parsed,8\nParsed,Rendered,6\nParsed,Pending,2\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "sankey",
+          "source": "sankey-beta\nInput,Parsed,8\nParsed,Rendered,6\nParsed,Pending,2\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/sankey.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-sankey.json",
+        "svg": "github-mermaid-sankey.svg",
+        "png": "github-mermaid-sankey.png",
+        "capturedAtUtc": "2026-11-13T22:57:02.913Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "f9bd9e85125d0c5e7d2ab6f8eaa19cc975368eaf84e10ecf818d1dcc500a0a36",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-sankey-h2-1",
+        "mermaid-sankey-section-1",
+        "mermaid-sankey-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-sankey-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-xychart",
+      "file": "html/mermaid-xychart.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-xychart",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-xychart"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "xychart-beta\n  title \"Fixture counts\"\n  x-axis [Mon, Tue, Wed]\n  y-axis \"Count\" 0 --> 10\n  bar [3, 7, 5]\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "xychart",
+          "source": "xychart-beta\n  title \"Fixture counts\"\n  x-axis [Mon, Tue, Wed]\n  y-axis \"Count\" 0 --> 10\n  bar [3, 7, 5]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/xyChart.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-xychart.json",
+        "svg": "github-mermaid-xychart.svg",
+        "png": "github-mermaid-xychart.png",
+        "capturedAtUtc": "2026-11-13T22:57:03.950Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "b86b500f584a5e7ece606a1cb0539ee732a27f721358ebbd7b16e172e5c25852",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-xychart-h2-1",
+        "mermaid-xychart-section-1",
+        "mermaid-xychart-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-xychart-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-block",
+      "file": "html/mermaid-block.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-block",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-block"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "block\n  columns 2\n  parse[\"Parse\"] draw[\"Draw\"]\n  parse --> draw\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "block",
+          "source": "block\n  columns 2\n  parse[\"Parse\"] draw[\"Draw\"]\n  parse --> draw\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/block.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-block.json",
+        "svg": "github-mermaid-block.svg",
+        "png": "github-mermaid-block.png",
+        "capturedAtUtc": "2026-11-13T22:57:04.983Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "ec22c8e626367a2906f1b8205ed1af1490079176c1864689c7e451877062008c",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-block-h2-1",
+        "mermaid-block-section-1",
+        "mermaid-block-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-block-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-packet",
+      "file": "html/mermaid-packet.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-packet",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-packet"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "packet\n  0-7: \"Header\"\n  8-15: \"Content\"\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "packet",
+          "source": "packet\n  0-7: \"Header\"\n  8-15: \"Content\"\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/packet.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-packet.json",
+        "svg": "github-mermaid-packet.svg",
+        "png": "github-mermaid-packet.png",
+        "capturedAtUtc": "2026-11-13T22:57:06.369Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "cefe5018c5e41b5d81807d960cb118a851e016ffe268c4f6e0e1407a4d089dfc",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-packet-h2-1",
+        "mermaid-packet-section-1",
+        "mermaid-packet-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-packet-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-kanban",
+      "file": "html/mermaid-kanban.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-kanban",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-kanban"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "kanban\n  todo[Todo]\n    first[Parse content]\n  done[Done]\n    second[Read document]\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "kanban",
+          "source": "kanban\n  todo[Todo]\n    first[Parse content]\n  done[Done]\n    second[Read document]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/kanban.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-kanban.json",
+        "svg": "github-mermaid-kanban.svg",
+        "png": "github-mermaid-kanban.png",
+        "capturedAtUtc": "2026-11-13T22:57:07.417Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "b1a4f258446618f9a5f5506ba4df44af666f0dfb7642cc00682120be68c27ec8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-kanban-h2-1",
+        "mermaid-kanban-section-1",
+        "mermaid-kanban-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-kanban-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-architecture",
+      "file": "html/mermaid-architecture.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-architecture",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-architecture"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "architecture-beta\n  service api(server)[API]\n  service store(database)[Storage]\n  api:R -- L:store\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "architecture",
+          "source": "architecture-beta\n  service api(server)[API]\n  service store(database)[Storage]\n  api:R -- L:store\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/architecture.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-architecture.json",
+        "svg": "github-mermaid-architecture.svg",
+        "png": "github-mermaid-architecture.png",
+        "capturedAtUtc": "2026-11-13T22:57:08.782Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "9687c3ef753803d9af0e85f27f5d0e8ee67caa64b70ff8ac8440e331fd9b3319",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-architecture-h2-1",
+        "mermaid-architecture-section-1",
+        "mermaid-architecture-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-architecture-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-radar",
+      "file": "html/mermaid-radar.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-radar",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-radar"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "radar-beta\n  axis Layout, Text, Media\n  curve Native{4, 5, 3}\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "radar",
+          "source": "radar-beta\n  axis Layout, Text, Media\n  curve Native{4, 5, 3}\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/radar.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-radar.json",
+        "svg": "github-mermaid-radar.svg",
+        "png": "github-mermaid-radar.png",
+        "capturedAtUtc": "2026-11-13T22:57:10.140Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "2fe456f2e3085f1bb1c9cfe0a99744d78513c126a6ff2bb9b6f30ecd7a093b78",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-radar-h2-1",
+        "mermaid-radar-section-1",
+        "mermaid-radar-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-radar-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-eventmodeling",
+      "file": "html/mermaid-eventmodeling.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-eventmodeling",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-eventmodeling"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "eventmodeling\n  tf 01 ui Form\n  tf 02 cmd Submit\n  tf 03 evt Saved\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "eventmodeling",
+          "source": "eventmodeling\n  tf 01 ui Form\n  tf 02 cmd Submit\n  tf 03 evt Saved\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/eventmodeling.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-eventmodeling.json",
+        "svg": "github-mermaid-eventmodeling.svg",
+        "png": "github-mermaid-eventmodeling.png",
+        "capturedAtUtc": "2026-11-13T22:57:11.484Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "0e29934dd690915957b46a9a583b2efd402bdc2e8cb97efdf997ae4cce41bdc5",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-eventmodeling-h2-1",
+        "mermaid-eventmodeling-section-1",
+        "mermaid-eventmodeling-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-eventmodeling-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-treemap",
+      "file": "html/mermaid-treemap.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-treemap",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-treemap"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "treemap-beta\n  \"Document\"\n    \"Text\": 3\n    \"Media\": 2\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "treemap",
+          "source": "treemap-beta\n  \"Document\"\n    \"Text\": 3\n    \"Media\": 2\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/treemap.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-treemap.json",
+        "svg": "github-mermaid-treemap.svg",
+        "png": "github-mermaid-treemap.png",
+        "capturedAtUtc": "2026-11-13T22:57:12.833Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "a417c60e4bd89e7f89e29c75c571b24dc72b1fa0ef3c95846f4f4b73c1d49e4d",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-treemap-h2-1",
+        "mermaid-treemap-section-1",
+        "mermaid-treemap-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-treemap-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-venn",
+      "file": "html/mermaid-venn.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-venn",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-venn"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "venn-beta\n  set Native\n  set Reference\n  union Native,Reference[\"Shared\"]\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "venn",
+          "source": "venn-beta\n  set Native\n  set Reference\n  union Native,Reference[\"Shared\"]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/venn.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-venn.json",
+        "svg": "github-mermaid-venn.svg",
+        "png": "github-mermaid-venn.png",
+        "capturedAtUtc": "2026-11-13T22:57:13.886Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "992b9ef38e596ffa60d1b9c57cc4fa7f43185db690f667a84ab928449a43cdbe",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-venn-h2-1",
+        "mermaid-venn-section-1",
+        "mermaid-venn-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-venn-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-ishikawa",
+      "file": "html/mermaid-ishikawa.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-ishikawa",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-ishikawa"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "ishikawa-beta\n  Delay\n  Input\n    Large content\n  Layout\n    Long table\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "ishikawa",
+          "source": "ishikawa-beta\n  Delay\n  Input\n    Large content\n  Layout\n    Long table\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/ishikawa.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-ishikawa.json",
+        "svg": "github-mermaid-ishikawa.svg",
+        "png": "github-mermaid-ishikawa.png",
+        "capturedAtUtc": "2026-11-13T22:57:14.935Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "567216cad79d6ca58ac0621198cf97658a8c25d2db95b52c060cc8a2e497d6d5",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-ishikawa-h2-1",
+        "mermaid-ishikawa-section-1",
+        "mermaid-ishikawa-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-ishikawa-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-wardley",
+      "file": "html/mermaid-wardley.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-wardley",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-wardley"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "wardley-beta\n  anchor Reader [0.9, 0.6]\n  component Renderer [0.6, 0.4]\n  Reader -> Renderer\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "wardley",
+          "source": "wardley-beta\n  anchor Reader [0.9, 0.6]\n  component Renderer [0.6, 0.4]\n  Reader -> Renderer\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/wardley.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-wardley.json",
+        "svg": "github-mermaid-wardley.svg",
+        "png": "github-mermaid-wardley.png",
+        "capturedAtUtc": "2026-11-13T22:57:16.341Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "7e79cbb0e397fe4c1300c9f69615e0746fec9290091e2f8ee30c12c277feeb71",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-wardley-h2-1",
+        "mermaid-wardley-section-1",
+        "mermaid-wardley-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-wardley-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-cynefin",
+      "file": "html/mermaid-cynefin.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-cynefin",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-cynefin"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "cynefin-beta\n  clear\n  \"Repeatable layout\"\n  complex\n  \"Investigate text shaping\"\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "cynefin",
+          "source": "cynefin-beta\n  clear\n  \"Repeatable layout\"\n  complex\n  \"Investigate text shaping\"\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/cynefin.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-cynefin.json",
+        "svg": "github-mermaid-cynefin.svg",
+        "png": "github-mermaid-cynefin.png",
+        "capturedAtUtc": "2026-11-13T22:57:17.738Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "f434fb1ccdb6782894b57e412d6e77c6206f7a177e6acecaf5d0b30ab52e8233",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-cynefin-h2-1",
+        "mermaid-cynefin-section-1",
+        "mermaid-cynefin-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-cynefin-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-treeview",
+      "file": "html/mermaid-treeview.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-treeview",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-treeview"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "treeView-beta\n  document/\n    text/\n      paragraph\n    media/\n      image\n",
+        "noExternalFetch": true,
+        "dataHostIsNotNetworkPermission": true
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "treeview",
+          "source": "treeView-beta\n  document/\n    text/\n      paragraph\n    media/\n      image\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "sourceDocs": "https://mermaid.js.org/syntax/treeView.html",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-treeview.json",
+        "svg": "github-mermaid-treeview.svg",
+        "png": "github-mermaid-treeview.png",
+        "capturedAtUtc": "2026-11-13T22:57:19.084Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "346fe68b7d4b8205f8c8c54d6a03c1e5c4020149d160e7e1d1451e9a544a61d8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-treeview-h2-1",
+        "mermaid-treeview-section-1",
+        "mermaid-treeview-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-treeview-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-labels",
+      "file": "html/mermaid-labels.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-labels",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-labels"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/diagram/link"
+        }
+      ],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "flowchart TD\n  subgraph group[Group 中文]\n    a[\"Line one<br/>第二行\"] --> b[\"<b>Rich label</b>\"]\n  end\n  click a \"https://fixture.invalid/diagram/link\" \"Open link\"\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "flowchart",
+          "source": "flowchart TD\n  subgraph group[Group 中文]\n    a[\"Line one<br/>第二行\"] --> b[\"<b>Rich label</b>\"]\n  end\n  click a \"https://fixture.invalid/diagram/link\" \"Open link\"\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "mermaid-hard-case",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-labels.json",
+        "svg": "github-mermaid-labels.svg",
+        "png": "github-mermaid-labels.png",
+        "capturedAtUtc": "2026-11-13T22:57:19.917Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "d7645549d514bd7e7ad79e72aee68dae5cbe8b6b634d43ad72945b16a9763129",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-labels-h2-1",
+        "mermaid-labels-section-1",
+        "mermaid-labels-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-labels-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-math",
+      "file": "html/mermaid-math.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-math",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-math"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "flowchart LR\n  a[\"$$x^2+y^2=z^2$$\"] --> b[\"$$\\frac{1}{2}$$\"]\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "flowchart",
+          "source": "flowchart LR\n  a[\"$$x^2+y^2=z^2$$\"] --> b[\"$$\\frac{1}{2}$$\"]\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "mermaid-hard-case",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-math.json",
+        "svg": "github-mermaid-math.svg",
+        "png": "github-mermaid-math.png",
+        "capturedAtUtc": "2026-11-13T22:57:21.049Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "c2c48bb05a55af4f96b2bc1e9ef6e7e4199b53b4cd1617477a2d72eb953368e4",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-math-h2-1",
+        "mermaid-math-section-1",
+        "mermaid-math-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-math-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-elk",
+      "file": "html/mermaid-elk.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-elk",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-elk"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "---\nconfig:\n  layout: elk\n---\nflowchart TD\n  a[Start] --> b[Middle]\n  a --> c[Other]\n  b --> d[End]\n  c --> d\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "flowchart",
+          "source": "---\nconfig:\n  layout: elk\n---\nflowchart TD\n  a[Start] --> b[Middle]\n  a --> c[Other]\n  b --> d[End]\n  c --> d\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "mermaid-hard-case",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-elk.json",
+        "svg": "github-mermaid-elk.svg",
+        "png": "github-mermaid-elk.png",
+        "capturedAtUtc": "2026-11-13T22:57:21.882Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "a0f740584029cf65cbabf7d15f6bbe32f6e51688c4f79e00244b6897e26fed3c",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-elk-h2-1",
+        "mermaid-elk-section-1",
+        "mermaid-elk-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-elk-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-accessible",
+      "file": "html/mermaid-accessible.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-accessible",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-accessible"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "flowchart LR\n  accTitle: Native fixture diagram\n  accDescr: A reader opens a document and receives rendered content.\n  Reader --> Document\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "flowchart",
+          "source": "flowchart LR\n  accTitle: Native fixture diagram\n  accDescr: A reader opens a document and receives rendered content.\n  Reader --> Document\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "mermaid-hard-case",
+      "githubSupported": true,
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-accessible.json",
+        "svg": "github-mermaid-accessible.svg",
+        "png": "github-mermaid-accessible.png",
+        "capturedAtUtc": "2026-11-13T22:57:22.716Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "fd729029a80b0636e165092b46651dddaaa9d4f33e21da36c07dfd225747531a",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-accessible-h2-1",
+        "mermaid-accessible-section-1",
+        "mermaid-accessible-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-accessible-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-info",
+      "file": "html/mermaid-info.html",
+      "capabilities": [
+        "mermaid-reference-version"
+      ],
+      "expectedVisibleText": [
+        "mermaid-info"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "sourcePreserved": "info\n",
+        "purpose": "capture actual GitHub Mermaid runtime version; do not replace it with candidate native version"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "source": "info\n",
+          "expectedOutcome": "version-information",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "githubSupported": true,
+      "referenceScope": "Exact synthetic info LF input replayed offline by the unchanged GitHub Mermaid 12.2.0 deployment bundle 5b99bd9a2037271fa4cf; this is not a new live GitHub capture or native/visual/interaction acceptance.",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "cacheBase": "XDG_CACHE_HOME, otherwise HOME/.cache",
+        "json": "github-mermaid-info-exact-lf.json",
+        "svg": "github-mermaid-info-exact-lf.svg",
+        "png": "github-mermaid-info-exact-lf.png",
+        "capturedAtUtc": "2026-11-14T01:31:55.296Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "96bac4de3ce48eccdafa38eb18e0581fe70d26b8d8d5a74ca8af79c77658dcde",
+        "inputUtf8Hex": "696e666f0a",
+        "captureMode": "pinned-github-deployment-offline-replay",
+        "productionSourceUrl": "https://viewscreen.githubusercontent.com/markdown/mermaid?docs_host=https%3A%2F%2Fdocs.github.com",
+        "replayUrl": "http://127.0.0.1:9358/index-light.html",
+        "observedMermaidVersion": "12.2.0",
+        "documentCharacterSet": "UTF-8",
+        "bundleManifest": "viewscreen-bundle/manifest.json",
+        "bundleManifestSha256": "b2683e8d65f04324d3666edb65e7041cea063f057c6bf0247b0dbc420e5de59d",
+        "verifiedBundleFileCount": 59,
+        "verifiedResponseBodyCount": 6,
+        "jsonSha256": "8caf930d058152e260f5ff3c3b2c8b49c49f645587556d9e382a720fbb550e66",
+        "svgSha256": "1ba7ee07c069d0d2f202ff246920017ac8cb21903e02e3d7efda15fc67a35dc5",
+        "pngSha256": "5838e0356f6a6ef5360e302a7e1e55434261277ac1e6e5eb2735210338edef97",
+        "oldVersionProbePreserved": "github-mermaid-info.json",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-info-h2-1",
+        "mermaid-info-section-1",
+        "mermaid-info-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-info-object-1"
+      ]
+    },
+    {
+      "name": "github-semantics",
+      "file": "html/github-semantics.html",
+      "capabilities": [
+        "mentions",
+        "team-mentions",
+        "issue-reference",
+        "commit-reference",
+        "emoji-content",
+        "abbr",
+        "mark",
+        "no-auto-hovercard-fetch"
+      ],
+      "expectedVisibleText": [
+        "GitHub semantic labels",
+        "@fixture-reader",
+        "@fixture/readers",
+        "Fixes",
+        "#42",
+        "0123456",
+        "✨",
+        "Emoji content",
+        "API",
+        "highlighted text"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/fixture-reader"
+        },
+        {
+          "kind": "openLink",
+          "href": "https://fixture.invalid/issues/42"
+        }
+      ],
+      "expectedSemantics": {
+        "noExternalFetch": true,
+        "semanticClasses": [
+          "user-mention",
+          "team-mention",
+          "issue-keyword",
+          "issue-link",
+          "commit-link"
+        ]
+      },
+      "engineCases": [],
+      "referenceKind": "existing-assets",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "geometryNodeIds": [
+        "github-semantics-h2-1",
+        "github-semantics-p-1",
+        "github-semantics-p-2",
+        "github-semantics-p-3"
+      ],
+      "objectNodeIds": []
+    },
+    {
+      "name": "mermaid-c4-container",
+      "file": "html/mermaid-c4-container.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-c4",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-c4-container"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "C4Container\n  title Fixture containers\n  Person(reader, \"Reader\")\n  System_Boundary(app, \"App\") {\n    Container(ui, \"UI\", \"Kotlin\", \"Reads content\")\n    ContainerDb(cache, \"Cache\", \"Disk\", \"Stores content\")\n  }\n  Rel(reader, ui, \"Reads\")\n  Rel(ui, cache, \"Caches\")\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "c4",
+          "subtype": "container",
+          "source": "C4Container\n  title Fixture containers\n  Person(reader, \"Reader\")\n  System_Boundary(app, \"App\") {\n    Container(ui, \"UI\", \"Kotlin\", \"Reads content\")\n    ContainerDb(cache, \"Cache\", \"Disk\", \"Stores content\")\n  }\n  Rel(reader, ui, \"Reads\")\n  Rel(ui, cache, \"Caches\")\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-c4-container.json",
+        "svg": "github-mermaid-c4-container.svg",
+        "png": "github-mermaid-c4-container.png",
+        "capturedAtUtc": "2026-11-13T22:57:23.586Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "26258c00e0ba9390840ce1cdcdb2ab1858f9fed2b83912dbce874b9c9a9fe8f8",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-c4-container-h2-1",
+        "mermaid-c4-container-section-1",
+        "mermaid-c4-container-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-c4-container-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-c4-component",
+      "file": "html/mermaid-c4-component.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-c4",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-c4-component"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "C4Component\n  title Fixture components\n  Container_Boundary(app, \"App\") {\n    Component(parser, \"Parser\", \"Kotlin\", \"Parses HTML\")\n    Component(renderer, \"Renderer\", \"Compose\", \"Draws content\")\n  }\n  Rel(parser, renderer, \"Passes document\")\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "c4",
+          "subtype": "component",
+          "source": "C4Component\n  title Fixture components\n  Container_Boundary(app, \"App\") {\n    Component(parser, \"Parser\", \"Kotlin\", \"Parses HTML\")\n    Component(renderer, \"Renderer\", \"Compose\", \"Draws content\")\n  }\n  Rel(parser, renderer, \"Passes document\")\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-c4-component.json",
+        "svg": "github-mermaid-c4-component.svg",
+        "png": "github-mermaid-c4-component.png",
+        "capturedAtUtc": "2026-11-13T22:57:24.437Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "e78bfae3d4e6e9213606221a77698cdc1a5ae6a285e323254dc58ec389b3abde",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-c4-component-h2-1",
+        "mermaid-c4-component-section-1",
+        "mermaid-c4-component-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-c4-component-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-c4-dynamic",
+      "file": "html/mermaid-c4-dynamic.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-c4",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-c4-dynamic"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "C4Dynamic\n  title Fixture dynamic\n  Container(parser, \"Parser\", \"Kotlin\", \"Parses\")\n  Container(renderer, \"Renderer\", \"Compose\", \"Draws\")\n  Rel(parser, renderer, \"Document\")\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "c4",
+          "subtype": "dynamic",
+          "source": "C4Dynamic\n  title Fixture dynamic\n  Container(parser, \"Parser\", \"Kotlin\", \"Parses\")\n  Container(renderer, \"Renderer\", \"Compose\", \"Draws\")\n  Rel(parser, renderer, \"Document\")\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-c4-dynamic.json",
+        "svg": "github-mermaid-c4-dynamic.svg",
+        "png": "github-mermaid-c4-dynamic.png",
+        "capturedAtUtc": "2026-11-13T22:57:25.304Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "ff01098f494eae6c9b484f8bb0930fb53990589acc6c35c9068a7415ac863609",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-c4-dynamic-h2-1",
+        "mermaid-c4-dynamic-section-1",
+        "mermaid-c4-dynamic-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-c4-dynamic-object-1"
+      ]
+    },
+    {
+      "name": "mermaid-c4-deployment",
+      "file": "html/mermaid-c4-deployment.html",
+      "capabilities": [
+        "mermaid",
+        "mermaid-c4",
+        "native-diagram"
+      ],
+      "expectedVisibleText": [
+        "mermaid-c4-deployment"
+      ],
+      "expectedHiddenText": [],
+      "expectedActions": [],
+      "expectedSemantics": {
+        "diagramKind": "mermaid",
+        "sourcePreserved": "C4Deployment\n  title Fixture deployment\n  Deployment_Node(device, \"Device\", \"Android\") {\n    Container(reader, \"Reader\", \"Kotlin\", \"Reads HTML\")\n  }\n"
+      },
+      "engineCases": [
+        {
+          "kind": "mermaid",
+          "family": "c4",
+          "subtype": "deployment",
+          "source": "C4Deployment\n  title Fixture deployment\n  Deployment_Node(device, \"Device\", \"Android\") {\n    Container(reader, \"Reader\", \"Kotlin\", \"Reads HTML\")\n  }\n",
+          "expectedOutcome": "rendered-native-diagram",
+          "syntaxValidationStatus": "VALIDATED_BY_GITHUB_REFERENCE"
+        }
+      ],
+      "referenceKind": "official-engine-or-github-capture",
+      "status": "unverified",
+      "verificationStatus": "NOT_RUN",
+      "provenance": "synthetic",
+      "referenceStatus": "REFERENCE_RENDERED",
+      "compatibilityScope": "candidate-upstream-not-yet-github-confirmed",
+      "githubSupported": true,
+      "referenceScope": "only this synthetic input on the captured GitHub production deployment",
+      "referenceEvidence": {
+        "cacheRelativeDirectory": "yumehub-native-html/reference",
+        "json": "github-mermaid-c4-deployment.json",
+        "svg": "github-mermaid-c4-deployment.svg",
+        "png": "github-mermaid-c4-deployment.png",
+        "capturedAtUtc": "2026-11-13T22:57:26.152Z",
+        "deploymentId": "5b99bd9a2037271fa4cf",
+        "inputSha256": "e427ade0dc816607adca2641b5f245b59b21d76275fe2bef8b1f466a2b95b355",
+        "errors": []
+      },
+      "geometryNodeIds": [
+        "mermaid-c4-deployment-h2-1",
+        "mermaid-c4-deployment-section-1",
+        "mermaid-c4-deployment-pre-1"
+      ],
+      "objectNodeIds": [
+        "mermaid-c4-deployment-object-1"
+      ]
+    }
+  ]
+}

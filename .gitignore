@@ -1,0 +1,37 @@
+# IDE and operating system files.
+*.iml
+/.idea/
+.DS_Store
+
+# Gradle, Kotlin, and Android build output.
+.gradle/
+.kotlin/
+build/
+/app/build/
+/out/
+/output_apk/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-local configuration and signing material.
+local.properties
+signing.properties
+*.jks
+*.keystore
+
+# Local AI assistant instructions, state, and working data.
+/.agents/
+/.claude/
+/.codex/
+/.cursor/
+/.gemini/
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.github/copilot-instructions.md
+/.pensieve/
+/tmp/
+
+# Qodana cache.
+/.qodana/

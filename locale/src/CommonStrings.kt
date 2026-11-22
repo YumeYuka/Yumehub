@@ -1,0 +1,48 @@
+package moe.yumeyuka.yumehub.locale
+
+public data class GithubStrings_Common(
+    val FontSize: String,
+    val Search: String,
+    val Edit: String,
+    val Save: String,
+    val AppName: String,
+    val Cancel: String,
+    val Confirm: String,
+    val Close: String,
+    val Back: String,
+    val Retry: String,
+    val UnknownError: String,
+    val ExternalLinkOpenFailed: String,
+)
+
+internal val ZhHansCommonStrings: GithubStrings_Common =
+    GithubStrings_Common(
+        FontSize = "字号",
+        Search = "搜索",
+        Edit = "编辑",
+        Save = "保存",
+        AppName = "GitHub",
+        Cancel = "取消",
+        Confirm = "确定",
+        Close = "关闭",
+        Back = "返回",
+        Retry = "重试",
+        UnknownError = "未知错误",
+        ExternalLinkOpenFailed = "无法打开链接",
+    )
+
+internal val EnCommonStrings: GithubStrings_Common =
+    GithubStrings_Common(
+        FontSize = "Font size",
+        Search = "Search",
+        Edit = "Edit",
+        Save = "Save",
+        AppName = "GitHub",
+        Cancel = "Cancel",
+        Confirm = "Confirm",
+        Close = "Close",
+        Back = "Back",
+        Retry = "Retry",
+        UnknownError = "Unknown error",
+        ExternalLinkOpenFailed = "Unable to open link",
+    )

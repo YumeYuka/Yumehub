@@ -1,0 +1,150 @@
+package moe.yumeyuka.yumehub.navigation
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.rememberLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import com.arkivanov.decompose.ComponentContext
+import com.arkivanov.decompose.extensions.compose.stack.Children
+import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
+import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import com.arkivanov.decompose.router.stack.ChildStack
+import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.lifecycle.doOnDestroy
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import moe.yumeyuka.yumehub.feature.editor.EditorRoute
+import moe.yumeyuka.yumehub.ui.navigation.GithubPageChromeHost
+import moe.yumeyuka.yumehub.ui.navigation.GithubPageChromeOverlay
+import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+
+/** 以条目引用区分每次入栈；路由参数相同的页面也拥有独立子组件和页面状态。 */
+internal class GithubRouteEntry(val route: GithubRoute)
+
+/** 一条真实的 Decompose 子栈，以及向它发命令的 navigator。 */
+@Immutable
+internal class GithubRouteStack(
+    val navigator: GithubNavigator,
+    val value: Value<ChildStack<GithubRouteEntry, RouteChild>>,
+)
+
+internal val LocalGithubRouteChild =
+    staticCompositionLocalOf<RouteChild> { error("LocalGithubRouteChild 未提供") }
+
+/**
+ * 栈内一个配置对应的组件。
+ *
+ * 被覆盖的页面会离开组合，回来时重新组合；页面 ViewModel 与滚动状态留在这里，随配置真实出栈才释放。
+ */
+@Stable
+internal class RouteChild(
+    val route: GithubRoute,
+    private val navigator: GithubNavigator,
+    componentContext: ComponentContext,
+) : ComponentContext by componentContext, ViewModelStoreOwner {
+    override val viewModelStore = ViewModelStore()
+
+    val pageState = GithubPageState()
+
+    /**
+     * 是否为栈顶配置。只由 [routeStack] 的栈观察者写入，页面按需订阅自己的归属，不必订阅整条栈。
+     *
+     * 不取 Essenty 的 RESUMED：保留组件的生命周期跟随 Activity 前后台，后台完成的操作会因此被判成「不在栈顶」而无法导航。
+     */
+    var isTop by mutableStateOf(false)
+
+    init {
+        lifecycle.doOnDestroy {
+            isTop = false
+            if (route is EditorRoute) route.session.dispose()
+            viewModelStore.clear()
+        }
+    }
+
+    @Composable
+    fun Content() {
+        val top = isTop
+        // 非栈顶（被覆盖、退场中、预测返回露出的下层）降低生命周期并停用页面级返回处理。
+        val lifecycleOwner =
+            rememberLifecycleOwner(
+                maxLifecycle = if (top) Lifecycle.State.RESUMED else Lifecycle.State.CREATED,
+            )
+        val parentDispatcherOwner =
+            checkNotNull(LocalNavigationEventDispatcherOwner.current) {
+                "RouteChild 必须由提供 NavigationEventDispatcher 的宿主托管"
+            }
+        val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = top)
+        CompositionLocalProvider(
+            LocalLifecycleOwner provides lifecycleOwner,
+            LocalNavigationEventDispatcherOwner provides dispatcherOwner,
+            LocalViewModelStoreOwner provides this,
+            LocalGithubRouteChild provides this,
+            LocalGithubPageState provides pageState,
+        ) {
+            GithubPageChromeHost {
+                Box(Modifier.fillMaxSize().background(GlasmioTheme.colors.groupedBackground)) {
+                    if (route is MainTabsRoute) GithubMainScreen(navigator)
+                    else GithubRouteContent(route, navigator)
+                }
+            }
+        }
+    }
+}
+
+/** 在已有组件上下文上创建子栈；路由不跨进程恢复，无须序列化。 */
+internal fun GithubNavigator.routeStack(
+    componentContext: ComponentContext,
+    initialRoute: GithubRoute,
+): Value<ChildStack<GithubRouteEntry, RouteChild>> {
+    val stack =
+        componentContext.childStack(
+            source = navigation,
+            serializer = null,
+            initialStack = { listOf(GithubRouteEntry(initialRoute)) },
+            handleBackButton = true,
+        ) { entry, childContext ->
+            RouteChild(route = entry.route, navigator = this, componentContext = childContext)
+        }
+    bind(stack)
+    // 先于任何 Compose 订阅注册：栈一变，归属标记与栈值在同一次快照里更新。订阅与保留组件同寿命，无须取消。
+    stack.subscribe { current ->
+        current.backStack.forEach { it.instance.isTop = false }
+        current.active.instance.isTop = true
+    }
+    return stack
+}
+
+/** 渲染当前的 Decompose 子栈，这里不另存第二份路由历史。 */
+@Composable
+internal fun GithubRouteStackHost(
+    stack: GithubRouteStack,
+    animation: StackAnimation<GithubRouteEntry, RouteChild>,
+    modifier: Modifier = Modifier,
+) {
+    val childStack by stack.value.subscribeAsState()
+    // 内容 lambda 不能捕获任何外壳状态：预测返回以它为 key 记住 movableContent，实例一变整棵页面树就会重建。
+    // 页面需要的环境都经 CompositionLocal 读取。
+    GithubPageChromeOverlay(modifier.fillMaxSize()) {
+        Children(stack = childStack, modifier = Modifier.fillMaxSize(), animation = animation) {
+            child ->
+            child.instance.Content()
+        }
+    }
+}

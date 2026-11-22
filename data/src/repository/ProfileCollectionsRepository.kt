@@ -1,0 +1,314 @@
+package moe.yumeyuka.yumehub.data.repository
+
+import androidx.paging.PagingData
+import java.util.Locale
+import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
+import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.api.dto.UserDto
+import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
+
+class ProfileCollectionsRepository(
+    private val api: GitHubGraphQlApi,
+    private val paging: PagingRepository,
+    private val tokenStore: TokenStore,
+) {
+    val account: String
+        get() = tokenStore.accountLogin.value
+
+    fun repositories(
+        account: String,
+        login: String,
+        organization: Boolean,
+    ): Flow<PagingData<RepositoryDto>> {
+        val type = if (organization) "Organization" else "User"
+        return pages(
+            account,
+            "profile-repos.v2:${login.lowercase(Locale.ROOT)}:$type",
+            login,
+            "RepositoriesQuery",
+            "repositoryOwner",
+            "repositories",
+            type,
+            ", ownerAffiliations: [OWNER], orderBy: {field: UPDATED_AT, direction: DESC}",
+            RepoFields,
+            { it.nodeId.orEmpty() },
+            ::repositoryItem,
+        )
+    }
+
+    fun starred(
+        account: String,
+        login: String,
+        query: String = "",
+    ): Flow<PagingData<RepositoryDto>> =
+        pages(
+            account,
+            if (account.equals(login, true) && query.isBlank()) StarredRepositoriesPagingKey
+            else
+                "profile-stars.v3:${login.lowercase(Locale.ROOT)}:${query.trim().lowercase(Locale.ROOT)}",
+            login,
+            "StarredRepositories",
+            "repositoryOwner",
+            "starredRepositories",
+            "User",
+            if (query.isBlank()) ", orderBy: {field: STARRED_AT, direction: DESC}"
+            else ", query: \u0024query, orderBy: {field: STARRED_AT, direction: DESC}",
+            RepoFields,
+            { it.nodeId.orEmpty() },
+            ::repositoryItem,
+            query.trim().takeIf(String::isNotEmpty),
+        )
+
+    suspend fun userLists(account: String, login: String): List<UserRepositoryList> {
+        val session = GithubGraphQlSession(api, tokenStore, account)
+        val query =
+            "query UserLists(\u0024login: String!, \u0024first: Int!, \u0024after: String) { " +
+                "user(login: \u0024login) { id lists(first: \u0024first, after: \u0024after) { " +
+                "pageInfo { endCursor hasNextPage } nodes { id name slug isPrivate description " +
+                "items { totalCount } } } } }"
+        val result = mutableListOf<UserRepositoryList>()
+        val seenCursors = mutableSetOf<String>()
+        var cursor: String? = null
+        var pageCount = 0
+        do {
+            if (pageCount++ >= 1000) throw GithubPageException()
+            val variables = buildJsonObject {
+                put("login", login)
+                put("first", 100)
+                if (cursor != null) put("after", cursor)
+            }
+            val page = session.execute(query, variables).graphObject("user").graphObject("lists")
+            result += page.graphNodes().map(::userRepositoryList)
+            cursor = page.graphCursor(cursor)
+            if (cursor != null && !seenCursors.add(cursor)) throw GithubPageException()
+        } while (cursor != null)
+        return result
+    }
+
+    suspend fun createUserList(account: String, name: String): UserRepositoryList {
+        val session = GithubGraphQlSession(api, tokenStore, account)
+        val mutation =
+            "mutation CreateNewList(\u0024input: CreateUserListInput!) { " +
+                "createUserList(input: \u0024input) { list { id name slug isPrivate description " +
+                "items { totalCount } } } }"
+        val variables = buildJsonObject {
+            put(
+                "input",
+                buildJsonObject {
+                    put("name", name.trim())
+                    put("description", "")
+                    put("isPrivate", false)
+                },
+            )
+        }
+        return session
+            .execute(mutation, variables, write = true)
+            .graphObject("createUserList")
+            .graphObject("list")
+            .let(::userRepositoryList)
+    }
+
+    suspend fun repositoryListIds(account: String, repositoryId: String): Set<String> {
+        val session = GithubGraphQlSession(api, tokenStore, account)
+        val query =
+            "query RepositoryUserLists(\u0024id: ID!, \u0024first: Int!, \u0024after: String) { " +
+                "node(id: \u0024id) { ... on Repository { lists(first: \u0024first, " +
+                "after: \u0024after, onlyOwnedByViewer: true) { pageInfo { endCursor " +
+                "hasNextPage } nodes { id } } } } }"
+        val result = mutableSetOf<String>()
+        val seenCursors = mutableSetOf<String>()
+        var cursor: String? = null
+        var pageCount = 0
+        do {
+            if (pageCount++ >= 1000) throw GithubPageException()
+            val variables = buildJsonObject {
+                put("id", repositoryId)
+                put("first", 100)
+                if (cursor != null) put("after", cursor)
+            }
+            val page = session.execute(query, variables).graphObject("node").graphObject("lists")
+            result += page.graphNodes().map { it.graphRequiredText("id") }
+            cursor = page.graphCursor(cursor)
+            if (cursor != null && !seenCursors.add(cursor)) throw GithubPageException()
+        } while (cursor != null)
+        return result
+    }
+
+    suspend fun updateRepositoryLists(
+        account: String,
+        repositoryId: String,
+        listIds: Set<String>,
+    ) {
+        val session = GithubGraphQlSession(api, tokenStore, account)
+        val mutation =
+            "mutation UpdateUserListsForItem(\u0024input: UpdateUserListsForItemInput!) { " +
+                "updateUserListsForItem(input: \u0024input) { item { ... on Repository { id } } } }"
+        val variables = buildJsonObject {
+            put(
+                "input",
+                buildJsonObject {
+                    put("itemId", repositoryId)
+                    put(
+                        "listIds",
+                        kotlinx.serialization.json.buildJsonArray {
+                            listIds.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+                        },
+                    )
+                    put("suggestedListIds", kotlinx.serialization.json.buildJsonArray {})
+                },
+            )
+        }
+        val itemId =
+            session
+                .execute(mutation, variables, write = true)
+                .graphObject("updateUserListsForItem")
+                .graphObject("item")
+                .graphRequiredText("id")
+        if (itemId != repositoryId) throw GithubPageException()
+    }
+
+    fun listItems(
+        account: String,
+        login: String,
+        slug: String,
+        search: String = "",
+    ): Flow<PagingData<RepositoryDto>> =
+        githubGraphQlPager(
+            account,
+            "user-list.v1:${login.lowercase(Locale.ROOT)}:${slug.lowercase(Locale.ROOT)}:" +
+                search.trim().lowercase(Locale.ROOT),
+            paging,
+            { it.nodeId.orEmpty() },
+        ) {
+            val session = GithubGraphQlSession(api, tokenStore, account)
+            val query =
+                "query FetchList(\u0024login: String!, \u0024slug: String!, \u0024first: Int!, " +
+                    "\u0024after: String) { list(login: \u0024login, slug: \u0024slug) { " +
+                    "items(first: \u0024first, after: \u0024after) { pageInfo { endCursor " +
+                    "hasNextPage } nodes { ... on Repository { $RepoFields } } } } }"
+            { after ->
+                val needle = search.trim()
+                val seenCursors = mutableSetOf<String>()
+                after?.let(seenCursors::add)
+                var cursor = after
+                var pageCount = 0
+                var matchingItems = emptyList<RepositoryDto>()
+                do {
+                    if (pageCount++ >= 1000) throw GithubPageException()
+                    val variables = buildJsonObject {
+                        put("login", login)
+                        put("slug", slug)
+                        put("first", 30)
+                        if (cursor != null) put("after", cursor)
+                    }
+                    val page =
+                        session.execute(query, variables).graphObject("list").graphObject("items")
+                    val repositories = page.graphNodes().map(::repositoryItem)
+                    cursor = page.graphCursor(cursor)
+                    if (cursor != null && !seenCursors.add(cursor)) throw GithubPageException()
+                    matchingItems =
+                        if (needle.isBlank()) repositories
+                        else repositories.filter { repository ->
+                            repository.fullName.orEmpty().contains(needle, ignoreCase = true) ||
+                                repository.name.orEmpty().contains(needle, ignoreCase = true) ||
+                                repository.description.orEmpty().contains(needle, ignoreCase = true)
+                        }
+                } while (matchingItems.isEmpty() && cursor != null)
+                GithubGraphQlPage(matchingItems, cursor)
+            }
+        }
+
+    fun organizations(account: String, login: String): Flow<PagingData<UserDto>> {
+        val viewer = account.equals(login, true)
+        return pages(
+            account,
+            "profile-orgs.v2:${login.lowercase(Locale.ROOT)}",
+            login,
+            if (viewer) "ViewerOrganizationsQuery" else "OrganizationsQuery",
+            if (viewer) "viewer" else "user",
+            "organizations",
+            null,
+            "",
+            "__typename login name avatarUrl description url",
+            { it.login.orEmpty() },
+            { it.dashboardUser() },
+        )
+    }
+
+    private fun <T : Any> pages(
+        account: String,
+        key: String,
+        login: String,
+        operation: String,
+        root: String,
+        connection: String,
+        type: String?,
+        args: String,
+        fields: String,
+        identity: (T) -> String,
+        decode: (JsonObject) -> T,
+        searchQuery: String? = null,
+    ): Flow<PagingData<T>> =
+        githubGraphQlPager(account, key, paging, identity) {
+            val session = GithubGraphQlSession(api, tokenStore, account)
+            val loginVariable = if (root == "viewer") "" else "\u0024login: String!, "
+            val loginArgument = if (root == "viewer") "" else "(login: \u0024login)"
+            val queryVariable = if (searchQuery == null) "" else "\u0024query: String, "
+            val selection =
+                "$connection(first: \u0024first, after: \u0024after$args) { pageInfo { endCursor hasNextPage } nodes { $fields } }"
+            val body = if (type == null) selection else "... on $type { $selection }"
+            val gqlQuery =
+                "query $operation(${loginVariable}${queryVariable}\u0024first: Int!, \u0024after: String) { $root$loginArgument { $body } }"
+            val load: suspend (String?) -> GithubGraphQlPage<T> = { after ->
+                val variables = buildJsonObject {
+                    if (root != "viewer") put("login", login)
+                    if (searchQuery != null) put("query", searchQuery)
+                    put("first", 30)
+                    if (after != null) put("after", after)
+                }
+                val page =
+                    session.execute(gqlQuery, variables).graphObject(root).graphObject(connection)
+                GithubGraphQlPage(page.graphNodes().map(decode), page.graphCursor(after))
+            }
+            load
+        }
+}
+
+data class UserRepositoryList(
+    val id: String,
+    val name: String,
+    val slug: String,
+    val isPrivate: Boolean,
+    val description: String?,
+    val itemCount: Int,
+)
+
+private fun userRepositoryList(node: JsonObject): UserRepositoryList {
+    val items = node.graphObject("items")
+    return UserRepositoryList(
+        id = node.graphRequiredText("id"),
+        name = node.graphRequiredText("name"),
+        slug = node.graphRequiredText("slug"),
+        isPrivate = node.graphText("isPrivate")?.toBooleanStrictOrNull() ?: false,
+        description = node.graphText("description"),
+        itemCount = items.graphText("totalCount")?.toIntOrNull() ?: 0,
+    )
+}
+
+internal const val RepoFields =
+    "id databaseId name url description isPrivate isFork owner { __typename login avatarUrl } primaryLanguage { name } stargazerCount forkCount"
+
+internal const val RepositoryCardFields = "$RepoFields openGraphImageUrl"
+
+internal fun repositoryItem(node: JsonObject): RepositoryDto =
+    (node.dashboardRepository() ?: throw GithubPageException()).copy(
+        id = node.graphText("databaseId")?.toLongOrNull(),
+        nodeId = node.graphRequiredText("id"),
+        private = node.graphText("isPrivate")?.toBooleanStrictOrNull(),
+        fork = node.graphText("isFork")?.toBooleanStrictOrNull(),
+        forksCount = node.graphText("forkCount")?.toIntOrNull(),
+    )

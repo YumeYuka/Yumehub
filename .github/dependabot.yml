@@ -1,0 +1,42 @@
+version: 2
+
+# Kotlin/Android dependencies are declared in gradle/libs.versions.toml.
+# The Gradle ecosystem covers the version catalog and the wrapper.
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+      - gradle
+    groups:
+      gradle-dependencies:
+        patterns:
+          - "*"
+    ignore:
+      # Pinned SNAPSHOT builds from GitHub Packages; bump manually.
+      - dependency-name: "top.yukonga.miuix.kmp:*"
+      - dependency-name: "io.github.YumeYucca:lucide-compose"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"
