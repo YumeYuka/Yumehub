@@ -67,6 +67,7 @@ class TwoFactorViewModel(
     private var notifiedRequestId: Int? = null
     private var settledRequestId: Int? = null
     private var receivingErrorReported = false
+    private var notificationWarningShown = false
 
     init {
         viewModelScope.launch {
@@ -76,6 +77,7 @@ class TwoFactorViewModel(
                 .collectLatest { (login, generation) ->
                     currentLogin = login
                     receivingErrorReported = false
+                    notificationWarningShown = false
                     sessionGeneration = generation
                     submission?.cancel()
                     settledRequestId = null
@@ -99,11 +101,25 @@ class TwoFactorViewModel(
     }
 
     fun refreshNotificationPermission() {
+        val permitted = notifier.canNotify()
+        if (permitted) notificationWarningShown = false
         mutableState.value =
             mutableState.value.copy(
-                notificationWarning = if (notifier.canNotify()) null else "未开启系统通知，后台验证请求无法提醒",
+                notificationWarning = if (permitted) null else "未开启系统通知，后台验证请求无法提醒",
             )
         syncNotification()
+    }
+
+    fun consumeNotice(message: String): Boolean {
+        val state = mutableState.value
+        if (state.isVisible) return false
+        if (message == state.receivingError) {
+            mutableState.value = state.copy(receivingError = null)
+            return true
+        }
+        if (message != state.notificationWarning || notificationWarningShown) return false
+        notificationWarningShown = true
+        return true
     }
 
     private fun syncNotification() {

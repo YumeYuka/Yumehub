@@ -53,6 +53,7 @@ fun UserProfilePage(
         viewModel,
         DataDomain.Profile,
         DataDomain.Relationships,
+        refreshOnFirstActivation = false,
         enabled = !state.followSubmitting,
         onRefresh = viewModel::load,
     )

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -106,11 +107,14 @@ private fun MarkdownBody(
         onDispose { presentation?.removeDocument(token) }
     }
     var bounds by remember(token) { mutableStateOf(Rect.Zero) }
-    val viewport = presentation?.viewport
-    LaunchedEffect(presentation, token, viewport, bounds) {
-        if (presentation != null && viewport != null) {
-            presentation.documentVisible(token, bounds.overlaps(viewport))
+    val inViewport by remember(presentation, token) {
+        derivedStateOf {
+            val viewport = presentation?.viewport
+            !bounds.isEmpty && (viewport == null || bounds.overlaps(viewport))
         }
+    }
+    LaunchedEffect(presentation, token, inViewport) {
+        presentation?.documentVisible(token, inViewport)
     }
     var readyRevision by remember { mutableStateOf<NativeMarkdownRevision?>(null) }
     var failedRevision by remember { mutableStateOf<NativeMarkdownRevision?>(null) }
@@ -119,7 +123,6 @@ private fun MarkdownBody(
         document != null &&
             failedRevision !== document.revision &&
             readyRevision === document.revision
-    val inViewport = !bounds.isEmpty && (viewport == null || bounds.overlaps(viewport))
     RetainVisibleMarkdownCard(revealed && inViewport)
     val failureMessage =
         when {

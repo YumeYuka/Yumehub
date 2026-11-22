@@ -35,6 +35,7 @@ import moe.yumeyuka.yumehub.ui.theme.readableForeground
 @Composable
 fun TwoFactorOverlay(
     state: TwoFactorUiState,
+    consumeNotice: (String) -> Boolean,
     onDigitsChange: (String) -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
@@ -44,7 +45,7 @@ fun TwoFactorOverlay(
     val context = LocalContext.current
     val notice = if (!state.isVisible) state.receivingError ?: state.notificationWarning else null
     LaunchedEffect(notice) {
-        if (notice != null) {
+        if (notice != null && consumeNotice(notice)) {
             Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
         }
     }

@@ -60,7 +60,10 @@ internal class HomeWorkViewModel(private val settings: SettingsStore) : ViewMode
             .stateIn(
                 viewModelScope,
                 SharingStarted.Eagerly,
-                HomeWorkLayout.decode(settings.homeWorkLayout.value, settings.homeWorkItems.value),
+                HomeWorkLayout.decode(
+                    settings.homeWorkLayout.state.value,
+                    settings.homeWorkItems.state.value,
+                ),
             )
 
     fun save(layout: HomeWorkLayout) {

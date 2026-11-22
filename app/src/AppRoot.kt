@@ -200,6 +200,7 @@ internal fun AppRoot(
                                     }
                                     TwoFactorOverlay(
                                         state = twoFactorState,
+                                        consumeNotice = twoFactorViewModel::consumeNotice,
                                         onDigitsChange = twoFactorViewModel::onDigitsChange,
                                         onApprove = twoFactorViewModel::approve,
                                         onReject = twoFactorViewModel::reject,

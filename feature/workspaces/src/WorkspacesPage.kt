@@ -79,7 +79,12 @@ fun WorkspacesPage(
             },
         )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    GithubRefreshEffect(viewModel, DataDomain.Content, onRefresh = viewModel::refresh)
+    GithubRefreshEffect(
+        viewModel,
+        DataDomain.Content,
+        refreshOnFirstActivation = false,
+        onRefresh = viewModel::refresh,
+    )
     val branches by viewModel.branches.uiState.collectAsStateWithLifecycle()
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler()

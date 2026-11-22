@@ -103,11 +103,12 @@ class RepositoryPagingSource(
                                     sort,
                                     query,
                                     language,
-                                    refresh,
+                                    // 首屏来自快照时本 Source 还没有 matches；追加不强刷整份原始列表。
+                                    force = refresh && page == 1,
                                 )
                                 .also { if (record) matchingRepositories = it }
                     hasMoreMatches = page.toLong() * pageSize < matches.size
-                    MyRepositoriesPage(matches.drop((page - 1) * pageSize).take(pageSize), null)
+                    MyRepositoriesPage(matches.repositoryPage(page, pageSize), null)
                 } else {
                     val activeSession =
                         session ?: repositories.session(account).also { session = it }
@@ -161,4 +162,11 @@ class RepositoryPagingSource(
     }
 
     override fun getRefreshKey(state: PagingState<Int, RepositoryDto>): Int? = null
+}
+
+internal fun <T> List<T>.repositoryPage(page: Int, pageSize: Int): List<T> {
+    val start = ((page.toLong() - 1) * pageSize).coerceAtMost(size.toLong())
+    val end = (start + pageSize).coerceAtMost(size.toLong())
+    // 快照可能比本次排序结果存活更久，不能让 subList 把整份列表留在缓存中。
+    return List((end - start).toInt()) { this[start.toInt() + it] }
 }

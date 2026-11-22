@@ -1,3 +1,4 @@
+import dev.yume.packer.GenerateLanguageTables
 import dev.yume.packer.PackTextAssets
 
 plugins { id("github.android.compose") }
@@ -11,6 +12,11 @@ configure<com.android.build.api.dsl.LibraryExtension> {
 configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {
     onVariants { variant ->
         val suffix = variant.name.replaceFirstChar(Char::uppercaseChar)
+        val tables = tasks.register<GenerateLanguageTables>("generate${suffix}LanguageTables") {
+            colors.set(layout.projectDirectory.file("res/raw/github_language_colors.json"))
+            grammars.set(layout.projectDirectory.file("resources/textmate/languages.json"))
+        }
+        variant.sources.kotlin?.addGeneratedSourceDirectory(tables, GenerateLanguageTables::output)
         val assets = layout.projectDirectory.dir("assets")
         val pack =
             tasks.register<PackTextAssets>("pack${suffix}TextAssets") {

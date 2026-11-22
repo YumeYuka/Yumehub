@@ -1,10 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-
 public val GithubCodeLanguages: List<String>
     get() = GithubGrammarIndex.languages
 
@@ -25,30 +20,7 @@ internal object GithubGrammarIndex {
     val languages: List<String>
 
     init {
-        val index = checkNotNull(javaClass.getResourceAsStream("/textmate/languages.json"))
-        val entries =
-            index.bufferedReader().use {
-                Json.parseToJsonElement(it.readText()).jsonObject.getValue("languages").jsonArray
-            }
-        for (entry in entries) {
-            val obj = entry.jsonObject
-            val name = obj["name"]?.jsonPrimitive?.content
-            val grammar =
-                GithubGrammar(
-                    name,
-                    obj.getValue("scopeName").jsonPrimitive.content,
-                    obj.getValue("grammar").jsonPrimitive.content,
-                )
-            byScope[grammar.scope] = grammar
-            if (name == null) continue
-            byAlias[name] = grammar
-            for ((key, map) in
-                listOf("aliases" to byAlias, "extensions" to bySuffix, "filenames" to byFilename)) {
-                obj[key]?.jsonArray?.forEach {
-                    map.putIfAbsent(it.jsonPrimitive.content.lowercase(), grammar)
-                }
-            }
-        }
+        loadGrammarTable(byScope, byAlias, bySuffix, byFilename)
         languages = byScope.values.mapNotNull { it.name }.sorted() + "plaintext"
     }
 

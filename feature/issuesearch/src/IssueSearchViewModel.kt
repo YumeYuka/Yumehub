@@ -1,8 +1,7 @@
 package moe.yumeyuka.yumehub.feature.issuesearch
 
 import androidx.lifecycle.ViewModel
-import androidx.paging.filter
-import androidx.paging.map
+import androidx.paging.flatMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
@@ -35,9 +34,11 @@ internal class IssueSearchViewModel(
 
     fun itemsFor(filter: CollaborationListFilter) =
         source.personalItems(login, kind, filter).map { page ->
-            page
-                .filter { it.workTarget()?.kind == kind }
-                .map { WorkItem(it, requireNotNull(it.workTarget())) }
+            page.flatMap { item ->
+                val target = item.workTarget()
+                if (target != null && target.kind == kind) listOf(WorkItem(item, target))
+                else emptyList()
+            }
         }
 
     fun selectFilter(filter: CollaborationListFilter) {

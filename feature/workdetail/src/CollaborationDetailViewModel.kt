@@ -152,7 +152,6 @@ internal data class CollaborationDetailUiState(
     val desiredSubscription: Boolean? = null,
     val subscriptionUpdating: Boolean = false,
     val notificationDone: Boolean = false,
-    val notificationActionError: String? = null,
     val titleEditorOpen: Boolean = false,
     val titleDraft: String = "",
     val bodyEditorOpen: Boolean = false,
@@ -181,12 +180,15 @@ internal class CollaborationDetailViewModel(
     private val detail = repository.detail(viewerLogin, owner, repo, kind, number)
     private val draftPrefix =
         "${owner.lowercase(Locale.ROOT)}/${repo.lowercase(Locale.ROOT)}/${kind.name}/$number"
-    private val draftWrites = mutableMapOf<String, Job>()
+    private val draftWrites =
+        PendingDraftWrites(viewModelScope) { suffix, body ->
+            draftStore.save(viewerLogin, "$draftPrefix/$suffix", body)
+        }
     private val composerStates = mutableMapOf<CollaborationEditorTarget, MarkdownEditorState>()
     private var activeEditorSession: GithubEditorSession? = null
     private var activeEditorTarget: CollaborationEditorTarget? = null
-    private val submissionMessageChannel = Channel<String>(Channel.BUFFERED)
-    val submissionMessages = submissionMessageChannel.receiveAsFlow()
+    private val messageChannel = Channel<String>(Channel.BUFFERED)
+    val messages = messageChannel.receiveAsFlow()
     private var subscriptionJob: Job? = null
     private var subscriptionWriteJob: Job? = null
     private var toggleUnknownSubscription = false
@@ -409,7 +411,7 @@ internal class CollaborationDetailViewModel(
             detail.state.collect { cached ->
                 val oldLine = uiState.value.reviewLine
                 if (oldLine != null && oldLine.commitId != cached.data?.head?.sha) {
-                    flushLineDraft(oldLine, uiState.value.lineCommentDraft)
+                    draftWrites.flush(lineDraftKey(oldLine))
                 }
                 mutableUiState.update { it.withDetail(cached) }
                 uiState.value.item?.nodeId?.takeIf(String::isNotBlank)?.let { id ->
@@ -626,7 +628,7 @@ internal class CollaborationDetailViewModel(
         loadSubscription(force = true)
     }
 
-    fun loadSubscription(force: Boolean = false) {
+    fun loadSubscription(force: Boolean = false, notifyFailure: Boolean = true) {
         val id = subscriptionNodeId ?: return
         if (uiState.value.subscriptionUpdating) return
         val generation = ++subscriptionGeneration
@@ -642,9 +644,9 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (error: Exception) {
                 if (generation == subscriptionGeneration) {
-                    mutableUiState.update {
-                        it.copy(subscriptionError = collaborationErrorMessage(error))
-                    }
+                    val message = collaborationErrorMessage(error)
+                    mutableUiState.update { it.copy(subscriptionError = message) }
+                    if (notifyFailure) messageChannel.trySend(message)
                 }
             }
         }
@@ -664,7 +666,6 @@ internal class CollaborationDetailViewModel(
             it.copy(
                 subscriptionUpdating = true,
                 subscriptionError = null,
-                notificationActionError = null,
             )
         }
         subscriptionWriteJob = viewModelScope.launch {
@@ -695,16 +696,17 @@ internal class CollaborationDetailViewModel(
             } catch (error: Exception) {
                 failed = true
                 toggleUnknownSubscription = false
+                val message = collaborationErrorMessage(error)
                 mutableUiState.update {
                     it.copy(
                         desiredSubscription = null,
-                        subscriptionError = collaborationErrorMessage(error),
-                        notificationActionError = collaborationErrorMessage(error),
+                        subscriptionError = message,
                     )
                 }
+                messageChannel.trySend(message)
             } finally {
                 mutableUiState.update { it.copy(subscriptionUpdating = false) }
-                if (failed) loadSubscription(force = true)
+                if (failed) loadSubscription(force = true, notifyFailure = false)
             }
         }
     }
@@ -772,7 +774,7 @@ internal class CollaborationDetailViewModel(
     fun changeCommentDraft(draft: String) {
         if (uiState.value.submitting) return
         mutableUiState.update { it.copy(commentDraft = draft) }
-        persistDraft("comment", draft)
+        draftWrites.schedule("comment", draft)
     }
 
     fun beginReview() {
@@ -784,7 +786,7 @@ internal class CollaborationDetailViewModel(
     fun changeReviewDraft(draft: String) {
         if (uiState.value.submitting) return
         mutableUiState.update { it.copy(reviewDraft = draft) }
-        persistDraft("review", draft)
+        draftWrites.schedule("review", draft)
     }
 
     fun canManageComment(comment: CollaborationCommentDto): Boolean =
@@ -806,7 +808,7 @@ internal class CollaborationDetailViewModel(
 
     fun editComment(comment: CollaborationCommentDto) {
         if (!canManageComment(comment)) return
-        uiState.value.editingComment?.let { flushEditedDraft(it) }
+        uiState.value.editingComment?.let { draftWrites.flush("edit/${it.comment.id}") }
         val restored = draftStore.loadOrNull(viewerLogin, "$draftPrefix/edit/${comment.id}")
         mutableUiState.update {
             it.copy(
@@ -823,19 +825,14 @@ internal class CollaborationDetailViewModel(
         val target = state.editingComment ?: return
         if (state.submitting) return
         mutableUiState.update { it.copy(editingComment = target.copy(draft = draft)) }
-        persistDraft("edit/${target.comment.id}", draft)
+        draftWrites.schedule("edit/${target.comment.id}", draft)
     }
 
     fun cancelEditComment() {
         val state = uiState.value
         if (state.submitting) return
-        state.editingComment?.let { flushEditedDraft(it) }
+        state.editingComment?.let { draftWrites.flush("edit/${it.comment.id}") }
         mutableUiState.update { it.copy(editingComment = null) }
-    }
-
-    private fun flushEditedDraft(target: CommentEditTarget) {
-        draftWrites.remove("edit/${target.comment.id}")?.cancel()
-        draftStore.save(viewerLogin, "$draftPrefix/edit/${target.comment.id}", target.draft)
     }
 
     fun requestDeleteComment(comment: CollaborationCommentDto) {
@@ -893,7 +890,7 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (_: Exception) {
                 reactionUpdates.set(nodeId, previous)
-                submissionMessageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
+                messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
             }
         }
     }
@@ -925,7 +922,7 @@ internal class CollaborationDetailViewModel(
                 submissionError = null,
             )
         }
-        persistDraft("comment", draft)
+        draftWrites.schedule("comment", draft)
     }
 
     fun dismissDeleteComment() {
@@ -984,7 +981,6 @@ internal class CollaborationDetailViewModel(
                 state.loading
         )
             return
-        state.reviewLine?.let { flushLineDraft(it, state.lineCommentDraft) }
         val side = if (newLine != null) "RIGHT" else "LEFT"
         val line = newLine ?: oldLine ?: return
         val path = file.filename
@@ -992,6 +988,7 @@ internal class CollaborationDetailViewModel(
         if (!githubDiffContainsLine(patch, line, side)) return
         val target = ReviewLineTarget(path, line, side, commit, patch)
         if (state.reviewLine == target) return
+        state.reviewLine?.let { draftWrites.flush(lineDraftKey(it)) }
         mutableUiState.update {
             it.copy(
                 reviewLine = target,
@@ -1009,19 +1006,14 @@ internal class CollaborationDetailViewModel(
         val target = state.reviewLine ?: return
         if (state.submitting) return
         mutableUiState.update { it.copy(lineCommentDraft = draft) }
-        persistDraft(lineDraftKey(target), draft)
+        draftWrites.schedule(lineDraftKey(target), draft)
     }
 
     fun cancelLineComment() {
         val state = uiState.value
         if (state.submitting) return
-        state.reviewLine?.let { flushLineDraft(it, state.lineCommentDraft) }
+        state.reviewLine?.let { draftWrites.flush(lineDraftKey(it)) }
         mutableUiState.update { it.copy(reviewLine = null) }
-    }
-
-    private fun flushLineDraft(target: ReviewLineTarget, body: String) {
-        draftWrites.remove(lineDraftKey(target))?.cancel()
-        draftStore.save(viewerLogin, "$draftPrefix/${lineDraftKey(target)}", body)
     }
 
     fun submitLineComment() {
@@ -1057,32 +1049,13 @@ internal class CollaborationDetailViewModel(
     private fun lineDraftKey(target: ReviewLineTarget): String =
         "line/${target.commitId}/${target.path.length}:${target.path}/${target.side}/${target.line}"
 
-    private fun persistDraft(suffix: String, body: String) {
-        draftWrites.remove(suffix)?.cancel()
-        draftWrites[suffix] = viewModelScope.launch {
-            delay(400)
-            draftStore.save(viewerLogin, "$draftPrefix/$suffix", body)
-            draftWrites.remove(suffix)
-        }
-    }
-
     private fun clearDraft(suffix: String) {
-        draftWrites.remove(suffix)?.cancel()
+        draftWrites.discard(suffix)
         draftStore.remove(viewerLogin, "$draftPrefix/$suffix")
     }
 
     override fun onCleared() {
-        draftWrites.values.forEach { it.cancel() }
-        draftWrites.clear()
-        val state = uiState.value
-        draftStore.save(viewerLogin, "$draftPrefix/comment", state.commentDraft)
-        draftStore.save(viewerLogin, "$draftPrefix/review", state.reviewDraft)
-        state.editingComment?.let {
-            draftStore.save(viewerLogin, "$draftPrefix/edit/${it.comment.id}", it.draft)
-        }
-        state.reviewLine?.let {
-            draftStore.save(viewerLogin, "$draftPrefix/${lineDraftKey(it)}", state.lineCommentDraft)
-        }
+        draftWrites.flushAll()
         super.onCleared()
     }
 
@@ -1268,7 +1241,9 @@ internal class CollaborationDetailViewModel(
                     )
                 }
                 syncEditorSession(uiState.value)
-                if (background) submissionMessageChannel.trySend(message)
+                if (background || (!uncertain && uiState.value.composerTarget == null)) {
+                    messageChannel.trySend(message)
+                }
             }
         }
     }

@@ -44,7 +44,9 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
       koinViewModel(key = "my-repositories-$login", parameters = { parametersOf(login) })
   val strings = LocalGithubStrings.current.MyRepositories
   val listing by viewModel.listing.collectAsStateWithLifecycle()
-  GithubRefreshEffect(viewModel, DataDomain.Repositories) { viewModel.refreshLanguages() }
+  GithubRefreshEffect(viewModel, DataDomain.Repositories, refreshOnFirstActivation = false) {
+    viewModel.refreshLanguages()
+  }
   val filters = listing.filters
   val languages by viewModel.languages.collectAsStateWithLifecycle()
   if (languages == RepositoryLanguages.Failed)

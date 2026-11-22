@@ -38,8 +38,8 @@ class MainActivity : ComponentActivity() {
         retainedComponent { componentContext ->
             GithubAppNavigationComponent(
                 componentContext = componentContext,
-                predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.value,
-                predictiveBackPercent = settingsStore.predictiveBackMaxProgress.value,
+                predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
+                predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,
             )
         }
     }
@@ -54,9 +54,9 @@ class MainActivity : ComponentActivity() {
         // 在 Compose 首次布局前完成窗口配置，避免首帧使用未分发的系统栏 inset。
         WindowCompat.enableEdgeToEdge(window)
         val initialHdrOutput =
-            settingsStore.glassHdrEnabled.value &&
-                settingsStore.liquidGlassEnabled.value &&
-                !settingsStore.reduceTransparency.value
+            settingsStore.glassHdrEnabled.state.value &&
+                settingsStore.liquidGlassEnabled.state.value &&
+                !settingsStore.reduceTransparency.state.value
         configureGlassDynamicRange(window, hdrEnabled = initialHdrOutput)
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         // 必须在 setContent 之前创建：Decompose 的出栈回调要先于页面级返回处理注册。

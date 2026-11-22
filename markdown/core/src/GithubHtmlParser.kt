@@ -19,14 +19,35 @@ import org.jsoup.nodes.TextNode
 object GithubHtmlParser {
     fun parse(html: String, options: HtmlParseOptions = HtmlParseOptions()): HtmlDocument {
         require(options.maxHtmlBytes > 0 && options.maxNodes > 0 && options.maxDepth > 0)
-        if (
-            html.length > options.maxHtmlBytes ||
-                html.toByteArray(Charsets.UTF_8).size > options.maxHtmlBytes
-        ) {
+        if (html.exceedsUtf8Limit(options.maxHtmlBytes)) {
             throw HtmlParseException("HTML 超过允许的字节数")
         }
         return ParseSession(options).parse(html)
     }
+}
+
+// JVM UTF-8 编码用一个 '?' 替换孤立代理项；一个 UTF-16 单元最多占三个字节。
+private fun String.exceedsUtf8Limit(limit: Int): Boolean {
+    if (length > limit) return true
+    if (length <= limit / 3) return false
+    var remaining = limit
+    var index = 0
+    while (index < length) {
+        val char = this[index++]
+        remaining -=
+            when {
+                char.code < 0x80 -> 1
+                char.code < 0x800 -> 2
+                char.isHighSurrogate() && index < length && this[index].isLowSurrogate() -> {
+                    index++
+                    4
+                }
+                char.isSurrogate() -> 1
+                else -> 3
+            }
+        if (remaining < 0) return true
+    }
+    return false
 }
 
 private class ParseSession(private val options: HtmlParseOptions) {

@@ -138,9 +138,7 @@ internal class MarkdownWebView(
                     if (released || broken || url != templateUrl || ready) return
                     ready = true
                     val id = messageId
-                    evaluateJavascript(
-                        "(function(){try{\n${assets.adapter}\nreturn true;}catch(_){return false;}})();",
-                    ) { result ->
+                    evaluateJavascript(assets.installAdapterScript) { result ->
                         if (active() && id == messageId && result != "true") onFailure()
                     }
                     updateHtml()
@@ -372,10 +370,6 @@ internal class MarkdownWebView(
                     "Cache-Control" to "no-store",
                 ),
                 when (file) {
-                    "template.html" ->
-                        ByteArrayInputStream(assets.lightTemplate.toByteArray(Charsets.UTF_8))
-                    "template_dark.html" ->
-                        ByteArrayInputStream(assets.darkTemplate.toByteArray(Charsets.UTF_8))
                     "Inter.ttf" -> openGithubInterFont(context, italic = false)
                     "Inter-Italic.ttf" -> openGithubInterFont(context, italic = true)
                     else -> context.assets.openMarkdownAsset(file)

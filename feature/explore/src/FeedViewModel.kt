@@ -122,14 +122,15 @@ internal class FeedViewModel(
     }
 
     private fun loadFilters(): Set<FeedFilter> {
-        val stored = settings.exploreFeedFilters.value
+        val stored = settings.exploreFeedFilters.state.value
         return FeedFilter.entries.filterTo(linkedSetOf()) { it.name in stored }
     }
 
-    private fun loadSort(): FeedSort =
-        FeedSort.entries.firstOrNull {
-            it.name.equals(settings.exploreFeedSort.value, ignoreCase = true)
-        } ?: FeedSort.Newest
+    private fun loadSort(): FeedSort {
+        val stored = settings.exploreFeedSort.state.value
+        return FeedSort.entries.firstOrNull { it.name.equals(stored, ignoreCase = true) }
+            ?: FeedSort.Newest
+    }
 
     fun setVisible(events: List<FeedEventDto>) {
         val next = events.mapNotNull { event -> event.cardKey()?.let { it to event } }.toMap()

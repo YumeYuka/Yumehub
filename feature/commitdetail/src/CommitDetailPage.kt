@@ -64,7 +64,13 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
             parameters = { parametersOf(route, account) },
         )
     val state by viewModel.state.collectAsStateWithLifecycle()
-    GithubRefreshEffect(viewModel, DataDomain.Content, DataDomain.Work, onRefresh = viewModel::load)
+    GithubRefreshEffect(
+        viewModel,
+        DataDomain.Content,
+        DataDomain.Work,
+        refreshOnFirstActivation = false,
+        onRefresh = viewModel::load,
+    )
     val strings = LocalGithubStrings.current
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = rememberGithubUriHandler()

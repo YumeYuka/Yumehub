@@ -10,12 +10,7 @@ internal fun AssetManager.openMarkdownAsset(name: String): InputStream =
     markdownArchive.open(this, "github-markdown/webview/$name")
 
 /** 只缓存 APK 中不变的文本；调用方在 IO dispatcher 预热，不保留 AssetManager/Context。 */
-internal class MarkdownAssets
-private constructor(
-    val lightTemplate: String,
-    val darkTemplate: String,
-    val adapter: String,
-) {
+internal class MarkdownAssets private constructor(val installAdapterScript: String) {
     companion object {
         @Volatile private var cached: MarkdownAssets? = null
 
@@ -26,12 +21,12 @@ private constructor(
             cached?.let {
                 return it
             }
-            fun read(name: String) =
-                assets.openMarkdownAsset(name).bufferedReader().use { it.readText() }
+            val adapter =
+                assets.openMarkdownAsset("android-adapter.js").bufferedReader().use {
+                    it.readText()
+                }
             return MarkdownAssets(
-                    read("template.html"),
-                    read("template_dark.html"),
-                    read("android-adapter.js"),
+                    "(function(){try{\n$adapter\nreturn true;}catch(_){return false;}})();",
                 )
                 .also { cached = it }
         }

@@ -34,6 +34,30 @@ internal data class RepositoryListing(
     val pages: Flow<PagingData<RepositoryDto>>,
 )
 
+// Pager 的闲置缓存比路由活得久；工厂只捕获数据依赖和查询参数。
+private fun repositoryPages(
+    repositories: MyRepositoriesRepository,
+    login: String,
+    pagingRepository: PagingRepository,
+    filter: RepositoryFilters,
+): Flow<PagingData<RepositoryDto>> {
+  val key =
+      "my-repositories:v4:type=${filter.type}:sort=${filter.sort}:" +
+          "size=$MyRepositoriesPageSize:language=${filter.language}:query=${filter.query}"
+  return pagingRepository.pages(login, key, defaultPagingConfig(MyRepositoriesPageSize)) { context ->
+    RepositoryPagingSource(
+        repositories,
+        login,
+        MyRepositoriesPageSize,
+        pagingRepository.snapshot(login, key, RepositoryDto.serializer(), context),
+        type = filter.type,
+        sort = filter.sort,
+        query = filter.query,
+        language = filter.language,
+    )
+  }
+}
+
 internal sealed interface RepositoryLanguages {
   data object Loading : RepositoryLanguages
 
@@ -63,25 +87,11 @@ internal class RepositoryViewModel(
           viewModelScope.coroutineContext + SupervisorJob(viewModelScope.coroutineContext[Job]),
       )
 
-  private fun createListing(filter: RepositoryFilters): RepositoryListing {
-    val key =
-        "my-repositories:v4:type=${filter.type}:sort=${filter.sort}:" +
-            "size=$MyRepositoriesPageSize:language=${filter.language}:query=${filter.query}"
-    val pages =
-        pagingRepository.pages(login, key, defaultPagingConfig(MyRepositoriesPageSize)) { context ->
-          RepositoryPagingSource(
-              repositories,
-              login,
-              MyRepositoriesPageSize,
-              pagingRepository.snapshot(login, key, RepositoryDto.serializer(), context),
-              type = filter.type,
-              sort = filter.sort,
-              query = filter.query,
-              language = filter.language,
-          )
-        }
-    return RepositoryListing(filter, pages.cachedIn(listingScope))
-  }
+  private fun createListing(filter: RepositoryFilters) =
+      RepositoryListing(
+          filter,
+          repositoryPages(repositories, login, pagingRepository, filter).cachedIn(listingScope),
+      )
 
   private fun changeFilters(next: RepositoryFilters) {
     if (next == mutableListing.value.filters) return

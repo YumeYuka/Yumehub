@@ -14,7 +14,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
@@ -86,26 +89,18 @@ fun WorkDetailPage(
     var infoVisible by rememberSaveable { mutableStateOf(false) }
     var mergeVisible by rememberSaveable { mutableStateOf(false) }
     val currentPage = host.isCurrent
-    LaunchedEffect(viewModel, currentPage) {
-        if (currentPage) {
-            viewModel.submissionMessages.collect { message ->
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(viewModel, lifecycle, currentPage) {
+        if (currentPage)
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.messages.collect { message ->
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
             }
-        }
     }
     LaunchedEffect(state.composerTarget, currentPage) {
         if (currentPage && state.composerTarget != null) {
             viewModel.takeEditorSession()?.let(host.onOpenEditor)
-        }
-    }
-    LaunchedEffect(state.submissionError, state.submissionUncertain) {
-        if (!state.submissionUncertain && state.composerTarget == null) {
-            state.submissionError?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
-        }
-    }
-    LaunchedEffect(state.notificationActionError, state.subscriptionError) {
-        (state.notificationActionError ?: state.subscriptionError)?.let { error ->
-            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
         }
     }
     LaunchedEffect(state.titleEditorOpen) {
