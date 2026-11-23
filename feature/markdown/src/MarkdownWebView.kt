@@ -96,7 +96,6 @@ internal class MarkdownWebView(
             // 长正文可能远高于屏幕；固定视口预览可见时才启用离屏预栅格。
             offscreenPreRaster = false
             domStorageEnabled = false
-            databaseEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW

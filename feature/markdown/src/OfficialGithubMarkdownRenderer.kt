@@ -137,7 +137,7 @@ private fun MarkdownBody(
         }
     }
     LaunchedEffect(revealed, presentation, token, state.revision) {
-        if (revealed && document?.revision === state.revision && isCurrentAccount()) {
+        if (revealed && document.revision === state.revision && isCurrentAccount()) {
             presentation?.documentReady(token)
         }
     }

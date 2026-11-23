@@ -600,7 +600,6 @@ internal class CollaborationDetailViewModel(
             canReview =
                 canComment &&
                     openPullRequest &&
-                    item != null &&
                     !item.draft &&
                     item.user?.login?.equals(viewerLogin, ignoreCase = true) == false,
             canCommentOnLines = canComment && openPullRequest,

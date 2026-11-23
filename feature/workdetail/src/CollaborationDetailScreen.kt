@@ -169,7 +169,7 @@ internal fun LazyListScope.CollaborationDetailScreen(
               nodeId = item.value.nodeId,
           )
       is CollaborationEntry.File ->
-          if (item.headSha == state.item?.head?.sha) {
+          if (item.headSha == state.item.head?.sha) {
             FileEntry(item.value, state)
           }
       is CollaborationEntry.Commit -> {

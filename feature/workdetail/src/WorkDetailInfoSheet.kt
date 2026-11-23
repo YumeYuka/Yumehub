@@ -359,7 +359,7 @@ internal fun WorkMergeSheet(
         method != null &&
             id != null &&
             head != null &&
-            item?.canMerge() == true &&
+            item.canMerge() &&
             !busy &&
             !state.loading &&
             !state.submissionUncertain &&
@@ -382,7 +382,7 @@ internal fun WorkMergeSheet(
                 actions = {
                     GlasmioIconButton(
                         onClick = {
-                            if (canConfirm && item != null && method != null) {
+                            if (canConfirm) {
                                 val message =
                                     if (editMessage) WorkMergeMessage(headline.trim(), body)
                                     else null
