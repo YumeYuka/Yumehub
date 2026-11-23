@@ -3,6 +3,7 @@ package moe.yumeyuka.yumehub.data.api.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import moe.yumeyuka.yumehub.data.repository.GithubReactionGroup
 
 @Serializable
 data class CollaborationItemDto(
@@ -43,8 +44,9 @@ data class CollaborationItemDto(
     val mergeStateStatus: String? = null,
     val reviewRequestCount: Int? = null,
     val requestedReviewers: List<String> = emptyList(),
-    val latestReviews: List<PullRequestReviewSummaryDto> = emptyList(),
-    val reviewsLoaded: Boolean = false,
+    val requestedReviewerAvatars: List<String?> = emptyList(),
+    val viewerLatestReviewState: String? = null,
+    val viewerReviewRequested: Boolean = false,
     val commentsCount: Int = 0,
     val participantsCount: Int? = null,
     val repositoryName: String? = null,
@@ -61,12 +63,26 @@ data class CollaborationItemDto(
     val requiredStatusCheckCount: Int? = null,
     val allStatusChecksPassed: Boolean = false,
     val requiredStatusChecks: List<PullRequestStatusCheckDto> = emptyList(),
-    val viewerCanReact: Boolean = false,
-    val reactions: List<CollaborationReactionDto> = emptyList(),
     val bodyPreview: String? = null,
     val participantAvatars: List<UserDto> = emptyList(),
     val taskProgress: WorkTaskProgressDto? = null,
+    val viewerCanReact: Boolean = false,
+    val reactions: List<GithubReactionGroup> = emptyList(),
+    val viewerCanTypeIssue: Boolean = false,
+    val viewerCanSeeIssueFields: Boolean = false,
 )
+
+/** GitHub 的 UNSTABLE 表示检查未通过，但仍可合并。 */
+fun CollaborationItemDto.canMerge(): Boolean =
+    state == "open" &&
+        !draft &&
+        !merged &&
+        viewerCanMerge &&
+        (mergeCommitAllowed || squashMergeAllowed || rebaseMergeAllowed) &&
+        mergeable == "MERGEABLE" &&
+        (mergeStateStatus == "CLEAN" || mergeStateStatus == "UNSTABLE") &&
+        reviewDecision != "REVIEW_REQUIRED" &&
+        reviewDecision != "CHANGES_REQUESTED"
 
 @Serializable data class WorkTaskProgressDto(val completed: Int, val total: Int)
 
@@ -88,6 +104,7 @@ data class WorkPropertyOption(
     val avatarUrl: String? = null,
     val state: String? = null,
     val kind: String? = null,
+    val number: Int? = null,
     val subtitle: String? = null,
     val color: String? = null,
 )
@@ -97,17 +114,18 @@ data class WorkProperties(
     val editable: Boolean,
 )
 
+data class WorkReviewRequests(
+    val requested: List<WorkPropertyOption>,
+    val reviewed: List<WorkPropertyOption>,
+    val authorLogin: String?,
+    val editable: Boolean,
+)
+
 @Serializable
 data class PullRequestStatusCheckDto(
     val name: String,
     val state: String,
     val description: String? = null,
-)
-
-@Serializable
-data class PullRequestReviewSummaryDto(
-    val state: String,
-    val user: UserDto? = null,
 )
 
 @Serializable
@@ -184,14 +202,7 @@ data class CollaborationCommentDto(
     val minimizedReason: String? = null,
     val viewerCanMinimize: Boolean = false,
     val viewerCanReact: Boolean = false,
-    val reactions: List<CollaborationReactionDto> = emptyList(),
-)
-
-@Serializable
-data class CollaborationReactionDto(
-    val content: String,
-    val count: Int,
-    val viewerReacted: Boolean,
+    val reactions: List<GithubReactionGroup> = emptyList(),
 )
 
 @Serializable
@@ -200,6 +211,7 @@ data class PullRequestReviewDto(
     val state: String,
     val body: String? = null,
     val user: UserDto? = null,
+    @SerialName("commit_url") val commitUrl: String? = null,
     @SerialName("submitted_at") val submittedAt: String? = null,
     @SerialName("node_id") val nodeId: String? = null,
     @SerialName("body_html") val bodyHtml: String? = null,

@@ -5,9 +5,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.api.dto.IssuePropertyChoices
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperties
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
+import moe.yumeyuka.yumehub.data.api.dto.WorkReviewRequests
 
 internal class WorkPropertiesGraphQl(
     private val owner: String,
@@ -28,14 +30,22 @@ internal class WorkPropertiesGraphQl(
         put("number", number)
     }
 
-    private suspend fun node(includeMilestone: Boolean): JsonObject =
+    private suspend fun node(
+        includeMilestone: Boolean,
+        includeReviewTarget: Boolean = false,
+        includeAssignPermission: Boolean = false,
+    ): JsonObject =
         execute(
                 """
         query WorkPropertyTarget(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!) {
             repository(owner: ${'$'}owner, name: ${'$'}name) {
                 viewerPermission
                 issueOrPullRequest(number: ${'$'}number) {
-                    __typename ... on $type { id ${if (includeMilestone) "milestone { id title }" else ""} }
+                    __typename ... on $type {
+                        id ${if (includeMilestone) "milestone { id title }" else ""}
+                        ${if (includeReviewTarget) "state author { login }" else ""}
+                        ${if (includeAssignPermission) "viewerCanAssign" else ""}
+                    }
                 }
             }
         }
@@ -100,7 +110,6 @@ internal class WorkPropertiesGraphQl(
         val labels = async { currentValues(target, WorkProperty.Labels) }
         // Projects V2 需要额外权限；只有展示时允许该分组独立失败。
         val projects = async { optional { currentValues(target, WorkProperty.Projects) } }
-        val reviewers = async { currentValues(target, WorkProperty.Reviewers) }
         val linked = async { currentValues(target, WorkProperty.LinkedItems) }
         val subIssues = async { currentValues(target, WorkProperty.SubIssues) }
         WorkProperties(
@@ -108,13 +117,94 @@ internal class WorkPropertiesGraphQl(
                 WorkProperty.Labels to labels.await(),
                 WorkProperty.Milestone to target.milestone(),
                 WorkProperty.Projects to projects.await(),
-                WorkProperty.Reviewers to reviewers.await(),
                 WorkProperty.LinkedItems to linked.await(),
                 WorkProperty.SubIssues to subIssues.await(),
             ),
             repo.canEdit(),
         )
     }
+
+    suspend fun reviewRequests(): WorkReviewRequests = coroutineScope {
+        check(kind == CollaborationKind.PullRequest)
+        val repo = node(includeMilestone = false, includeReviewTarget = true)
+        val target = repo.target()
+        val id = target.graphRequiredText("id")
+        val author = (target["author"] as? JsonObject)?.graphText("login")
+        val editable = repo.canEdit() && target.graphRequiredText("state") == "OPEN"
+        val requested = async { requestedReviewers(id) }
+        val reviewed = async {
+            connection(
+                    id,
+                    "latestReviews",
+                    "state author { __typename login avatarUrl ... on Node { id } }",
+                )
+                .mapNotNull { entry ->
+                    val actor = entry["author"] as? JsonObject ?: return@mapNotNull null
+                    val login = actor.graphText("login") ?: return@mapNotNull null
+                    val actorId = actor.graphText("id") ?: return@mapNotNull null
+                    val actorKind = actor.graphRequiredText("__typename")
+                    WorkPropertyOption(
+                        actorId,
+                        login,
+                        editable = actorKind == "User" && !login.equals(author, ignoreCase = true),
+                        state = entry.graphRequiredText("state"),
+                        kind = actorKind,
+                        avatarUrl = actor.graphText("avatarUrl"),
+                    )
+                }
+        }
+        WorkReviewRequests(
+            requested.await(),
+            reviewed.await(),
+            author,
+            editable,
+        )
+    }
+
+    suspend fun reviewerCandidates(query: String, after: String?): GithubGraphQlPage<WorkPropertyOption> {
+        val page = execute(
+            """
+            query WorkReviewerCandidates(${'$'}owner: String!, ${'$'}name: String!, ${'$'}query: String, ${'$'}after: String) {
+                repository(owner: ${'$'}owner, name: ${'$'}name) {
+                    assignableUsers(first: 50, query: ${'$'}query, after: ${'$'}after) {
+                        pageInfo { hasNextPage endCursor } nodes { id login avatarUrl }
+                    }
+                }
+            }
+            """.trimIndent(),
+            buildJsonObject {
+                put("owner", owner)
+                put("name", repository)
+                put("query", query.trim().takeIf(String::isNotEmpty)?.let(::JsonPrimitive) ?: JsonNull)
+                put("after", after?.let(::JsonPrimitive) ?: JsonNull)
+            },
+        ).graphObject("repository").graphObject("assignableUsers")
+        return GithubGraphQlPage(
+            page.graphNodes().map { option(it, "login").copy(kind = "User") },
+            page.graphCursor(after),
+        )
+    }
+
+    private suspend fun requestedReviewers(id: String): List<WorkPropertyOption> =
+        connection(
+                id,
+                "reviewRequests",
+                """requestedReviewer {
+                    __typename ... on Node { id } ... on Actor { login avatarUrl }
+                    ... on Team { name } ... on EnterpriseTeam { name }
+                }""",
+            )
+            .map { request ->
+                val reviewer = request.graphObject("requestedReviewer")
+                val reviewerKind = reviewer.graphRequiredText("__typename")
+                WorkPropertyOption(
+                    reviewer.graphRequiredText("id"),
+                    reviewer.graphText("login") ?: reviewer.graphRequiredText("name"),
+                    editable = reviewerKind == "User",
+                    kind = reviewerKind,
+                    avatarUrl = reviewer.graphText("avatarUrl"),
+                )
+            }
 
     private suspend fun currentValues(
         target: JsonObject,
@@ -128,7 +218,14 @@ internal class WorkPropertiesGraphQl(
                     option(it, "name").copy(color = it.graphText("color"))
                 }
             WorkProperty.Assignees ->
-                connection(id, "assignees", "id login avatarUrl").map { option(it, "login") }
+                if (kind == CollaborationKind.Issue) {
+                    connection(id, "assignedActors", "__typename ... on Node { id } ... on Actor { login avatarUrl }")
+                        .map { assignee ->
+                            option(assignee, "login").copy(editable = assignee.graphText("__typename") == "User")
+                        }
+                } else {
+                    connection(id, "assignees", "id login avatarUrl").map { option(it, "login") }
+                }
             WorkProperty.Projects ->
                 connection(id, "projectItems", "id project { id title viewerCanUpdate }").map {
                     val project = it.graphObject("project")
@@ -139,38 +236,7 @@ internal class WorkPropertiesGraphQl(
                         it.graphRequiredText("id"),
                     )
                 }
-            WorkProperty.Reviewers ->
-                if (kind == CollaborationKind.PullRequest) {
-                    connection(
-                            id,
-                            "reviewRequests",
-                            "requestedReviewer { __typename ... on User { id login avatarUrl } ... on Team { id name } }",
-                        )
-                        .mapNotNull { request ->
-                            val reviewer =
-                                request["requestedReviewer"] as? JsonObject
-                                    ?: return@mapNotNull null
-                            when (reviewer.graphText("__typename")) {
-                                "User" ->
-                                    WorkPropertyOption(
-                                        reviewer.graphRequiredText("id"),
-                                        reviewer.graphRequiredText("login"),
-                                        avatarUrl = reviewer.graphText("avatarUrl"),
-                                        kind = "User",
-                                    )
-                                "Team" ->
-                                    WorkPropertyOption(
-                                        reviewer.graphRequiredText("id"),
-                                        reviewer.graphRequiredText("name"),
-                                        editable = false,
-                                        kind = "Team",
-                                    )
-                                else -> null
-                            }
-                        }
-                } else {
-                    emptyList()
-                }
+            WorkProperty.Reviewers -> requestedReviewers(id)
             WorkProperty.LinkedItems -> {
                 val issue = kind == CollaborationKind.Issue
                 val field =
@@ -198,6 +264,17 @@ internal class WorkPropertiesGraphQl(
     ): List<WorkPropertyOption> =
         try {
             block()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+    /** 头部项目标签只需要名称；缺少权限时保持为空。 */
+    suspend fun headerProjectTitles(): List<String> =
+        try {
+            val target = node(includeMilestone = false).target()
+            currentValues(target, WorkProperty.Projects).map { it.title }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
@@ -302,7 +379,8 @@ internal class WorkPropertiesGraphQl(
     private fun linkedOption(node: JsonObject, kind: String) =
         WorkPropertyOption(
             id = node.graphRequiredText("id"),
-            title = "#${node.graphRequiredText("number")} ${node.graphRequiredText("title")}",
+            title = node.graphRequiredText("title"),
+            number = node.graphRequiredText("number").toInt(),
             state =
                 node.graphText("issueState")
                     ?: node.graphText("pullRequestState")
@@ -310,6 +388,76 @@ internal class WorkPropertiesGraphQl(
             kind = kind,
             subtitle = node.graphObject("repository").graphRequiredText("nameWithOwner"),
         )
+
+    /** 时间线里的交叉引用：引用此工作项的议题／拉取请求，按时间倒序，只读。 */
+    suspend fun crossReferences(): List<WorkPropertyOption> {
+        val nodes =
+            execute(
+                    """
+                    query WorkCrossReferences(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!) {
+                        repository(owner: ${'$'}owner, name: ${'$'}name) {
+                            issueOrPullRequest(number: ${'$'}number) {
+                                ... on $type {
+                                    timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 30) {
+                                        nodes {
+                                            ... on CrossReferencedEvent {
+                                                createdAt
+                                                source {
+                                                    __typename
+                                                    ... on Issue { id number title issueState: state repository { nameWithOwner } }
+                                                    ... on PullRequest { id number title pullRequestState: state repository { nameWithOwner } }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    """
+                        .trimIndent(),
+                variables(),
+            )
+                .graphObject("repository")
+                .graphObject("issueOrPullRequest")
+                .graphObject("timelineItems")
+                .graphNodes()
+        return nodes
+            .mapNotNull { event ->
+                val source = event.graphObject("source")
+                val sourceKind = source.graphText("__typename")
+                if (sourceKind == "Issue" || sourceKind == "PullRequest") {
+                    event.graphText("createdAt") to linkedOption(source, sourceKind)
+                } else {
+                    null
+                }
+            }
+            .sortedByDescending { it.first }
+            .map { it.second }
+            .distinctBy { it.id }
+    }
+
+    suspend fun issueAssignees(): IssuePropertyChoices = coroutineScope {
+        check(kind == CollaborationKind.Issue)
+        val target = node(includeMilestone = false, includeAssignPermission = true).target()
+        val editable = target["viewerCanAssign"]?.jsonPrimitive?.booleanOrNull == true
+        val selected = async { currentValues(target, WorkProperty.Assignees) }
+        val candidates = if (editable) async { options(WorkProperty.Assignees) } else null
+        val current = selected.await()
+        IssuePropertyChoices(
+            target.graphRequiredText("id"),
+            current,
+            (current + candidates?.await().orEmpty()).distinctBy { it.id },
+            editable,
+        )
+    }
+
+    private val issueMetadata by lazy { IssueMetadataGraphQl(owner, repository, number, request) }
+
+    fun issueMetadata(): IssueMetadataGraphQl {
+        check(kind == CollaborationKind.Issue)
+        return issueMetadata
+    }
 
     suspend fun options(property: WorkProperty): List<WorkPropertyOption> {
         if (property == WorkProperty.LinkedItems || property == WorkProperty.SubIssues)
@@ -386,12 +534,27 @@ internal class WorkPropertiesGraphQl(
         property: WorkProperty,
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
+        expectedIssueId: String? = null,
     ) {
-        val repo = node(includeMilestone = property == WorkProperty.Milestone)
+        val repo =
+            node(
+                includeMilestone = property == WorkProperty.Milestone,
+                includeReviewTarget = property == WorkProperty.Reviewers,
+                includeAssignPermission = property == WorkProperty.Assignees,
+            )
         val target = repo.target()
-        if (!repo.canEdit()) throw GithubPageException()
+        if (property == WorkProperty.Assignees) {
+            if (target["viewerCanAssign"]?.jsonPrimitive?.booleanOrNull != true)
+                throw GithubPageException()
+        } else if (!repo.canEdit()) throw GithubPageException()
         val id = target.graphRequiredText("id")
+        if (expectedIssueId != null && id != expectedIssueId) throw WorkDetailReviewChangedException()
         val actual = currentValues(target, property)
+        if (property == WorkProperty.Assignees) {
+            val desired = selected.mapTo(hashSetOf()) { it.id }
+            if (actual.any { !it.editable && it.id !in desired }) throw GithubPageException()
+            if (actual.mapTo(hashSetOf()) { it.id } == desired) return
+        }
         // 比较目标属性而不是整份详情，避免其他人的评论让无关属性保存失效。
         if (actual.map { it.id }.toSet() != original.map { it.id }.toSet())
             throw WorkDetailReviewChangedException()
@@ -469,14 +632,27 @@ internal class WorkPropertiesGraphQl(
             return
         }
         if (property == WorkProperty.Reviewers) {
-            if (kind != CollaborationKind.PullRequest) throw GithubPageException()
-            val users = selected.filter { it.kind != "Team" }.map { it.id }
-            // 选择器不提供团队候选；替换用户列表时保留现有团队，避免编辑用户时静默丢掉团队。
-            val teams = actual.filter { it.kind == "Team" }.map { it.id }
+            if (kind != CollaborationKind.PullRequest || target.graphRequiredText("state") != "OPEN") {
+                throw WorkDetailReviewChangedException()
+            }
+            val actualIds = actual.map(WorkPropertyOption::id).toSet()
+            val selectedIds = selected.map(WorkPropertyOption::id).toSet()
+            val removed = actual.filterNot { it.id in selectedIds }
+            val added = selected.filterNot { it.id in actualIds }
+            if (removed.isEmpty() && added.isEmpty()) return
+            if (removed.any { it.kind != "User" } || added.any { it.kind != "User" }) throw GithubPageException()
+            val union = removed.isEmpty()
+            if (!union && actual.any { it.kind !in setOf("User", "Team", "EnterpriseTeam", "Bot") }) {
+                throw GithubPageException()
+            }
+            // 只新增时保留现有请求；替换时显式保留不可编辑的已有团队与机器人。
+            val users = if (union) added else selected.filter { it.kind == "User" }
+            val teams = if (union) emptyList() else actual.filter { it.kind == "Team" || it.kind == "EnterpriseTeam" }
+            val bots = if (union) emptyList() else actual.filter { it.kind == "Bot" }
             execute(
                     """
-                    mutation RequestReviewers(${'$'}id: ID!, ${'$'}users: [ID!]!, ${'$'}teams: [ID!]!) {
-                        requestReviews(input: {pullRequestId: ${'$'}id, userIds: ${'$'}users, teamIds: ${'$'}teams, union: false}) {
+                    mutation RequestReviewers(${'$'}id: ID!, ${'$'}users: [ID!]!, ${'$'}teams: [ID!]!, ${'$'}bots: [ID!]!, ${'$'}union: Boolean!) {
+                        requestReviews(input: {pullRequestId: ${'$'}id, userIds: ${'$'}users, teamIds: ${'$'}teams, botIds: ${'$'}bots, union: ${'$'}union}) {
                             pullRequest { id }
                         }
                     }
@@ -484,8 +660,10 @@ internal class WorkPropertiesGraphQl(
                         .trimIndent(),
                     buildJsonObject {
                         put("id", id)
-                        put("users", JsonArray(users.map { JsonPrimitive(it) }))
-                        put("teams", JsonArray(teams.map { JsonPrimitive(it) }))
+                        put("users", JsonArray(users.map { JsonPrimitive(it.id) }))
+                        put("teams", JsonArray(teams.map { JsonPrimitive(it.id) }))
+                        put("bots", JsonArray(bots.map { JsonPrimitive(it.id) }))
+                        put("union", union)
                     },
                     write = true,
                 )

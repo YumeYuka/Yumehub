@@ -40,7 +40,6 @@ data class GithubReleaseDetail(
     val immutable: Boolean,
     val canReact: Boolean,
     val reactions: List<GithubReactionGroup>,
-    val openGraphImageUrl: String? = null,
 )
 
 data class GithubReleaseAsset(
@@ -215,7 +214,6 @@ private fun JsonObject.releaseDetail() =
         version = releaseVersion(),
         url = graphRequiredText("url"),
         repositoryUrl = graphObject("repository").graphRequiredText("url"),
-        openGraphImageUrl = graphObject("repository").graphText("openGraphImageUrl"),
         author = (get("author") as? JsonObject)?.graphText("login"),
         authorAvatarUrl = (get("author") as? JsonObject)?.graphText("avatarUrl"),
         hasTag = nullableRelease("tag") != null,
@@ -244,7 +242,7 @@ private const val VersionFields =
     "id name tagName createdAt publishedAt isLatest isPrerelease isDraft"
 private const val DetailFields =
     "$VersionFields immutable descriptionHTML url author { login avatarUrl } " +
-        "repository { url openGraphImageUrl } " +
+        "repository { url } " +
         "tag { id } viewerCanReact $ReactionFragment"
 private const val NewestFirst = "{field: CREATED_AT, direction: DESC}"
 

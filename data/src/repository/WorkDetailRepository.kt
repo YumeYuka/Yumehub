@@ -17,13 +17,16 @@ import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
-import moe.yumeyuka.yumehub.data.api.dto.CollaborationReactionDto
+import moe.yumeyuka.yumehub.data.api.dto.IssueField
+import moe.yumeyuka.yumehub.data.api.dto.IssueFieldValue
+import moe.yumeyuka.yumehub.data.api.dto.IssuePropertyChoices
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestCheckRunDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestReviewCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestReviewDto
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
+import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.cache.DataDomain
@@ -85,8 +88,6 @@ class WorkDetailRepository(
     private val resource: CachedResource<CollaborationItemDto> =
         this@WorkDetailRepository.resource(account, owner, repository, kind, number)
     val state = resource.state
-    val reactionUpdates: GithubReactionUpdates
-      get() = cache.reactionUpdates(account)
     private val commentsKey = "comments-graphql.v1:${kind.name}:$target"
     private val reviewsKey = "reviews-graphql.v1:${kind.name}:$target"
     private val timelineKey = "work-timeline-graphql.v1:${kind.name}:$target"
@@ -127,17 +128,6 @@ class WorkDetailRepository(
       return if (cache.changes(account).isMerged(WorkTarget(owner, repository, number, kind))) {
         item.copy(merged = true, state = "closed")
       } else item
-    }
-
-    suspend fun requestReview(login: String) {
-      val latest = load()
-      if (kind != CollaborationKind.PullRequest || latest.state != "open")
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.requestReview(requireNotNull(latest.nodeId), login)
-      } finally {
-        changed()
-      }
     }
 
     suspend fun editPullRequest(snapshot: CollaborationItemDto, field: String, value: String) {
@@ -232,12 +222,58 @@ class WorkDetailRepository(
     }
 
     suspend fun properties() = graph.properties()
+    suspend fun crossReferences() = graph.crossReferences()
+
 
     suspend fun linkedOptions(query: String, after: String?) = graph.linkedOptions(query, after)
 
     suspend fun subIssueOptions(query: String, after: String?) = graph.subIssueOptions(query, after)
 
     suspend fun propertyOptions(property: WorkProperty) = graph.propertyOptions(property)
+
+    suspend fun reviewRequests() = graph.reviewRequests()
+
+    suspend fun reviewerCandidates(query: String, after: String?) = graph.reviewerCandidates(query, after)
+
+    suspend fun issueTypes() = graph.issueMetadata().types()
+
+    suspend fun issueFields() = graph.issueMetadata().fields()
+
+    suspend fun issueAssignees() = graph.issueAssignees()
+
+    suspend fun saveIssueType(baseline: IssuePropertyChoices, selectedId: String?) {
+      graph.issueMetadata().saveType(baseline.issueId, baseline.selected.singleOrNull()?.id, selectedId)
+      changed()
+    }
+
+    suspend fun saveIssueField(issueId: String, field: IssueField, value: IssueFieldValue?) {
+      graph.issueMetadata().saveField(issueId, field, value)
+      changed()
+    }
+
+    suspend fun saveIssueAssignees(baseline: IssuePropertyChoices, selected: List<WorkPropertyOption>) {
+      graph.saveIssueAssignees(baseline, selected)
+      changed()
+    }
+
+    suspend fun saveReviewRequests(
+        original: List<WorkPropertyOption>,
+        selected: List<WorkPropertyOption>,
+    ) {
+      try {
+        graph.saveProperty(WorkProperty.Reviewers, original, selected)
+      } finally {
+        changed()
+      }
+    }
+
+    suspend fun saveMilestone(
+        original: List<WorkPropertyOption>,
+        selected: List<WorkPropertyOption>,
+    ) {
+      graph.saveProperty(WorkProperty.Milestone, original, selected)
+      changed()
+    }
 
     /** 页面退出后仍继续提交；失败不阻塞导航，下一次刷新会回到服务端实际值。 */
     fun savePropertiesInBackground(
@@ -258,6 +294,17 @@ class WorkDetailRepository(
         }
       }
     }
+
+    fun reactionUpdates(): GithubReactionUpdates =
+        this@WorkDetailRepository.cache.reactionUpdates(account)
+
+    suspend fun headerProjectTitles(): List<String> = graph.headerProjectTitles()
+
+    suspend fun toggleReaction(
+        subjectId: String,
+        content: GithubReactionContent,
+        reacted: Boolean,
+    ): List<GithubReactionGroup> = graph.toggleReaction(subjectId, content, reacted)
 
     fun timeline(scope: CoroutineScope): ThreadWindow<WorkTimelineEntry> =
         ThreadWindow(scope, WorkTimelineEntry::key) { direction, cursor ->
@@ -358,13 +405,8 @@ class WorkDetailRepository(
       if (
           kind != CollaborationKind.PullRequest ||
               latest.baseRefName != base ||
-              latest.state != "open" ||
-              latest.draft ||
-              !latest.viewerCanMerge ||
-              !allowed ||
-              latest.mergeable != "MERGEABLE" ||
-              latest.mergeStateStatus != "CLEAN" ||
-              latest.reviewDecision in setOf("REVIEW_REQUIRED", "CHANGES_REQUESTED")
+              !latest.canMerge() ||
+              !allowed
       )
           throw WorkDetailReviewChangedException()
       try {
@@ -392,12 +434,6 @@ class WorkDetailRepository(
       changed(commentsKey)
       return updated
     }
-
-    suspend fun toggleReaction(
-        nodeId: String,
-        content: String,
-        reacted: Boolean,
-    ): List<CollaborationReactionDto> = graph.toggleCommentReaction(nodeId, content, reacted)
 
     suspend fun deleteComment(comment: CollaborationCommentDto) {
       requireUnchanged(comment)
