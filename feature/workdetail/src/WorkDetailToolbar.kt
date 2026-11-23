@@ -29,7 +29,7 @@ import io.github.neoruaa.glasmio.glass.GlassSurfaceStyle
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
-import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
+import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
@@ -42,17 +42,6 @@ internal fun CollaborationSection.label(strings: GithubStrings_WorkDetail): Stri
         CollaborationSection.Files -> strings.Files
         CollaborationSection.Commits -> strings.Commits
     }
-
-internal fun CollaborationItemDto.canMerge(): Boolean =
-    state == "open" &&
-        !draft &&
-        !merged &&
-        viewerCanMerge &&
-        (mergeCommitAllowed || squashMergeAllowed || rebaseMergeAllowed) &&
-        mergeable == "MERGEABLE" &&
-        mergeStateStatus == "CLEAN" &&
-        reviewDecision != "REVIEW_REQUIRED" &&
-        reviewDecision != "CHANGES_REQUESTED"
 
 @Composable
 internal fun WorkDetailToolbar(

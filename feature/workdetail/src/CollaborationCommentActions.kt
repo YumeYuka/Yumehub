@@ -9,9 +9,6 @@ import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
-import moe.yumeyuka.yumehub.data.api.dto.CollaborationReactionDto
-import moe.yumeyuka.yumehub.data.repository.GithubReactionContent
-import moe.yumeyuka.yumehub.data.repository.GithubReactionGroup
 import moe.yumeyuka.yumehub.locale.GithubStrings_Common
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -75,14 +72,17 @@ internal fun WorkDescriptionCard(
         nodeId = entry.nodeId,
         inCommentCard = true,
     )
-    GithubReactionBar(
-        subjectKey = entry.nodeId ?: entry.number.toString(),
-        sourceReactions = remember(entry.reactions) { entry.reactions.toReactionGroups() },
-        canReact = entry.viewerCanReact && !entry.nodeId.isNullOrBlank(),
-        enabled = enabled,
-        updates = viewModel.reactionUpdates,
-        onToggle = viewModel::toggleBodyReaction,
-    )
+    entry.nodeId?.let { subjectId ->
+      GithubReactionBar(
+          subjectKey = subjectId,
+          sourceReactions = entry.reactions,
+          canReact = entry.viewerCanReact,
+          enabled = enabled,
+          updates = viewModel.reactionUpdates,
+      ) { content, reacted ->
+        if (navigationEnabled) viewModel.toggleBodyReaction(content, reacted)
+      }
+    }
   }
 }
 
@@ -147,24 +147,20 @@ internal fun CommentDiscussionEntry(
           inCommentCard = true,
       )
     }
-    GithubReactionBar(
-        subjectKey = comment.nodeId ?: "comment-${comment.id}",
-        sourceReactions = remember(comment.reactions) { comment.reactions.toReactionGroups() },
-        canReact = comment.viewerCanReact && !comment.nodeId.isNullOrBlank(),
-        enabled = enabled,
-        updates = viewModel.reactionUpdates,
-    ) { content, reacted ->
-      viewModel.toggleCommentReaction(comment, content, reacted)
+    val subjectId = comment.nodeId
+    if (!comment.isMinimized && subjectId != null) {
+      GithubReactionBar(
+          subjectKey = subjectId,
+          sourceReactions = comment.reactions,
+          canReact = comment.viewerCanReact,
+          enabled = enabled,
+          updates = viewModel.reactionUpdates,
+      ) { content, reacted ->
+        if (navigationEnabled) viewModel.toggleReaction(comment, content, reacted)
+      }
     }
   }
 }
-
-internal fun List<CollaborationReactionDto>.toReactionGroups(): List<GithubReactionGroup> =
-    mapNotNull { reaction ->
-      GithubReactionContent.entries.firstOrNull { it.name == reaction.content }?.let {
-        GithubReactionGroup(it, reaction.count, reaction.viewerReacted)
-      }
-    }
 
 private fun commentActionItems(
     strings: GithubStrings_WorkDetail,

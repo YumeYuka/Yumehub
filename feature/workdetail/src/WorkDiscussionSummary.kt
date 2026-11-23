@@ -79,13 +79,14 @@ internal fun WorkDiscussionSummary(
         }
         GithubSection(strings.Status) {
             val reviewColor =
-                when (entry.reviewDecision) {
+                when (entry.viewerLatestReviewState.takeUnless { entry.viewerReviewRequested }) {
                     "APPROVED" -> GithubWorkColors.open
                     "CHANGES_REQUESTED" -> GithubWorkColors.closed
                     else -> GithubWorkColors.draft
                 }
             GlasmioListRow(
-                title = strings.Reviews,
+                title = strings.Review,
+                detail = entry.viewerReviewLabel(strings),
                 leading = {
                     GithubIcon(
                         Lucide.MessageCircleCheck,

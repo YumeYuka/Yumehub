@@ -32,19 +32,21 @@ import moe.yumeyuka.yumehub.data.api.dto.PullRequestCheckRunDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestReviewCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestReviewDto
+import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.data.repository.GithubReactionContent
 import moe.yumeyuka.yumehub.data.repository.GithubReactionGroup
 import moe.yumeyuka.yumehub.data.repository.GithubReactionUpdate
+import moe.yumeyuka.yumehub.data.repository.GithubReactionUpdates
 import moe.yumeyuka.yumehub.data.repository.NotificationsRepository
 import moe.yumeyuka.yumehub.data.repository.WorkDetailCommentChangedException
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 import moe.yumeyuka.yumehub.data.repository.WorkDetailTypeMismatchException
-import moe.yumeyuka.yumehub.data.repository.WorkMergeMessage
 import moe.yumeyuka.yumehub.data.repository.WorkItemSubscription
 import moe.yumeyuka.yumehub.data.repository.WorkItemSubscriptionRepository
+import moe.yumeyuka.yumehub.data.repository.WorkMergeMessage
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.withToggledReaction
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
@@ -58,7 +60,6 @@ import retrofit2.HttpException
 
 internal enum class CollaborationEditorTarget {
     Comment,
-    Review,
     EditedComment,
     LineComment,
 }
@@ -128,6 +129,7 @@ internal data class CollaborationDetailUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val browserUrl: String? = null,
+    val projectTitles: List<String> = emptyList(),
     val section: CollaborationSection = CollaborationSection.Discussion,
     val statusPanel: WorkStatusPanel? = null,
     val composerTarget: CollaborationEditorTarget? = null,
@@ -161,7 +163,16 @@ internal data class CollaborationDetailUiState(
     val branchLoading: Boolean = false,
     val branchCursor: String? = null,
     val branchError: Boolean = false,
-)
+) {
+    val canSubmitReview: Boolean
+        get() =
+            canReview &&
+                !loading &&
+                !submitting &&
+                !submissionUncertain &&
+                (validCommentBody(reviewDraft) ||
+                    reviewDraft.isBlank() && reviewEvent == PullRequestReviewEvent.Approve)
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class CollaborationDetailViewModel(
@@ -178,6 +189,7 @@ internal class CollaborationDetailViewModel(
     private val account: String,
 ) : ViewModel() {
     private val detail = repository.detail(viewerLogin, owner, repo, kind, number)
+    val issueMetadata = IssueMetadataEditor(detail, viewModelScope)
     private val draftPrefix =
         "${owner.lowercase(Locale.ROOT)}/${repo.lowercase(Locale.ROOT)}/${kind.name}/$number"
     private val draftWrites =
@@ -203,7 +215,7 @@ internal class CollaborationDetailViewModel(
                 .withDetail(detail.state.value),
         )
     val uiState = mutableUiState.asStateFlow()
-    val reactionUpdates = detail.reactionUpdates
+    val reactionUpdates = detail.reactionUpdates()
     private var branchJob: Job? = null
     private var branchGeneration = 0L
 
@@ -423,8 +435,12 @@ internal class CollaborationDetailViewModel(
             }
         }
         // 首屏只拉详情与当前分节第一页；属性（一次 load 是节点查询加若干分页查询）留到面板首次
-        // 打开时按需取，避免和首屏抢同一批连接。
+        // 打开时按需取。头部项目标签只多发一次可缺省的项目连接查询。
         detail.refresh()
+        viewModelScope.launch {
+            val projectTitles = detail.headerProjectTitles()
+            mutableUiState.update { it.copy(projectTitles = projectTitles) }
+        }
         viewModelScope.launch {
             uiState.collect { state ->
                 composerStates.forEach { (target, editor) ->
@@ -442,7 +458,6 @@ internal class CollaborationDetailViewModel(
         if (uiState.value.composerTarget != target) return
         when (target) {
             CollaborationEditorTarget.Comment -> changeCommentDraft(source)
-            CollaborationEditorTarget.Review -> changeReviewDraft(source)
             CollaborationEditorTarget.EditedComment -> changeEditedComment(source)
             CollaborationEditorTarget.LineComment -> changeLineComment(source)
         }
@@ -460,7 +475,6 @@ internal class CollaborationDetailViewModel(
                 title =
                     when (target) {
                         CollaborationEditorTarget.Comment -> strings.Comment
-                        CollaborationEditorTarget.Review -> strings.Reviews
                         CollaborationEditorTarget.EditedComment -> strings.EditComment
                         CollaborationEditorTarget.LineComment -> strings.LineComment
                     },
@@ -479,8 +493,6 @@ internal class CollaborationDetailViewModel(
                     if (activeEditorSession === session && uiState.value.composerTarget == target) {
                         when (target) {
                             CollaborationEditorTarget.Comment -> submitComment()
-                            // 保存正文只退出编辑器；等编辑路由销毁再恢复评审面板。
-                            CollaborationEditorTarget.Review -> session.complete()
                             CollaborationEditorTarget.EditedComment -> saveEditedComment()
                             CollaborationEditorTarget.LineComment -> submitLineComment()
                         }
@@ -488,12 +500,11 @@ internal class CollaborationDetailViewModel(
                 },
                 headerContent =
                     if (target == CollaborationEditorTarget.LineComment)
-                        ({ CollaborationEditorHeader(this, target) })
+                        ({ CollaborationEditorHeader(this) })
                     else null,
                 submitLabel =
                     when (target) {
                         CollaborationEditorTarget.EditedComment -> strings.SaveChanges
-                        CollaborationEditorTarget.Review -> strings.SaveChanges
                         else -> strings.Publish
                     },
                 onDismiss = {
@@ -529,8 +540,6 @@ internal class CollaborationDetailViewModel(
                 when (target) {
                     CollaborationEditorTarget.Comment ->
                         state.canComment && validCommentBody(source)
-                    CollaborationEditorTarget.Review ->
-                        state.canReview && (source.isBlank() || validCommentBody(source))
                     CollaborationEditorTarget.EditedComment ->
                         state.editingComment?.let {
                             canManageComment(it.comment) &&
@@ -558,7 +567,6 @@ internal class CollaborationDetailViewModel(
     ): String =
         when (target) {
             CollaborationEditorTarget.Comment -> state.commentDraft
-            CollaborationEditorTarget.Review -> state.reviewDraft
             CollaborationEditorTarget.EditedComment -> state.editingComment?.draft.orEmpty()
             CollaborationEditorTarget.LineComment -> state.lineCommentDraft
         }
@@ -737,8 +745,6 @@ internal class CollaborationDetailViewModel(
             when (target) {
                 CollaborationEditorTarget.Comment ->
                     state.canComment || state.commentDraft.isNotEmpty()
-                CollaborationEditorTarget.Review ->
-                    state.canReview || state.reviewDraft.isNotEmpty()
                 CollaborationEditorTarget.EditedComment -> state.editingComment != null
                 CollaborationEditorTarget.LineComment -> state.reviewLine != null
             }
@@ -753,15 +759,7 @@ internal class CollaborationDetailViewModel(
             CollaborationEditorTarget.LineComment -> cancelLineComment()
             else -> Unit
         }
-        mutableUiState.update {
-            it.copy(
-                composerTarget = null,
-                statusPanel =
-                    if (it.composerTarget == CollaborationEditorTarget.Review)
-                        WorkStatusPanel.Reviews
-                    else it.statusPanel,
-            )
-        }
+        mutableUiState.update { it.copy(composerTarget = null) }
     }
 
     fun showStatusPanel(panel: WorkStatusPanel?) {
@@ -774,12 +772,6 @@ internal class CollaborationDetailViewModel(
         if (uiState.value.submitting) return
         mutableUiState.update { it.copy(commentDraft = draft) }
         draftWrites.schedule("comment", draft)
-    }
-
-    fun beginReview() {
-        val state = uiState.value
-        if (state.submitting || state.submissionUncertain) return
-        mutableUiState.update { it.copy(composerTarget = CollaborationEditorTarget.Review) }
     }
 
     fun changeReviewDraft(draft: String) {
@@ -804,6 +796,66 @@ internal class CollaborationDetailViewModel(
             !uiState.value.submitting &&
             !uiState.value.loading &&
             !uiState.value.submissionUncertain
+
+    fun toggleBodyReaction(content: GithubReactionContent, reacted: Boolean) {
+        val item = uiState.value.item ?: return
+        toggleReaction(
+            subjectId = item.nodeId,
+            canReact = item.viewerCanReact,
+            sourceReactions = item.reactions,
+            content = content,
+            reacted = reacted,
+        )
+    }
+
+    fun toggleReaction(
+        comment: CollaborationCommentDto,
+        content: GithubReactionContent,
+        reacted: Boolean,
+    ) {
+        toggleReaction(
+            subjectId = comment.nodeId,
+            canReact = comment.viewerCanReact,
+            sourceReactions = comment.reactions,
+            content = content,
+            reacted = reacted,
+        )
+    }
+
+    private fun toggleReaction(
+        subjectId: String?,
+        canReact: Boolean,
+        sourceReactions: List<GithubReactionGroup>,
+        content: GithubReactionContent,
+        reacted: Boolean,
+    ) {
+        val state = uiState.value
+        if (subjectId == null || !canReact) return
+        if (state.submitting && !state.sendingInBackground) return
+        val previous = reactionUpdates.current(subjectId, sourceReactions)
+        if (previous?.pending == true) return
+        val reactions = previous?.reactions ?: sourceReactions
+        if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
+        val pending =
+            GithubReactionUpdate(
+                sourceReactions,
+                reactions.withToggledReaction(content),
+                pending = true,
+            )
+        viewModelScope.launch {
+            reactionUpdates.set(subjectId, pending)
+            try {
+                val confirmed = detail.toggleReaction(subjectId, content, reacted)
+                reactionUpdates.set(subjectId, pending.copy(reactions = confirmed, pending = false))
+            } catch (error: CancellationException) {
+                reactionUpdates.set(subjectId, previous)
+                throw error
+            } catch (_: Exception) {
+                reactionUpdates.set(subjectId, previous)
+                messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
+            }
+        }
+    }
 
     fun editComment(comment: CollaborationCommentDto) {
         if (!canManageComment(comment)) return
@@ -842,55 +894,6 @@ internal class CollaborationDetailViewModel(
         if (!canHideComment(comment)) return
         submit(CollaborationSection.Discussion, onSuccess = {}) {
             detail.minimizeComment(comment, reason.apiValue)
-        }
-    }
-
-    fun toggleCommentReaction(
-        comment: CollaborationCommentDto,
-        content: GithubReactionContent,
-        reacted: Boolean,
-    ) {
-        if (!comment.viewerCanReact) return
-        toggleReaction(comment.nodeId, comment.reactions.toReactionGroups(), content, reacted)
-    }
-
-    fun toggleBodyReaction(content: GithubReactionContent, reacted: Boolean) {
-        val item = uiState.value.item?.takeIf { it.viewerCanReact } ?: return
-        toggleReaction(item.nodeId, item.reactions.toReactionGroups(), content, reacted)
-    }
-
-    private fun toggleReaction(
-        subjectId: String?,
-        sourceReactions: List<GithubReactionGroup>,
-        content: GithubReactionContent,
-        reacted: Boolean,
-    ) {
-        val nodeId = subjectId?.takeIf(String::isNotBlank) ?: return
-        val current = uiState.value
-        if (current.submitting && !current.sendingInBackground) return
-        val previous = reactionUpdates.current(nodeId, sourceReactions)
-        if (previous?.pending == true) return
-        val reactions = previous?.reactions ?: sourceReactions
-        val isReacted = reactions.any { it.content == content && it.viewerReacted }
-        if (isReacted != reacted) return
-        val pending =
-            GithubReactionUpdate(
-                sourceReactions,
-                reactions.withToggledReaction(content),
-                pending = true,
-            )
-        viewModelScope.launch {
-            reactionUpdates.set(nodeId, pending)
-            try {
-                val confirmed = detail.toggleReaction(nodeId, content.name, reacted).toReactionGroups()
-                reactionUpdates.set(nodeId, pending.copy(reactions = confirmed, pending = false))
-            } catch (error: CancellationException) {
-                reactionUpdates.set(nodeId, previous)
-                throw error
-            } catch (_: Exception) {
-                reactionUpdates.set(nodeId, previous)
-                messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
-            }
         }
     }
 
@@ -1086,11 +1089,6 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun requestReview(login: String) {
-        if (login.isBlank()) return
-        submit(CollaborationSection.Reviews, onSuccess = {}) { detail.requestReview(login.trim()) }
-    }
-
     private fun updateTitleFromEditor(title: String) {
         val snapshot = uiState.value.item ?: return
         if (title.isBlank() || title.length > 256) return
@@ -1158,11 +1156,9 @@ internal class CollaborationDetailViewModel(
 
     fun submitReview() {
         val state = uiState.value
+        if (state.statusPanel != WorkStatusPanel.Reviews || !state.canSubmitReview) return
         val commit = state.item?.head?.sha ?: return
         val body = state.reviewDraft.takeUnless(String::isBlank)
-        if (!state.canReview || state.loading || state.submitting) return
-        if (state.reviewEvent != PullRequestReviewEvent.Approve && body == null) return
-        if (body != null && !validCommentBody(body)) return
         submit(
             CollaborationSection.Reviews,
             onSuccess = {

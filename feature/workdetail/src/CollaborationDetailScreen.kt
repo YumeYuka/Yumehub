@@ -15,6 +15,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
+import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.ThreadWindowState
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEntry
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -25,7 +26,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
-import moe.yumeyuka.yumehub.ui.component.githubThreadItems
+import moe.yumeyuka.yumehub.ui.component.githubThreadGroupedItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
@@ -37,10 +38,13 @@ internal fun LazyListScope.CollaborationDetailScreen(
     entries: LazyPagingItems<CollaborationEntry>?,
     entrySlots: GithubPagingSlots<CollaborationEntry>?,
     timeline: ThreadWindowState<WorkTimelineEntry>?,
+    activityGroups: List<List<WorkTimelineEntry>>,
     viewModel: CollaborationDetailViewModel,
     onOpenInBrowser: (String) -> Unit,
     onOpenFiles: () -> Unit,
     onOpenCommits: () -> Unit,
+    onOpenCommitGroup: (List<RepositoryActivityEntry>) -> Unit,
+    onOpenCommit: (String) -> Unit,
     onStatus: (WorkStatusPanel) -> Unit,
 ) {
   val entry = state.item
@@ -104,21 +108,22 @@ internal fun LazyListScope.CollaborationDetailScreen(
       GithubSectionHeader(LocalGithubStrings.current.WorkDetail.Activity)
     }
     if (timeline != null) {
-      githubThreadItems(
-          timeline,
-          WorkTimelineEntry::key,
-          viewModel.timeline::load,
-          placeholder = { WorkTimelinePlaceholder(showTop = false, showBottom = false) },
-          pageControl = { loading, enabled, label, onClick ->
-            WorkTimelinePageControl(loading, enabled, label, onClick)
-          },
-      ) { item, index ->
-        WorkTimelineItem(
-            item,
+      githubThreadGroupedItems(
+          state = timeline,
+          groups = activityGroups,
+          key = { it.first().key },
+          load = viewModel.timeline::load,
+          placeholder = { WorkTimelinePlaceholder() },
+      ) { group ->
+        val host = requireNotNull(LocalGithubPageHost.current)
+        WorkActivityCard(
+            group,
             state,
             viewModel,
-            showTop = index > 0,
-            showBottom = index < timeline.items.lastIndex,
+            onOpenCommitGroup = onOpenCommitGroup,
+            onOpenCommit = { oid ->
+              if (host.navigationEnabled) onOpenCommit(oid)
+            },
         )
       }
     }

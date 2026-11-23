@@ -1,8 +1,10 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -28,13 +30,12 @@ internal fun WorkEditMenu(
     val item = state.item
     val isPullRequest = viewModel.kind == CollaborationKind.PullRequest
     var expanded by remember { mutableStateOf(false) }
-    var branchPickerVisible by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
     val available = enabled && !state.submitting && !state.submissionUncertain
     GlasmioMenu(
         expanded = expanded,
         onExpandedChange = { expanded = it },
-        itemCount = if (isPullRequest) 4 else 3,
+        itemCount = 3,
         anchor = { open ->
             GlasmioIconButton(onClick = open, enabled = available) {
                 GithubIcon(Lucide.Pencil, contentDescription = strings.EditProperty)
@@ -51,19 +52,6 @@ internal fun WorkEditMenu(
                 viewModel.openTitleEditor()
             },
         )
-        if (isPullRequest) {
-            GlasmioMenuItem(
-                title = strings.ChangeBaseBranch,
-                backdrop = backdrop,
-                enabled = available && item?.viewerCanChangeBase == true && item.state == "open",
-                icon = { GithubIcon(Lucide.GitBranch, contentDescription = null, size = 20.dp) },
-                onClick = {
-                    close()
-                    branchPickerVisible = true
-                    viewModel.searchBaseBranches("")
-                },
-            )
-        }
         GlasmioMenuItem(
             title =
                 if (item?.locked == true) strings.UnlockConversation else strings.LockConversation,
@@ -98,9 +86,54 @@ internal fun WorkEditMenu(
             },
         )
     }
+    GlasmioAlertDialog(
+        visible = confirmation != null,
+        onDismissRequest = { confirmation = null },
+        title =
+            when (confirmation) {
+                "close-pull" -> strings.ConfirmClosePullRequest
+                "close-issue" -> strings.ConfirmCloseIssue
+                else ->
+                    if (item?.locked == true) strings.UnlockConversation
+                    else strings.ConfirmLockConversation
+            },
+        buttons =
+            listOf(
+                GlasmioAlertButtonSpec(
+                    common.Cancel,
+                    { confirmation = null },
+                    GlasmioAlertButtonRole.Cancel,
+                ),
+                GlasmioAlertButtonSpec(
+                    common.Confirm,
+                    {
+                        when (confirmation) {
+                            "close-pull" -> viewModel.closePullRequest()
+                            "close-issue" -> viewModel.closeIssue()
+                            else -> viewModel.toggleConversationLock()
+                        }
+                        confirmation = null
+                    },
+                    if (confirmation == "lock") GlasmioAlertButtonRole.Default
+                    else GlasmioAlertButtonRole.Destructive,
+                ),
+            ),
+    )
+}
+
+@Composable
+internal fun WorkBaseBranchSheet(
+    state: CollaborationDetailUiState,
+    viewModel: CollaborationDetailViewModel,
+    canChangeBase: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val strings = LocalGithubStrings.current.WorkDetail
+    val current = state.item?.baseRefName
+    var selected by remember(viewModel, current) { mutableStateOf(current) }
     val branchChoices = if (state.branchLoading) emptyList() else state.branchChoices
     val branchSlots =
-        remember(branchPickerVisible, state.branchQuery) { GithubPagingSlotKeys("base-branch") }
+        remember(state.branchQuery) { GithubPagingSlotKeys("base-branch") }
     val branchKeys =
         remember(branchSlots, branchChoices, state.branchLoading, state.branchCursor) {
             branchSlots.update(
@@ -109,19 +142,23 @@ internal fun WorkEditMenu(
                 initialLoading = state.branchLoading,
             )
         }
-    if (branchPickerVisible && state.branchError)
+    if (state.branchError)
         GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
     GithubSearchSelectionSheet(
-        visible = branchPickerVisible,
+        visible = true,
         title = strings.ChangeBaseBranch,
         placeholder = strings.PropertySearch,
         queryKey = state.branchQuery,
         onQueryChange = viewModel::searchBaseBranches,
-        onDismiss = { branchPickerVisible = false },
-        onConfirm = { branchPickerVisible = false },
-        enabled = available,
-        showConfirm = false,
-    ) { finish ->
+        onDismiss = onDismiss,
+        onConfirm = {
+            selected?.takeIf { canChangeBase && it != current }?.let {
+                viewModel.chooseBaseBranch(it)
+                onDismiss()
+            }
+        },
+        confirmEnabled = canChangeBase && selected != null && selected != current,
+    ) { _ ->
         when {
             state.branchError -> Unit
             !state.branchLoading && state.branchChoices.isEmpty() ->
@@ -157,23 +194,23 @@ internal fun WorkEditMenu(
                             placeholder = { TitleRowPlaceholder(showTopSeparator = index > 0) },
                         ) {
                             if (branch != null) {
+                                val name = branch.removePrefix("refs/heads/")
+                                val checked = name == selected
                                 GlasmioListRow(
-                                    title = branch.removePrefix("refs/heads/"),
-                                    leading = {
-                                        GithubIcon(
-                                            Lucide.GitBranch,
-                                            contentDescription = null,
-                                            size = 20.dp,
-                                        )
+                                    title = name,
+                                    modifier = Modifier.selectable(
+                                        selected = checked,
+                                        enabled = canChangeBase,
+                                        role = Role.RadioButton,
+                                        onClick = { selected = name },
+                                    ),
+                                    trailing = {
+                                        if (checked) {
+                                            GithubIcon(Lucide.Check, contentDescription = null)
+                                        }
                                     },
                                     showTopSeparator = index > 0,
                                     showDisclosure = false,
-                                    onClick = {
-                                        finish {
-                                            viewModel.chooseBaseBranch(branch)
-                                            branchPickerVisible = false
-                                        }
-                                    },
                                 )
                             }
                         }
@@ -182,37 +219,4 @@ internal fun WorkEditMenu(
             }
         }
     }
-    GlasmioAlertDialog(
-        visible = confirmation != null,
-        onDismissRequest = { confirmation = null },
-        title =
-            when (confirmation) {
-                "close-pull" -> strings.ConfirmClosePullRequest
-                "close-issue" -> strings.ConfirmCloseIssue
-                else ->
-                    if (item?.locked == true) strings.UnlockConversation
-                    else strings.ConfirmLockConversation
-            },
-        buttons =
-            listOf(
-                GlasmioAlertButtonSpec(
-                    common.Cancel,
-                    { confirmation = null },
-                    GlasmioAlertButtonRole.Cancel,
-                ),
-                GlasmioAlertButtonSpec(
-                    common.Confirm,
-                    {
-                        when (confirmation) {
-                            "close-pull" -> viewModel.closePullRequest()
-                            "close-issue" -> viewModel.closeIssue()
-                            else -> viewModel.toggleConversationLock()
-                        }
-                        confirmation = null
-                    },
-                    if (confirmation == "lock") GlasmioAlertButtonRole.Default
-                    else GlasmioAlertButtonRole.Destructive,
-                ),
-            ),
-    )
 }

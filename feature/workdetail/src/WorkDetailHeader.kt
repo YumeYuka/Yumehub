@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -18,8 +19,8 @@ import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLabelChip
 import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTag
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
@@ -31,12 +32,17 @@ internal fun WorkDetailHeader(
     state: CollaborationDetailUiState,
     kind: CollaborationKind,
     onInformation: () -> Unit,
+    onLabels: () -> Unit,
+    onProjects: () -> Unit,
+    onReviewers: () -> Unit,
     onChecks: () -> Unit,
+    onIssueMetadata: (IssueMetadataPanel) -> Unit,
 ) {
     val entry = state.item
     val enabled = !state.submitting || state.sendingInBackground
     val isPullRequest = kind == CollaborationKind.PullRequest
     val strings = LocalGithubStrings.current.WorkDetail
+    val projectTitle = state.projectTitles.firstOrNull()
     GlasmioGroupedList {
         if (entry == null) {
             Box(Modifier.fillMaxWidth().height(58.dp).padding(16.dp)) {
@@ -48,44 +54,41 @@ internal fun WorkDetailHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    modifier = if (isPullRequest) Modifier.fillMaxWidth() else Modifier,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GithubWorkStatusTag(
-                        item = entry,
-                        kind = kind,
-                        onClick = onInformation,
-                        enabled = enabled,
-                    )
-                    if (isPullRequest) {
-                        val head = entry.head?.ref?.takeIf(String::isNotBlank)
-                        val base = entry.baseRefName?.takeIf(String::isNotBlank)
-                        if (head != null && base != null) {
-                            WorkHeaderBranches(
-                                head = head,
-                                base = base,
-                                enabled = enabled,
-                                onClick = onInformation,
-                                modifier = Modifier.weight(1f, fill = false),
+                GithubWorkStatusTag(
+                    item = entry,
+                    kind = kind,
+                    onClick = onInformation,
+                    enabled = enabled,
+                )
+                WorkHeaderLabels(entry, enabled, onLabels)
+                WorkHeaderProject(projectTitle, enabled, onProjects)
+                if (isPullRequest) WorkHeaderReviewers(entry, enabled, onReviewers)
+                if (kind == CollaborationKind.Issue) {
+                    val all = LocalGithubStrings.current
+                    if (entry.viewerCanTypeIssue || entry.issueType != null) {
+                        WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Type) }) {
+                            GithubIcon(
+                                Lucide.CircleDot, contentDescription = null, size = 16.dp,
+                                tint = issueOptionColor(entry.issueTypeColor),
                             )
+                            WorkHeaderText(entry.issueType ?: all.WorkList.IssueType)
                         }
                     }
-                }
-                if (entry.labels.size > 2) {
-                    WorkHeaderButton(enabled, onInformation) {
-                        WorkHeaderLabelColors(entry.labels)
-                        WorkHeaderText(strings.LabelCount(entry.labels.size))
-                    }
-                } else {
-                    entry.labels.forEach { label ->
-                        GithubLabelChip(
-                            name = label.name,
-                            color = label.color,
-                            enabled = enabled,
-                            onClick = onInformation,
+                    WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Assignees) }) {
+                        GithubIcon(Lucide.UserRound, contentDescription = null, size = 16.dp)
+                        WorkHeaderText(
+                            when (entry.assignedActors.size) {
+                                0 -> strings.Unassigned
+                                1 -> entry.assignedActors.single()
+                                else -> strings.AssigneeCount(entry.assignedActors.size)
+                            }
                         )
+                    }
+                    if (entry.viewerCanSeeIssueFields) {
+                        WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Fields) }) {
+                            GithubIcon(Lucide.Settings, contentDescription = null, size = 16.dp)
+                            WorkHeaderText(strings.IssueFields)
+                        }
                     }
                 }
                 entry.taskProgress?.let { progress ->
@@ -101,19 +104,83 @@ internal fun WorkDetailHeader(
 }
 
 @Composable
-private fun WorkHeaderBranches(
-    head: String,
-    base: String,
+private fun WorkHeaderLabels(
+    entry: CollaborationItemDto,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
+    val strings = LocalGithubStrings.current.WorkDetail
+    val labels = entry.labels
     WorkHeaderButton(enabled, onClick, modifier) {
-        GithubIcon(Lucide.GitBranchPlus, contentDescription = strings.HeadBranch, size = 16.dp)
-        WorkHeaderText(head, Modifier.weight(1f, fill = false))
-        GithubIcon(Lucide.ArrowRight, contentDescription = strings.BaseBranch, size = 16.dp)
-        WorkHeaderText(base, Modifier.weight(1f, fill = false))
+        if (labels.isEmpty()) {
+            GithubIcon(
+                Lucide.Tag,
+                contentDescription = null,
+                size = 16.dp,
+                tint = GlasmioTheme.colors.secondaryContent,
+            )
+            WorkHeaderText(strings.NoLabels, Modifier.weight(1f, fill = false))
+        } else {
+            WorkHeaderLabelColors(labels)
+            val text =
+                if (labels.size > 2) strings.LabelCount(labels.size)
+                else labels.joinToString(", ") { it.name }
+            WorkHeaderText(text, Modifier.weight(1f, fill = false))
+        }
+    }
+}
+
+@Composable
+private fun WorkHeaderProject(
+    title: String?,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalGithubStrings.current.WorkDetail
+    WorkHeaderButton(enabled, onClick, modifier) {
+        GithubIcon(
+            Lucide.Package,
+            contentDescription = null,
+            size = 16.dp,
+            tint = GlasmioTheme.colors.secondaryContent,
+        )
+        WorkHeaderText(title ?: strings.NoProjects, Modifier.weight(1f, fill = false))
+    }
+}
+
+@Composable
+private fun WorkHeaderReviewers(
+    entry: CollaborationItemDto,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalGithubStrings.current.WorkDetail
+    val reviewers = entry.requestedReviewers
+    WorkHeaderButton(enabled, onClick, modifier) {
+        if (reviewers.isEmpty()) {
+            GithubIcon(
+                Lucide.UserRound,
+                contentDescription = null,
+                size = 16.dp,
+                tint = GlasmioTheme.colors.secondaryContent,
+            )
+            WorkHeaderText(strings.NoReviewRequests, Modifier.weight(1f, fill = false))
+        } else {
+            reviewers.take(3).forEachIndexed { index, login ->
+                GithubAvatar(
+                    url = entry.requestedReviewerAvatars.getOrNull(index),
+                    login = login,
+                    size = 16.dp,
+                )
+            }
+            WorkHeaderText(
+                strings.ReviewRequests(entry.reviewRequestCount ?: reviewers.size),
+                Modifier.weight(1f, fill = false),
+            )
+        }
     }
 }
 
@@ -178,10 +245,15 @@ private fun WorkHeaderButton(
 }
 
 @Composable
-private fun WorkHeaderText(text: String, modifier: Modifier = Modifier) {
+private fun WorkHeaderText(
+    text: String,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Start,
+) {
     Text(
         text,
         modifier = modifier,
+        textAlign = textAlign,
         style = GlasmioTheme.textStyles.footnote,
         color = GlasmioTheme.colors.content,
         maxLines = 1,

@@ -1,267 +1,294 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
+import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.api.dto.PullRequestReviewDto
+import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEntry
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEventKind
+import moe.yumeyuka.yumehub.data.repository.WorkTimelineEventKind.*
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubDiscussionStatusIcon
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusIcon
-import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
-import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
-private val TimelineRailInset = 16.dp
-private val TimelineMarkerCenter = 26.dp
-private val TimelineMarkerSize = 24.dp
-private val TimelineConnectorBleed = 12.dp
-private val TimelinePageIconSize = 16.dp
+private val TimelineIconSize = 20.dp
+private val TimelineIconGap = 12.dp
+private val TimelineTextOffset = TimelineIconSize + TimelineIconGap
+
+private fun WorkTimelineEventKind.isCoreTimelineEvent(): Boolean =
+    when (this) {
+      Locked,
+      Unlocked,
+      CommentDeleted,
+      UserBlocked -> true
+      else -> false
+    }
+
+internal fun groupWorkActivities(entries: List<WorkTimelineEntry>): List<List<WorkTimelineEntry>> =
+    buildList {
+      var start = 0
+      while (start < entries.size) {
+        val first = entries[start]
+        var end = start + 1
+        val family = first.activityFamily()
+        if (family != null) {
+          // 评论与评审正文限制分组长度；连续事件或提交使用同一张紧凑卡片。
+          while (
+              end < entries.size &&
+                  (first is WorkTimelineEntry.Commit ||
+                      first is WorkTimelineEntry.Event ||
+                      end - start < 6) &&
+                  entries[end].activityFamily() == family
+          ) {
+            end++
+          }
+        }
+        // 先按原始顺序确定边界，避免隐藏事件后将两组提交合成一组。
+        val group = entries.subList(start, end)
+        if (first is WorkTimelineEntry.Event) {
+          val visible = group.filter { (it as WorkTimelineEntry.Event).kind.isCoreTimelineEvent() }
+          if (visible.isNotEmpty()) add(visible)
+        } else {
+          add(group)
+        }
+        start = end
+      }
+    }
+
+private fun WorkTimelineEntry.activityFamily() =
+    when (this) {
+      is WorkTimelineEntry.Commit -> WorkTimelineEntry.Commit::class
+      is WorkTimelineEntry.Comment -> null
+      is WorkTimelineEntry.Review -> WorkTimelineEntry.Review::class
+      is WorkTimelineEntry.Event -> WorkTimelineEntry.Event::class
+    }
+
 
 @Composable
-internal fun WorkTimelineItem(
-    item: WorkTimelineEntry,
+internal fun WorkActivityCard(
+    entries: List<WorkTimelineEntry>,
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
-    showTop: Boolean,
-    showBottom: Boolean,
+    onOpenCommitGroup: ((List<RepositoryActivityEntry>) -> Unit)? = null,
+    onOpenCommit: ((String) -> Unit)? = null,
 ) {
-  TimelineRow(
-      showTop = showTop,
-      showBottom = showBottom,
-      compact = item is WorkTimelineEntry.Commit,
-      marker =
-          when (item) {
-            is WorkTimelineEntry.Event -> ({ EventMarker(item) })
-            is WorkTimelineEntry.Commit -> ({
-                  Box(Modifier.size(TimelineMarkerSize), contentAlignment = Alignment.Center) {
-                    GithubIcon(
-                        Lucide.GitCommitHorizontal,
-                        contentDescription = null,
-                        size = 16.dp,
-                        tint = GlasmioTheme.colors.secondaryContent,
-                    )
-                  }
-                })
-            else -> null
-          },
-  ) {
-    val strings = LocalGithubStrings.current
-    when (item) {
-      is WorkTimelineEntry.Comment -> CommentDiscussionEntry(item.value, state, viewModel)
-      is WorkTimelineEntry.Review -> {
-        val review = item.value
-        GithubReadingGroup {
-          DisableSelection {
-            GlasmioListRow(
-                title = review.user?.login ?: strings.Workspaces.UnknownAuthor,
-                detail = strings.WorkDetail.ReviewState(review.state),
-                leading = {
-                  GithubAvatar(
-                      review.user?.avatarUrl,
-                      review.user?.login,
-                      size = 28.dp,
-                  )
-                },
-                systemName = null,
-                showTopSeparator = false,
-                trailing = {
-                  TimelineBadge(reviewIcon(review.state), reviewTint(review.state))
-                },
-            )
-          }
-          if (!review.body.isNullOrBlank() || !review.bodyHtml.isNullOrBlank()) {
-            CollaborationText(
-                review.body,
-                strings.WorkDetail.NoBody,
-                state.browserUrl,
-                html = review.bodyHtml,
-                nodeId = review.nodeId,
-            )
-          }
+  val first = entries.first()
+
+  val rows: @Composable () -> Unit = {
+    entries.forEachIndexed { index, item ->
+      key(item.key) {
+        val showSeparator = index > 0
+        when (item) {
+          is WorkTimelineEntry.Event ->
+              TimelineEventRow(item, LocalGithubStrings.current.WorkDetail, showSeparator)
+          is WorkTimelineEntry.Commit -> CommitActivityRow(item.value, showSeparator, onOpenCommit)
+          is WorkTimelineEntry.Comment -> CommentDiscussionEntry(item.value, state, viewModel)
+          is WorkTimelineEntry.Review ->
+              ReviewActivityRow(
+                  item.value,
+                  showTopSeparator = showSeparator,
+                  pageUrl = state.browserUrl,
+                  onOpenCommit = onOpenCommit,
+              )
         }
       }
-      is WorkTimelineEntry.Commit -> {
-        val commit = item.value
-        Row(
-            Modifier.fillMaxWidth()
-                .heightIn(min = 36.dp)
-                .then(timelineLinkModifier(commit.url))
-                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          GithubAvatar(commit.avatarUrl, commit.login, size = 18.dp)
-          Text(
-              text = commit.title,
-              style = GlasmioTheme.textStyles.footnote,
-              fontFamily = FontFamily.Monospace,
-              letterSpacing = 0.sp,
-              color = GlasmioTheme.colors.secondaryContent,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-          )
-        }
+    }
+  }
+  when (first) {
+    is WorkTimelineEntry.Comment -> rows()
+    is WorkTimelineEntry.Review -> GithubReadingGroup { rows() }
+    else -> GlasmioGroupedList {
+      if (first is WorkTimelineEntry.Commit && entries.size > 1 && onOpenCommitGroup != null) {
+        val strings = LocalGithubStrings.current
+        val author = first.value.login?.takeIf(String::isNotBlank) ?: strings.Workspaces.UnknownAuthor
+        TimelineCompactActivityRow(
+            title = strings.WorkDetail.TimelineCommitsPushed(author, entries.size),
+            showTopSeparator = false,
+            leading = { ActivityIcon(Lucide.GitCommitHorizontal) },
+            onClick = {
+              onOpenCommitGroup(entries.mapNotNull { (it as? WorkTimelineEntry.Commit)?.value })
+            },
+        )
+      } else {
+        rows()
       }
-      is WorkTimelineEntry.Event -> TimelineEventRow(item, strings.WorkDetail)
     }
   }
 }
 
+
 @Composable
-internal fun WorkTimelinePlaceholder(showTop: Boolean, showBottom: Boolean) {
-  TimelineRow(
-      showTop = showTop,
-      showBottom = showBottom,
-  ) {
-    GithubReadingGroup {
-      GithubMarkdownPlaceholder(
-          Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-          compact = true,
+private fun ReviewActivityRow(
+    review: PullRequestReviewDto,
+    showTopSeparator: Boolean,
+    pageUrl: String?,
+    onOpenCommit: ((String) -> Unit)?,
+) {
+  val strings = LocalGithubStrings.current
+  val author = review.user?.login ?: strings.Workspaces.UnknownAuthor
+  val summary =
+      strings.WorkDetail.TimelineReviewAction(
+          author,
+          strings.WorkDetail.ReviewState(review.state),
       )
-    }
+  val hasBody = !review.body.isNullOrBlank() || !review.bodyHtml.isNullOrBlank()
+  TimelineCompactActivityRow(
+      title = summary,
+      showTopSeparator = showTopSeparator,
+      leading = { ActivityIcon(reviewIcon(review.state), reviewTint(review.state)) },
+      onClick =
+          if (review.state == "APPROVED") commitActivityLink(review.commitUrl, onOpenCommit)
+          else null,
+  )
+  if (hasBody) {
+    CollaborationText(
+        review.body,
+        strings.WorkDetail.NoBody,
+        pageUrl,
+        html = review.bodyHtml,
+        nodeId = review.nodeId,
+        inCommentCard = true,
+    )
   }
 }
 
+
+
 @Composable
-internal fun WorkTimelinePageControl(
-    loading: Boolean,
-    enabled: Boolean,
-    label: String,
-    onClick: () -> Unit,
+private fun CommitActivityRow(
+    commit: RepositoryActivityEntry,
+    showTopSeparator: Boolean,
+    onOpenCommit: ((String) -> Unit)?,
 ) {
-  Box(
-      Modifier.size(width = 48.dp, height = 36.dp)
-          .clickable(
-              interactionSource = null,
-              indication = null,
-              enabled = enabled,
-              role = Role.Button,
-              onClick = onClick,
-          ),
-  ) {
-    val tint = GlasmioTheme.colors.secondaryContent
-    GithubIcon(
-        Lucide.UnfoldVertical,
-        modifier =
-            Modifier.align(Alignment.CenterStart)
-                .padding(start = TimelineRailInset - TimelinePageIconSize / 2),
-        contentDescription = label,
-        size = TimelinePageIconSize,
-        tint = if (loading || !enabled) tint.copy(alpha = 0.45f) else tint,
+  TimelineCompactActivityRow(
+      title = commit.title,
+      showTopSeparator = showTopSeparator,
+      leading = { ActivityIcon(Lucide.GitCommitHorizontal) },
+      onClick = commitActivityLink(commit.url, onOpenCommit),
+  )
+}
+
+@Composable
+private fun TimelineCompactActivityRow(
+    title: String,
+    showTopSeparator: Boolean,
+    leading: @Composable () -> Unit,
+    onClick: (() -> Unit)?,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+  TimelineActivityRow(
+      showTopSeparator = showTopSeparator,
+      leading = leading,
+      onClick = onClick,
+      trailing = trailing,
+  ) { modifier ->
+    Text(
+        title,
+        modifier = modifier,
+        textAlign = timelineTextAlignment(),
+        style = GlasmioTheme.textStyles.footnote,
+        color = GlasmioTheme.colors.content,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
   }
 }
 
 @Composable
-private fun TimelineRow(
-    showTop: Boolean,
-    showBottom: Boolean,
-    compact: Boolean = false,
-    marker: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
+private fun TimelineActivityRow(
+    showTopSeparator: Boolean,
+    leading: @Composable () -> Unit,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable (Modifier) -> Unit,
 ) {
-  val lineColor = GlasmioTheme.colors.secondaryContent.copy(alpha = 0.18f)
-  val markerHalfSize = TimelineMarkerSize / 2
-  Box(
-      Modifier.fillMaxWidth().drawBehind {
-        val connectorEnd = size.height + TimelineConnectorBleed.roundToPx()
-        if (marker != null) {
-          val center = if (compact) size.height / 2 else TimelineMarkerCenter.toPx()
-          val clearance = (markerHalfSize + 2.dp).toPx()
-          if (showTop) rail(lineColor, 0f, center - clearance)
-          if (showBottom) rail(lineColor, center + clearance, connectorEnd)
-        } else if (showBottom) {
-          rail(lineColor, size.height, connectorEnd)
-        }
-      },
-  ) {
-    if (marker == null) {
-      content()
-    } else {
-      Box(Modifier.padding(start = 36.dp)) { content() }
-      Box(
-          Modifier.align(if (compact) Alignment.CenterStart else Alignment.TopStart)
-              .padding(
-                  start = TimelineRailInset - markerHalfSize,
-                  top = if (compact) 0.dp else TimelineMarkerCenter - markerHalfSize,
-              ),
-      ) {
-        marker()
+  val colors = GlasmioTheme.colors
+  val inset = GlasmioListRowDefaults.horizontalPadding
+  val enabled = onClick != null && requireNotNull(LocalGithubPageHost.current).navigationEnabled
+  DisableSelection {
+    Row(
+        Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .glasmioGroupedListSeparator(colors.separator, showTopSeparator, inset)
+            .then(
+                if (onClick != null) {
+                  Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                } else Modifier
+            )
+            .padding(horizontal = inset, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(Modifier.width(TimelineTextOffset), contentAlignment = Alignment.CenterStart) {
+        leading()
       }
+      content(Modifier.weight(1f))
+      if (trailing != null) Box(Modifier.padding(start = TimelineIconGap)) { trailing() }
     }
   }
 }
 
-private fun DrawScope.rail(color: Color, from: Float, to: Float) {
-  if (from >= to) return
-  val inset = TimelineRailInset.roundToPx().toFloat()
-  val x = if (layoutDirection == LayoutDirection.Ltr) inset else size.width - inset
-  drawLine(color, Offset(x, from), Offset(x, to), 2.dp.toPx(), cap = StrokeCap.Butt)
+@Composable
+private fun timelineTextAlignment(): TextAlign =
+    if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left
+
+
+@Composable
+private fun ActivityIcon(
+    icon: ImageVector,
+    tint: Color = GlasmioTheme.colors.secondaryContent,
+    size: Dp = TimelineIconSize,
+) {
+  GithubIcon(icon, contentDescription = null, size = size, tint = tint)
 }
 
 @Composable
-private fun EventMarker(item: WorkTimelineEntry.Event) {
-  val colors = GlasmioTheme.colors
-  val tint = eventTint(item)
-  val neutral = tint == colors.secondaryContent
-  TimelineBadge(
-      icon = eventIcon(item.kind),
-      tint = if (neutral) tint else Color.White,
-      background =
-          if (neutral) colors.groupedBackground else readableForeground(tint, Color.White, Color.Black),
-      border = false,
-  )
+internal fun WorkTimelinePlaceholder() {
+  ListRowPlaceholder()
 }
 
 @Composable
 private fun TimelineEventRow(
     item: WorkTimelineEntry.Event,
     strings: GithubStrings_WorkDetail,
+    showTopSeparator: Boolean,
 ) {
   val author = item.actor?.takeIf(String::isNotBlank)
   val text =
@@ -271,123 +298,38 @@ private fun TimelineEventRow(
             withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(author) }
             append(" ")
           }
-          val previousTitle = item.subject?.takeIf(String::isNotBlank)
-          when {
-            item.kind == WorkTimelineEventKind.RenamedTitle && previousTitle != null -> {
-              val (before, after) = strings.TimelineTitleChange(item.detail)
-              append(before)
-              withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                append(previousTitle)
-              }
-              append(after)
-            }
-            item.kind == WorkTimelineEventKind.HeadRefForcePushed ||
-                item.kind == WorkTimelineEventKind.BaseRefForcePushed ->
-                append(
-                    strings.TimelineForcePush(
-                        item.kind == WorkTimelineEventKind.BaseRefForcePushed,
-                        item.forcePushedRefName,
-                        item.subject,
-                        item.detail,
-                    )
-                )
-            else -> append(strings.TimelineEvent(item.kind.name, item.subject, item.detail))
-          }
+          append(strings.TimelineEvent(item.kind.name, item.subject, null))
         }
       }
-  Column(
-      Modifier.fillMaxWidth()
-          .heightIn(min = 52.dp)
-          .padding(top = 17.dp, bottom = if (item.target == null) 12.dp else 0.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
+  TimelineActivityRow(
+      showTopSeparator = showTopSeparator,
+      leading = { ActivityIcon(eventIcon(item.kind), eventTint(item)) },
+  ) { modifier ->
     Text(
         text = text,
+        modifier = modifier,
+        textAlign = timelineTextAlignment(),
         style = GlasmioTheme.textStyles.footnote,
-        letterSpacing = 0.sp,
         color = GlasmioTheme.colors.content,
     )
-    item.target?.let { TimelineTargetCard(it) }
   }
 }
 
-@Composable
-private fun TimelineTargetCard(target: WorkTimelineEntry.Target) {
-  val colors = GlasmioTheme.colors
-  GithubReadingGroup(modifier = timelineLinkModifier(target.url)) {
-    DisableSelection {
-      GlasmioListRow(
-          title = target.title,
-          detail = target.identifier,
-          leading = {
-            when (target.kind) {
-              WorkTimelineEntry.Target.Kind.Issue,
-              WorkTimelineEntry.Target.Kind.PullRequest ->
-                  GithubWorkStatusIcon(
-                      kind =
-                          if (target.kind == WorkTimelineEntry.Target.Kind.Issue) {
-                            CollaborationKind.Issue
-                          } else CollaborationKind.PullRequest,
-                      state = if (target.closed) "CLOSED" else "OPEN",
-                      draft = target.draft,
-                      merged = target.merged,
-                      stateReason = target.stateReason,
-                      size = 20.dp,
-                  )
-              WorkTimelineEntry.Target.Kind.Discussion ->
-                  GithubDiscussionStatusIcon(target.closed, size = 20.dp)
-              WorkTimelineEntry.Target.Kind.Project ->
-                  GithubIcon(
-                      Lucide.FolderKanban,
-                      contentDescription = null,
-                      size = 20.dp,
-                      tint = if (target.closed) colors.secondaryContent else colors.accent,
-                  )
-              WorkTimelineEntry.Target.Kind.Commit ->
-                  GithubIcon(
-                      Lucide.GitCommitHorizontal,
-                      contentDescription = null,
-                      size = 20.dp,
-                      tint = colors.secondaryContent,
-                  )
-            }
-          },
-          showTopSeparator = false,
-          showDisclosure = false,
-      )
-    }
-  }
-}
 
 @Composable
-private fun timelineLinkModifier(url: String?): Modifier {
-  if (url.isNullOrBlank()) return Modifier
+private fun activityLink(url: String?): (() -> Unit)? {
+  if (url.isNullOrBlank()) return null
   val open = rememberGithubUriHandler()
   val host = requireNotNull(LocalGithubPageHost.current)
-  return Modifier.clickable(interactionSource = null, indication = null, role = Role.Button) {
-    if (host.navigationEnabled) open(url)
-  }
+  return { if (host.navigationEnabled) open(url) }
 }
 
 @Composable
-private fun TimelineBadge(
-    icon: ImageVector,
-    tint: Color,
-    background: Color? = null,
-    border: Boolean = true,
-) {
-  Box(
-      Modifier.size(TimelineMarkerSize)
-          .clip(CircleShape)
-          .background(background ?: GlasmioTheme.colors.elevatedBackground)
-          .then(
-              if (border) Modifier.border(1.dp, GlasmioTheme.colors.subtleStroke, CircleShape)
-              else Modifier,
-          ),
-      contentAlignment = Alignment.Center,
-  ) {
-    GithubIcon(icon, contentDescription = null, size = 14.dp, tint = tint)
-  }
+private fun commitActivityLink(url: String?, onOpenCommit: ((String) -> Unit)?): (() -> Unit)? {
+  val oid = url?.substringAfterLast('/')?.takeIf(String::isNotBlank)
+  if (onOpenCommit == null || oid == null) return activityLink(url)
+  val host = requireNotNull(LocalGithubPageHost.current)
+  return { if (host.navigationEnabled) onOpenCommit(oid) }
 }
 
 private fun reviewIcon(state: String?): ImageVector =
@@ -464,10 +406,7 @@ private fun eventTint(item: WorkTimelineEntry.Event): Color {
   val kind = item.kind
   return when (kind) {
     WorkTimelineEventKind.Labeled,
-    WorkTimelineEventKind.Unlabeled -> {
-      val color = item.labelColor
-      if (color == null) GlasmioTheme.colors.secondaryContent else githubLabelColor(color)
-    }
+    WorkTimelineEventKind.Unlabeled -> GlasmioTheme.colors.secondaryContent
     WorkTimelineEventKind.Closed,
     WorkTimelineEventKind.ReviewRequestRemoved,
     WorkTimelineEventKind.ReviewDismissed,

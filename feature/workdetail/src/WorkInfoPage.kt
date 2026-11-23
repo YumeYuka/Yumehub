@@ -1,19 +1,29 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
@@ -27,255 +37,456 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
+import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusIcon
+import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
+import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
+import moe.yumeyuka.yumehub.ui.component.githubWorkStatusLabel
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-/** 工作项信息页：评审、标签、里程碑、链接项与项目共用同一套选择面板。 */
-data class WorkInfoRoute(
-    val owner: String,
-    val name: String,
-    val kind: CollaborationKind,
-    val number: Int,
-) : GithubRoute
-
+/** 工作项信息：评审、标签、里程碑、链接项与项目共用同一套选择面板。 */
 @Composable
-fun WorkInfoPage(
+internal fun WorkInfoSheet(
+    visible: Boolean,
     owner: String,
     name: String,
     kind: CollaborationKind,
     number: Int,
     login: String,
+    item: CollaborationItemDto?,
+    onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
+    onOpenBaseBranch: (() -> Unit)?,
+    onOpenIssueMetadata: (IssueMetadataPanel) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    val allStrings = LocalGithubStrings.current
-    val strings = allStrings.WorkDetail
-    val repositoryStrings = allStrings.Repository
-    val commonStrings = allStrings.Common
+    var opened by remember { mutableStateOf(false) }
+    SideEffect { if (visible) opened = true }
+    if (!opened) return
+    val strings = LocalGithubStrings.current.WorkDetail
+    val common = LocalGithubStrings.current.Common
+    val colors = GlasmioTheme.colors
+    val title =
+        if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
+        else strings.IssueInformation
     val viewModel: WorkInfoViewModel =
         koinViewModel(
             key = "work-info-$login-$owner-$name-${kind.name}-$number",
             parameters = { parametersOf(owner, name, kind, number, login) },
         )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(visible) { if (visible) viewModel.load() }
     LaunchedEffect(state.saved) {
         if (state.saved) {
             viewModel.consumeSaved()
-            host.onBack()
+            onDismiss()
         }
     }
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
-    GithubPage(
-        title = strings.Information,
-        itemSpacing = 12.dp,
-        actions = {
-            GithubToolbarActions(
-                toolbarIcon(Lucide.Share, repositoryStrings.ShareLink) {
-                    if (host.navigationEnabled) {
-                        shareWorkLink(
-                            context,
-                            owner,
-                            name,
-                            kind,
-                            number,
-                            repositoryStrings.ShareLink,
-                            commonStrings.ExternalLinkOpenFailed,
-                        )
+    GlasmioBottomSheet(
+        visible = visible,
+        onDismissRequest = { if (!state.submitting) onDismiss() },
+        title = title,
+        skipPartiallyExpanded = false,
+        dismissOnBackPress = !state.submitting,
+        dismissOnClickOutside = !state.submitting,
+        topBar = {
+            GlasmioTopBar(
+                title = title,
+                navigation = {
+                    GlasmioIconButton(onClick = onDismiss, enabled = !state.submitting) {
+                        GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
-                if (state.value != null)
-                    toolbarIcon(Lucide.Check, strings.SaveChanges, state.hasPendingChanges()) {
-                        if (host.navigationEnabled) viewModel.saveAll()
+                actions = {
+                    if (state.value != null) {
+                        GlasmioIconButton(onClick = viewModel::saveAll, enabled = !state.submitting) {
+                            GithubIcon(Lucide.Check, contentDescription = strings.SaveChanges)
+                        }
                     }
-                else null,
+                },
             )
         },
     ) {
-        val value = state.value
-        if (value == null) {
-            if (!state.failed) {
-                workInfoPlaceholders(kind, strings)
-            }
-        } else {
-            if (kind == CollaborationKind.PullRequest) {
-                item(key = "work-info-reviewers") {
-                    PropertySection(
-                        title = strings.RequestedReviewers,
-                        values = state.valuesFor(WorkProperty.Reviewers),
-                        empty = strings.NoReviewRequests,
-                        editable = value.editable,
-                        submitting = state.submitting,
-                        onEdit = {
-                            if (host.navigationEnabled) viewModel.edit(WorkProperty.Reviewers)
-                        },
-                        leading = { option ->
-                            val avatar = option.avatarUrl?.takeIf(String::isNotBlank)
-                            if (avatar != null) GithubAvatar(avatar, option.title, size = 20.dp)
-                            else
-                                GithubIcon(
-                                    Lucide.UsersRound,
-                                    contentDescription = null,
-                                    size = 20.dp,
-                                )
-                        },
-                    )
-                }
-            }
-            item(key = "work-info-labels") {
-                PropertySection(
-                    title = strings.Labels,
-                    values = state.valuesFor(WorkProperty.Labels),
-                    empty = strings.NoLabels,
-                    editable = value.editable,
-                    submitting = state.submitting,
-                    onEdit = { if (host.navigationEnabled) viewModel.edit(WorkProperty.Labels) },
-                    leading = { label ->
-                        GithubIcon(
-                            Lucide.Tag,
-                            contentDescription = null,
-                            size = 20.dp,
-                            tint = githubLabelColor(label.color),
-                        )
-                    },
-                )
-            }
-            item(key = "work-info-milestone") {
-                PropertySection(
-                    title = strings.Milestone,
-                    values = state.valuesFor(WorkProperty.Milestone),
-                    empty = strings.NoMilestone,
-                    editable = value.editable,
-                    submitting = state.submitting,
-                    onEdit = { if (host.navigationEnabled) viewModel.edit(WorkProperty.Milestone) },
-                    leading = {
-                        GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp)
-                    },
-                )
-            }
-            item(key = "work-info-linked") {
-                PropertySection(
-                    title = strings.LinkedItems,
-                    values = state.valuesFor(WorkProperty.LinkedItems),
-                    empty = strings.NoLinkedItems,
-                    editable = value.editable,
-                    submitting = state.submitting,
-                    onEdit = {
-                        if (host.navigationEnabled) viewModel.edit(WorkProperty.LinkedItems)
-                    },
-                    leading = { option -> LinkedItemIcon(option) },
-                )
-            }
-            if (kind == CollaborationKind.Issue) {
-                item(key = "work-info-sub-issues") {
-                    PropertySection(
-                        title = strings.SubIssues,
-                        values = state.valuesFor(WorkProperty.SubIssues),
-                        empty = strings.NoSubIssues,
-                        editable = value.editable,
-                        submitting = state.submitting,
-                        onEdit = {
-                            if (host.navigationEnabled) viewModel.edit(WorkProperty.SubIssues)
-                        },
-                        leading = {
-                            GithubIcon(Lucide.ListPlus, contentDescription = null, size = 20.dp)
-                        },
-                    )
-                }
-            }
-            item(key = "work-info-projects") {
-                PropertySection(
-                    title = strings.Projects,
-                    values = state.valuesFor(WorkProperty.Projects),
-                    empty = strings.NoProjects,
-                    editable = value.editable,
-                    submitting = state.submitting,
-                    onEdit = { if (host.navigationEnabled) viewModel.edit(WorkProperty.Projects) },
-                    leading = {
-                        GithubIcon(Lucide.FolderKanban, contentDescription = null, size = 20.dp)
-                    },
-                )
+        Column(
+            Modifier.fillMaxSize()
+                .background(colors.groupedBackground)
+                .verticalScroll(rememberScrollState())
+                .padding(LocalGlasmioSheetContentPadding.current)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            WorkInfoSections(
+                state, viewModel, kind, item, "$owner/$name", onOpenWork, onOpenBaseBranch
+            )
+            if (kind == CollaborationKind.Issue && item != null) {
+                IssueMetadataRows(item, onOpenIssueMetadata)
             }
         }
     }
+    if (visible) WorkPropertySelectionSheet(state, viewModel)
+}
+
+/** 头部 chip 直接打开单个属性的选择面板，不再先展开信息 sheet。 */
+@Composable
+internal fun WorkPropertySheet(
+    visible: Boolean,
+    owner: String,
+    name: String,
+    kind: CollaborationKind,
+    number: Int,
+    login: String,
+    property: WorkProperty?,
+    onDismiss: () -> Unit,
+) {
+    if (!visible || property == null) return
+    val strings = LocalGithubStrings.current.WorkDetail
+    val viewModel: WorkInfoViewModel =
+        koinViewModel(
+            key = "work-info-$login-$owner-$name-${kind.name}-$number",
+            parameters = { parametersOf(owner, name, kind, number, login) },
+        )
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    if (property == WorkProperty.Reviewers) {
+        WorkReviewRequestsSheet(state, viewModel, onDismiss)
+        return
+    }
+    LaunchedEffect(viewModel) { viewModel.load() }
+    var requested by remember(property) { mutableStateOf<WorkProperty?>(null) }
+    var editorSeen by remember(property) { mutableStateOf(false) }
+    LaunchedEffect(property, state.value) {
+        if (state.value != null && requested != property) {
+            requested = property
+            viewModel.edit(property)
+        }
+    }
+    LaunchedEffect(state.editor) {
+        val editor = state.editor
+        if (editor != null) editorSeen = true else if (editorSeen) onDismiss()
+    }
+    LaunchedEffect(state.failed) { if (state.failed) onDismiss() }
+    if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
     WorkPropertySelectionSheet(state, viewModel)
 }
 
 @Composable
-private fun PropertySection(
+private fun WorkInfoSections(
+    state: WorkPropertiesState,
+    viewModel: WorkInfoViewModel,
+    kind: CollaborationKind,
+    item: CollaborationItemDto?,
+    repo: String,
+    onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
+    onOpenBaseBranch: (() -> Unit)?,
+) {
+    val strings = LocalGithubStrings.current.WorkDetail
+    item?.let { WorkInfoStatusSection(it, kind, onOpenBaseBranch) }
+    val value = state.value
+    if (value == null) {
+        if (!state.failed) workInfoPlaceholders(kind, strings)
+        return
+    }
+    GlasmioGroupedList {
+        GlasmioListRow(
+            title = strings.Milestone,
+            subtitle =
+                state.valuesFor(WorkProperty.Milestone).singleOrNull()?.title ?: strings.NoMilestone,
+            leading = { GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp) },
+            showTopSeparator = false,
+            enabled = !state.submitting,
+            onClick = if (value.editable) ({ viewModel.edit(WorkProperty.Milestone) }) else null,
+        )
+    }
+    WorkLinkedSection(
+        title = strings.LinkedItems,
+        values = state.valuesFor(WorkProperty.LinkedItems),
+        empty = strings.NoLinkedItems,
+        editable = value.editable,
+        submitting = state.submitting,
+        onEdit = { viewModel.edit(WorkProperty.LinkedItems) },
+        repo = repo,
+        onOpenWork = onOpenWork,
+    )
+    if (kind == CollaborationKind.Issue) {
+        WorkLinkedSection(
+            title = strings.SubIssues,
+            values = state.valuesFor(WorkProperty.SubIssues),
+            empty = strings.NoSubIssues,
+            editable = value.editable,
+            submitting = state.submitting,
+            onEdit = { viewModel.edit(WorkProperty.SubIssues) },
+            repo = repo,
+            onOpenWork = onOpenWork,
+        )
+    }
+    if (state.references.isNotEmpty()) {
+        GithubSection(strings.ReferencedItems) {
+            state.references.forEachIndexed { index, option ->
+                WorkLinkedItemRow(option, repo, index > 0, onOpenWork)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkInfoStatusSection(
+    item: CollaborationItemDto,
+    kind: CollaborationKind,
+    onOpenBaseBranch: (() -> Unit)?,
+) {
+    val all = LocalGithubStrings.current
+    val strings = all.WorkDetail
+    val total = item.requiredStatusCheckCount ?: 0
+    val checks = item.requiredStatusChecks
+    val passed = checks.count { it.state == "SUCCESS" }
+    val failed = checks.count { it.state in setOf("FAILURE", "ERROR") }
+    val pending =
+        checks.any { it.state in setOf("PENDING", "EXPECTED", "IN_PROGRESS") }
+    val checksColor =
+        when {
+            item.allStatusChecksPassed -> GithubWorkColors.open
+            failed > 0 -> GithubWorkColors.closed
+            pending -> GithubWorkColors.draft
+            else -> GlasmioTheme.colors.secondaryContent
+        }
+    val checksIcon =
+        when {
+            item.allStatusChecksPassed -> Lucide.CircleCheck
+            failed > 0 -> Lucide.CircleSlash
+            else -> Lucide.CircleDot
+        }
+    val reviewColor =
+        when (item.reviewDecision) {
+            "APPROVED" -> GithubWorkColors.open
+            "CHANGES_REQUESTED" -> GithubWorkColors.closed
+            else -> GlasmioTheme.colors.secondaryContent
+        }
+    // 状态行是弹窗开头的状态摘要，放在状态分节标题之上，不占用分节内行位。
+    GlasmioGroupedList {
+        GlasmioListRow(
+            title = githubWorkStatusLabel(kind, item.state, item.draft, item.merged),
+            leading = {
+                GithubWorkStatusIcon(
+                    kind,
+                    item.state,
+                    item.draft,
+                    item.merged,
+                    item.stateReason,
+                    size = 20.dp,
+                )
+            },
+            showTopSeparator = false,
+        )
+    }
+    GithubSection(strings.Status) {
+        item.taskProgress?.let { progress ->
+            GlasmioListRow(
+                title = strings.TaskProgress(progress.completed, progress.total),
+                leading = {
+                    GithubIcon(
+                        Lucide.ListChecks,
+                        contentDescription = null,
+                        size = 20.dp,
+                        tint = GlasmioTheme.colors.secondaryContent,
+                    )
+                },
+                showTopSeparator = false,
+            )
+        }
+        if (kind == CollaborationKind.PullRequest) {
+            GlasmioListRow(
+                title = strings.ReviewResults,
+                detail = strings.ReviewDecision(item.reviewDecision.orEmpty()),
+                leading = {
+                    GithubIcon(
+                        Lucide.MessageCircleCheck,
+                        contentDescription = null,
+                        size = 20.dp,
+                        tint = reviewColor,
+                    )
+                },
+                showTopSeparator = item.taskProgress == null,
+            )
+        }
+        GlasmioListRow(
+            title = strings.Checks,
+            detail = if (total > 0) "$passed/$total" else null,
+            leading = {
+                GithubIcon(
+                    checksIcon,
+                    contentDescription = null,
+                    size = 20.dp,
+                    tint = checksColor,
+                )
+            },
+            showTopSeparator = item.taskProgress != null || kind == CollaborationKind.PullRequest,
+        )
+    }
+    if (kind != CollaborationKind.PullRequest) return
+    val head = item.head?.ref?.takeIf(String::isNotBlank)
+    val base = item.baseRefName?.takeIf(String::isNotBlank)
+    if (head == null && base == null) return
+    val branchColor = githubWorkStatusVisual(kind, item.state, item.draft, item.merged).color
+    GithubSection(all.Workspaces.Branches) {
+        head?.let { ref ->
+            GlasmioListRow(
+                title = ref,
+                leading = {
+                    GithubIcon(
+                        Lucide.Feather,
+                        contentDescription = all.WorkList.HeadBranch,
+                        size = 20.dp,
+                        tint = branchColor,
+                    )
+                },
+                showTopSeparator = false,
+            )
+        }
+        base?.let { ref ->
+            GlasmioListRow(
+                title = ref,
+                leading = {
+                    GithubIcon(
+                        Lucide.CornerDownRight,
+                        contentDescription = all.WorkList.BaseBranch,
+                        size = 20.dp,
+                        tint = branchColor,
+                    )
+                },
+                showTopSeparator = head != null,
+                onClick = onOpenBaseBranch,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkLinkedSection(
     title: String,
     values: List<WorkPropertyOption>,
     empty: String,
     editable: Boolean,
     submitting: Boolean,
     onEdit: () -> Unit,
-    leading: @Composable (WorkPropertyOption) -> Unit,
+    repo: String,
+    onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
-    val onClick = if (editable && !submitting) onEdit else null
-    GithubSection(title = title) {
+    GithubSection(
+        title = title,
+        trailing =
+            if (editable && !submitting) {
+                {
+                    // 分节标题右侧的铅笔是普通小图标，不带按钮底衬，点击进入链接编辑。
+                    GithubIcon(
+                        Lucide.Pencil,
+                        modifier =
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onEdit,
+                            ),
+                        contentDescription = strings.EditProperty,
+                        size = 14.dp,
+                        tint = GlasmioTheme.colors.secondaryContent,
+                    )
+                }
+            } else {
+                null
+            },
+    ) {
         if (values.isEmpty()) {
-            GlasmioListRow(
-                title = empty,
-                systemName = null,
-                onClick = onClick,
-                showDisclosure = onClick != null,
-            )
+            GlasmioListRow(title = empty, showDisclosure = false)
         } else {
             values.forEachIndexed { index, option ->
-                GlasmioListRow(
-                    title = option.title,
-                    subtitle = option.subtitle,
-                    leading = { leading(option) },
-                    onClick = onClick,
-                    showTopSeparator = index > 0,
-                    showDisclosure = false,
-                )
+                WorkLinkedItemRow(option, repo, index > 0, onOpenWork)
             }
-            GlasmioListRow(
-                title = strings.ContinueAdding,
-                systemName = null,
-                onClick = onClick,
-                showTopSeparator = true,
-                showDisclosure = onClick != null,
-            )
         }
     }
 }
 
-private fun LazyListScope.workInfoPlaceholders(
+/** 复用提交详情「关联 PR」的行样式：品牌图标、编号与状态图标，点击直接跳转。 */
+@Composable
+private fun WorkLinkedItemRow(
+    option: WorkPropertyOption,
+    repo: String,
+    showTopSeparator: Boolean,
+    onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
+) {
+    val kind =
+        if (option.kind == "PullRequest") CollaborationKind.PullRequest
+        else CollaborationKind.Issue
+    val number = option.number
+    val owner = option.subtitle?.takeIf { it.contains('/') }?.substringBefore('/')
+    val name = option.subtitle?.takeIf { it.contains('/') }?.substringAfter('/')
+    val visual = githubWorkStatusVisual(kind, option.state, merged = option.state == "MERGED")
+    GlasmioListRow(
+        title = option.title,
+        subtitle = option.subtitle?.takeIf { !it.equals(repo, ignoreCase = true) },
+        showTopSeparator = showTopSeparator,
+        showDisclosure = false,
+        leading = {
+            GithubIcon(
+                GithubBrandIcon,
+                contentDescription = null,
+                tint = GlasmioTheme.colors.secondaryContent,
+            )
+        },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                number?.let {
+                    Text(
+                        "#$it",
+                        style = GlasmioTheme.textStyles.body,
+                        color = GlasmioTheme.colors.secondaryContent,
+                        maxLines = 1,
+                    )
+                }
+                GithubIcon(
+                    visual.icon,
+                    contentDescription = null,
+                    size = 18.dp,
+                    tint = visual.color,
+                )
+            }
+        },
+        onClick =
+            if (number != null && owner != null && name != null) {
+                { onOpenWork(owner, name, kind, number) }
+            } else {
+                null
+            },
+    )
+}
+
+@Composable
+private fun workInfoPlaceholders(
     kind: CollaborationKind,
     strings: GithubStrings_WorkDetail,
 ) {
-    if (kind == CollaborationKind.PullRequest) {
-        item(key = "work-info-reviewers") { WorkInfoSectionPlaceholder(strings.RequestedReviewers) }
-    }
-    item(key = "work-info-labels") { WorkInfoSectionPlaceholder(strings.Labels) }
-    item(key = "work-info-milestone") { WorkInfoSectionPlaceholder(strings.Milestone) }
-    item(key = "work-info-linked") { WorkInfoSectionPlaceholder(strings.LinkedItems) }
+    GlasmioGroupedList { WorkInfoRowPlaceholder(showArrow = true) }
+    WorkInfoSectionPlaceholder(strings.LinkedItems)
     if (kind == CollaborationKind.Issue) {
-        item(key = "work-info-sub-issues") { WorkInfoSectionPlaceholder(strings.SubIssues) }
+        WorkInfoSectionPlaceholder(strings.SubIssues)
     }
-    item(key = "work-info-projects") { WorkInfoSectionPlaceholder(strings.Projects) }
 }
 
 @Composable
@@ -343,10 +554,25 @@ private fun WorkPropertySelectionSheet(
             viewModel.applyEditor()
         },
         enabled = !state.submitting,
+        showConfirm = editor?.editable != false,
         confirmEnabled =
             editor != null && !editor.loading && !editor.failed && !editor.needsReconcile,
     ) {
         if (editor == null) return@GithubSearchSelectionSheet
+        if (
+            editor.property == WorkProperty.Milestone && !editor.loading &&
+                (editor.failed || editor.needsReconcile)
+        ) {
+            item(key = "work-milestone-retry") {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = LocalGithubStrings.current.Common.Retry,
+                        onClick = viewModel::retryEditor,
+                    )
+                }
+            }
+            return@GithubSearchSelectionSheet
+        }
         when {
             editor.loading ->
                 item(key = "work-property-loading") {

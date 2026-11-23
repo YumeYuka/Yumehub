@@ -26,7 +26,9 @@ import io.github.yumeyucca.lucide.Info
 import io.github.yumeyucca.lucide.Lucide
 import kotlinx.coroutines.flow.collect
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
@@ -64,7 +66,9 @@ fun WorkDetailPage(
     onOpenInBrowser: (String) -> Unit,
     onOpenFiles: () -> Unit,
     onOpenCommits: () -> Unit,
-    onOpenInfo: () -> Unit,
+    onOpenCommitGroup: (List<RepositoryActivityEntry>) -> Unit,
+    onOpenCommit: (String) -> Unit,
+    onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
 ) {
     val viewModel: CollaborationDetailViewModel =
         koinViewModel(
@@ -87,8 +91,12 @@ fun WorkDetailPage(
     val host = requireNotNull(LocalGithubPageHost.current)
     val context = LocalContext.current
     var infoVisible by rememberSaveable { mutableStateOf(false) }
+    var propertySheet by remember(viewModel) { mutableStateOf<WorkProperty?>(null) }
+    var baseBranchVisible by remember(viewModel) { mutableStateOf(false) }
     var mergeVisible by rememberSaveable { mutableStateOf(false) }
     val currentPage = host.isCurrent
+    val issueEditor = viewModel.issueMetadata
+    val issueMetadata by issueEditor.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(viewModel, lifecycle, currentPage) {
         if (currentPage)
@@ -122,6 +130,10 @@ fun WorkDetailPage(
         if (state.section == CollaborationSection.Discussion) {
             viewModel.timeline.state.collectAsStateWithLifecycle().value
         } else null
+    val activityGroups =
+        remember(timeline?.items) {
+            timeline?.items?.let(::groupWorkActivities).orEmpty()
+        }
     // 已经展示过的页面返回组合后不再看加载位：刷新、重排分页都不允许占位重新盖住正文。
     // key 只取路由内稳定的分节标识，ViewModel 实例与重试次数都不参与，返回时必须命中同一条记录。
     val presentationKey = "work-section-${state.section.name}"
@@ -199,7 +211,7 @@ fun WorkDetailPage(
             ),
         back = true,
         listState = listState,
-        locked = state.submitting && !state.sendingInBackground,
+        locked = state.submitting && !state.sendingInBackground || issueMetadata.saving,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
         detailPresentation = presentation,
         onRetryDetail = retryDetail,
@@ -218,16 +230,36 @@ fun WorkDetailPage(
                 onInformation = {
                     if (host.navigationEnabled && presentation.interactive) infoVisible = true
                 },
+                onLabels = {
+                    if (host.navigationEnabled && presentation.interactive) {
+                        propertySheet = WorkProperty.Labels
+                    }
+                },
+                onProjects = {
+                    if (host.navigationEnabled && presentation.interactive) {
+                        propertySheet = WorkProperty.Projects
+                    }
+                },
+                onReviewers = {
+                    if (host.navigationEnabled && presentation.interactive) {
+                        propertySheet = WorkProperty.Reviewers
+                    }
+                },
                 onChecks = {
                     if (host.navigationEnabled && presentation.interactive) {
                         viewModel.showStatusPanel(WorkStatusPanel.Checks)
                     }
                 },
+                onIssueMetadata = { panel ->
+                    if (host.navigationEnabled && presentation.interactive) issueEditor.open(panel)
+                },
             )
         },
         actions = {
             GlasmioIconButton(
-                onClick = { if (host.navigationEnabled) onOpenInfo() },
+                onClick = {
+                    if (host.navigationEnabled && presentation.interactive) infoVisible = true
+                },
                 enabled =
                     presentation.interactive &&
                         state.item != null &&
@@ -256,27 +288,80 @@ fun WorkDetailPage(
             entries,
             entrySlots,
             timeline,
+            activityGroups,
             viewModel,
-            onOpenInBrowser,
+            onOpenInBrowser = onOpenInBrowser,
             onOpenFiles = onOpenFiles,
             onOpenCommits = onOpenCommits,
+            onOpenCommitGroup = onOpenCommitGroup,
+            onOpenCommit = onOpenCommit,
             onStatus = { if (host.navigationEnabled) viewModel.showStatusPanel(it) },
         )
     }
-    WorkMetadataSheet(
+    val canChangeBase =
+        kind == CollaborationKind.PullRequest && state.item?.viewerCanChangeBase == true &&
+            state.item?.state == "open" && !state.submitting && !state.submissionUncertain &&
+            presentation.interactive && host.navigationEnabled
+    WorkInfoSheet(
         visible = currentPage && infoVisible,
-        item = shownState.item,
+        owner = owner,
+        name = name,
         kind = kind,
-        onDismiss = { infoVisible = false },
+        number = number,
+        login = login,
+        item = shownState.item,
+        onOpenWork = onOpenWork,
+        onOpenBaseBranch =
+            if (canChangeBase) {
+                {
+                    viewModel.searchBaseBranches("")
+                    baseBranchVisible = true
+                }
+            } else null,
+        onOpenIssueMetadata = { panel ->
+            if (host.navigationEnabled && presentation.interactive) {
+                infoVisible = false
+                issueEditor.open(panel)
+            }
+        },
+        onDismiss = {
+            baseBranchVisible = false
+            infoVisible = false
+        },
     )
-    WorkStatusSheet(
-        currentPage = currentPage,
+    if (kind == CollaborationKind.Issue) {
+        IssueMetadataSheet(currentPage, issueMetadata, issueEditor)
+    }
+    if (currentPage && infoVisible && baseBranchVisible) {
+        WorkBaseBranchSheet(
+            state = state,
+            viewModel = viewModel,
+            canChangeBase = canChangeBase,
+            onDismiss = { baseBranchVisible = false },
+        )
+    }
+    WorkPropertySheet(
+        visible = currentPage && propertySheet != null,
+        owner = owner,
+        name = name,
+        kind = kind,
+        number = number,
+        login = login,
+        property = propertySheet,
+        onDismiss = { propertySheet = null },
+    )
+    WorkReviewSheet(
+        visible = currentPage && state.statusPanel == WorkStatusPanel.Reviews,
         state = state,
-        viewerLogin = login,
         onDismiss = { if (host.isCurrent) viewModel.showStatusPanel(null) },
-        onReview = { viewModel.openComposer(CollaborationEditorTarget.Review) },
         onReviewEvent = viewModel::selectReviewEvent,
-        onSubmitReview = viewModel::submitReview,
+        onBodyChange = viewModel::changeReviewDraft,
+        onSubmit = viewModel::submitReview,
+    )
+    WorkChecksSheet(
+        visible = currentPage && state.statusPanel == WorkStatusPanel.Checks,
+        item = state.item,
+        onDismiss = { if (host.isCurrent) viewModel.showStatusPanel(null) },
         checks = {
             val open = rememberGithubUriHandler()
             WorkCheckGroups(state.item?.head?.sha, viewModel) { url ->

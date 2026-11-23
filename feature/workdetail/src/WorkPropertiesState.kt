@@ -16,12 +16,20 @@ internal data class WorkPropertyEditor(
     val nextCursor: String? = null,
     val loadingMore: Boolean = false,
     val moreFailed: Boolean = false,
+    val reviewed: List<WorkPropertyOption> = emptyList(),
+    val reviewerAuthorLogin: String? = null,
+    val hasReviewerCandidates: Boolean = false,
+    val editable: Boolean = true,
 )
+
+internal fun WorkPropertyEditor.reviewRequestsChanged(): Boolean =
+    original.map(WorkPropertyOption::id).toSet() != selected.map(WorkPropertyOption::id).toSet()
 
 internal data class WorkPropertiesState(
     val loading: Boolean = false,
     val failed: Boolean = false,
     val value: WorkProperties? = null,
+    val references: List<WorkPropertyOption> = emptyList(),
     val editor: WorkPropertyEditor? = null,
     val drafts: Map<WorkProperty, List<WorkPropertyOption>> = emptyMap(),
     val submitting: Boolean = false,

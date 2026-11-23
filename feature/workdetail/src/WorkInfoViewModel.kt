@@ -29,9 +29,7 @@ internal class WorkInfoViewModel(
             { transform -> mutableUiState.update(transform) },
         )
 
-    init {
-        controller.load()
-    }
+    fun load() = controller.load()
 
     fun refresh() = controller.refresh()
 
