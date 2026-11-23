@@ -36,12 +36,15 @@ fun GithubSearchSelectionSheet(
     content: LazyListScope.(finishSelection: (() -> Unit) -> Unit) -> Unit,
 ) {
     val common = LocalGithubStrings.current.Common
-    val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = false)
     val listState = rememberLazyListState()
     var query by remember { mutableStateOf(TextFieldValue()) }
     var searching by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
     var finishing by remember { mutableStateOf(false) }
+    val canDismiss by rememberUpdatedState(!visible || enabled || finishing)
+    val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = false) {
+        it != GlasmioSheetValue.Hidden || canDismiss
+    }
     LaunchedEffect(visible) {
         if (visible) {
             query = TextFieldValue()
@@ -57,6 +60,8 @@ fun GithubSearchSelectionSheet(
         title = title,
         sheetState = sheetState,
         skipPartiallyExpanded = false,
+        dismissOnBackPress = enabled && !finishing,
+        dismissOnClickOutside = enabled && !finishing,
         topBar = {
             GlasmioTopBar(
                 title = title,

@@ -75,3 +75,52 @@ fun <T> LazyListScope.githubThreadItems(
     }
     if (state.after != null) boundary(ThreadDirection.Newer)
 }
+
+/** 保留线程游标与重试边界，同时按调用方提供的连续分组虚拟化条目。 */
+fun <T, G> LazyListScope.githubThreadGroupedItems(
+    state: ThreadWindowState<T>,
+    groups: List<G>,
+    key: (G) -> String,
+    load: (ThreadDirection) -> Unit,
+    placeholder: @Composable () -> Unit,
+    content: @Composable (G) -> Unit,
+) {
+    fun boundary(direction: ThreadDirection) {
+        item(key = "thread-page-$direction") {
+            val strings = LocalGithubStrings.current
+            val host = requireNotNull(LocalGithubPageHost.current)
+            val loading = state.loading == direction
+            val enabled = state.loading == null && host.navigationEnabled
+            val label =
+                if (state.failed == direction) strings.Common.Retry
+                else strings.Activity.LoadMoreItems
+            GlasmioButton(enabled = enabled, onClick = { load(direction) }) {
+                GithubLoadingContent(
+                    loading = loading,
+                    placeholder = {
+                        TextLinePlaceholder(
+                            GlasmioTheme.textStyles.body,
+                            Modifier.width(96.dp),
+                            fraction = 1f,
+                        )
+                    },
+                ) {
+                    Text(label)
+                }
+            }
+        }
+    }
+    if (state.failed == ThreadDirection.Latest) boundary(ThreadDirection.Latest)
+    if (state.before != null) boundary(ThreadDirection.Older)
+    if (!state.ready && state.error == null) {
+        readingItem(key = "thread-initial") { Box(Modifier.animateItem()) { placeholder() } }
+    }
+    readingItems(
+        count = groups.size,
+        key = { "thread-group:${key(groups[it])}" },
+        contentType = { "thread-group" },
+    ) { index ->
+        Box(Modifier.animateItem()) { content(groups[index]) }
+    }
+    if (state.after != null) boundary(ThreadDirection.Newer)
+}

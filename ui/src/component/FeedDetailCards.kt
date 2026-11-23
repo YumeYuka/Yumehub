@@ -39,6 +39,7 @@ internal fun FeedWorkCard(
         title = title,
         body = work.body,
         open = open,
+        titleMaxLines = if (discussion) 3 else 2,
         header = {
             RepositoryCardHeading(
                 repository = repository,
@@ -95,6 +96,7 @@ private fun FeedDetailCard(
     open: (() -> Unit)?,
     header: @Composable () -> Unit,
     cover: (@Composable () -> Unit)? = null,
+    titleMaxLines: Int = 3,
 ) {
     GithubActivityCard(
         onClick = open,
@@ -106,6 +108,7 @@ private fun FeedDetailCard(
                 body,
                 feedDetailTitleStyle(),
                 repositoryCardBodyStyle(),
+                titleMaxLines = titleMaxLines,
             )
         },
         action = open?.let { onOpen -> { FeedReadMoreButton(onOpen) } },

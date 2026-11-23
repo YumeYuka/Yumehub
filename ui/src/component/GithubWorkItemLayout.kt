@@ -21,6 +21,7 @@ internal fun GithubActivityCardSummary(
     bodyPreview: String?,
     titleStyle: TextStyle = githubWorkItemTitleStyle(),
     bodyStyle: TextStyle = GlasmioTheme.textStyles.footnote,
+    titleMaxLines: Int = 3,
 ) {
     val colors = GlasmioTheme.colors
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -28,7 +29,7 @@ internal fun GithubActivityCardSummary(
             title,
             style = titleStyle,
             color = colors.content,
-            maxLines = 3,
+            maxLines = titleMaxLines,
             overflow = TextOverflow.Ellipsis,
         )
         bodyPreview?.takeIf(String::isNotBlank)?.let { preview ->

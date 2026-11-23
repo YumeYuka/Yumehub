@@ -57,7 +57,7 @@ fun GithubWorkItemCard(
         },
         summary = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                GithubActivityCardSummary(item.title, item.bodyPreview)
+                GithubActivityCardSummary(item.title, item.bodyPreview, titleMaxLines = 2)
                 item.subIssuesTotal
                     ?.takeIf { it > 0 }
                     ?.let { total ->

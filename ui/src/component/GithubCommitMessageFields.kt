@@ -33,10 +33,20 @@ fun GithubCommitMessageFields(
         enabled = enabled,
         singleLine = true,
     )
+    GithubMessageBodyField(body, onBodyChange, strings.CommitBody, enabled)
+}
+
+@Composable
+fun GithubMessageBodyField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+) {
     CommitTextField(
-        value = body,
-        onValueChange = onBodyChange,
-        placeholder = strings.CommitBody,
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
         enabled = enabled,
         minLines = 4,
         maxLines = 8,

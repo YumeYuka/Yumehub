@@ -9,7 +9,6 @@ import io.github.yumeyucca.lucide.FileText
 import io.github.yumeyucca.lucide.Lucide
 import java.io.IOException
 import kotlinx.serialization.SerializationException
-import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.ui.component.placeholders.listRowSkeletons
 import retrofit2.HttpException
@@ -48,15 +47,6 @@ fun LazyListScope.collaborationPagingStatus(
             }
     }
 }
-
-fun CollaborationItemDto.statusLabel(): String =
-    when {
-        merged || mergedAt != null -> "已合并"
-        state == "closed" -> "已关闭"
-        draft -> "草稿"
-        state == "open" -> "打开"
-        else -> state
-    }
 
 /** 统一的错误文案映射，网络与 GitHub 状态码都归到这里。 */
 fun collaborationErrorMessage(error: Throwable): String =
