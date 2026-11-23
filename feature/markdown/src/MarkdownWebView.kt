@@ -21,7 +21,6 @@ import kotlin.math.abs
 import moe.yumeyuka.markdown.core.isSafeHtmlMailto
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
-import moe.yumeyuka.yumehub.ui.theme.openGithubInterFont
 import org.json.JSONObject
 
 internal const val MarkdownMaxHeightPx = 120_000
@@ -368,10 +367,10 @@ internal class MarkdownWebView(
                     "Referrer-Policy" to "no-referrer",
                     "Cache-Control" to "no-store",
                 ),
-                when (file) {
-                    "Inter.ttf" -> openGithubInterFont(context, italic = false)
-                    "Inter-Italic.ttf" -> openGithubInterFont(context, italic = true)
-                    else -> context.assets.openMarkdownAsset(file)
+                if (file.endsWith(".ttf")) {
+                    context.assets.open("github-markdown/fonts/$file")
+                } else {
+                    context.assets.openMarkdownAsset(file)
                 },
             )
         } catch (_: Exception) {
@@ -744,8 +743,7 @@ internal class MarkdownWebView(
                 "font.css",
                 "suggested_changes.css",
                 "markdown.js",
-                "Inter.ttf",
-                "Inter-Italic.ttf",
+                "Ubuntu-Regular.ttf",
             )
         const val Policy =
             "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +

@@ -8,7 +8,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,7 +15,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalContext
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.GlassAppearance
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -55,9 +53,6 @@ fun YumehubTheme(
     topBarBlurEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    val fonts = remember(context) { githubTypography(context) }
-    val typography = fonts.collectAsState().value ?: return
     ProvideGithubStrings {
         val animatedAccent by
             animateColorAsState(accent, tween(durationMillis = 420), label = "accent")
@@ -66,7 +61,6 @@ fun YumehubTheme(
         GlasmioTheme(
             isDark = isDark,
             colorScheme = colorScheme,
-            typography = typography,
             appearance =
                 GlassAppearance(
                     liquidGlassEnabled = liquidGlassEnabled,

@@ -4,8 +4,6 @@ import android.content.Context
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import moe.yumeyuka.markdown.compose.HtmlPalette
@@ -33,27 +31,7 @@ object AcceptanceStyles {
         fun color(name: String): Color = parseColor(resolve(variables.getValue(name)))
         val syntax = asset(if (dark) "syntax_dark.css" else "syntax.css")
         val syntaxRules = syntaxRules(syntax, ::resolve)
-        val font =
-            FontFamily(
-                (100..900 step 100).flatMap { weight ->
-                    val axis = FontVariation.Settings(FontVariation.weight(weight))
-                    listOf(
-                        Font(
-                            "fonts/Inter.ttf",
-                            assets,
-                            FontWeight(weight),
-                            variationSettings = axis,
-                        ),
-                        Font(
-                            "fonts/Inter-Italic.ttf",
-                            assets,
-                            FontWeight(weight),
-                            FontStyle.Italic,
-                            variationSettings = axis,
-                        ),
-                    )
-                },
-            )
+        val font = FontFamily(Font("fonts/Ubuntu-Regular.ttf", assets, FontWeight.Normal))
         return HtmlStyles(
             palette =
                 HtmlPalette(

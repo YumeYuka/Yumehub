@@ -20,7 +20,6 @@ import io.github.neoruaa.glasmio.glass.render.configureGlassDynamicRange
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
-import moe.yumeyuka.yumehub.ui.theme.githubTypography
 import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
@@ -47,7 +46,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        val fonts = githubTypography(applicationContext)
         var firstCompositionReady = false
         splash.setKeepOnScreenCondition { !firstCompositionReady }
         loginOpen = savedInstanceState?.getBoolean(LoginOpenKey) == true
@@ -69,7 +67,6 @@ class MainActivity : ComponentActivity() {
             }
         navigationComponent.initializeLink(link)
         setContent {
-            if (fonts.collectAsState().value == null) return@setContent
             SideEffect { firstCompositionReady = true }
             CompositionLocalProvider(
                 LocalNavigationEventDispatcherOwner provides this@MainActivity,

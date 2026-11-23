@@ -1,7 +1,3 @@
-import org.tukaani.xz.XZInputStream
-
-buildscript { dependencies { classpath(libs.xz) } }
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -46,9 +42,9 @@ android {
     }
 }
 
-// 独立验收宿主不用应用主题，两个渲染模式仍使用与生产相同的 Inter 源文件。
+// 独立验收宿主不用应用主题，两个渲染模式使用与生产 WebView 相同的 Ubuntu 源文件。
 @CacheableTask
-abstract class PrepareSampleInterAssets : DefaultTask() {
+abstract class PrepareSampleFontAssets : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val fonts: DirectoryProperty
@@ -58,26 +54,22 @@ abstract class PrepareSampleInterAssets : DefaultTask() {
     @TaskAction
     fun prepare() {
         val target = output.dir("fonts").get().asFile.apply { mkdirs() }
-        for (name in listOf("Inter.ttf", "Inter-Italic.ttf")) {
-            fonts.file("$name.xz").get().asFile.inputStream().use { asset ->
-                XZInputStream(asset.buffered()).use { input ->
-                    target.resolve(name).outputStream().use { input.copyTo(it) }
-                }
-            }
-        }
-        fonts.file("OFL.txt").get().asFile.copyTo(target.resolve("OFL.txt"), overwrite = true)
+        val name = "Ubuntu-Regular.ttf"
+        fonts.file(name).get().asFile.copyTo(target.resolve(name), overwrite = true)
+        fonts.file("UFL.txt").get().asFile.copyTo(target.resolve("UFL.txt"), overwrite = true)
     }
 }
 
 androidComponents.onVariants { variant ->
-    val sourceFonts = rootProject.layout.projectDirectory.dir("ui/assets/fonts/inter-0b58fb37")
+    val sourceFonts =
+        rootProject.layout.projectDirectory.dir("feature/markdown/assets/github-markdown/fonts")
     val prepare =
-        tasks.register<PrepareSampleInterAssets>(
-            "prepare${variant.name.replaceFirstChar(Char::uppercaseChar)}SampleInterAssets",
+        tasks.register<PrepareSampleFontAssets>(
+            "prepare${variant.name.replaceFirstChar(Char::uppercaseChar)}SampleFontAssets",
         ) {
             fonts.set(sourceFonts)
         }
-    variant.sources.assets?.addGeneratedSourceDirectory(prepare, PrepareSampleInterAssets::output)
+    variant.sources.assets?.addGeneratedSourceDirectory(prepare, PrepareSampleFontAssets::output)
 }
 
 apply(plugin = "com.ncorti.ktfmt.gradle")

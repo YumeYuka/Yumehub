@@ -22,9 +22,7 @@ configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {
             tasks.register<PackTextAssets>("pack${suffix}TextAssets") {
                 source.set(assets)
                 archiveIncludes.set(listOf("textmate/*/syntaxes/*", "textmate/cursor-*.json"))
-                passthrough.set(
-                    listOf("fonts/inter-0b58fb37/*.ttf.xz", "fonts/*/OFL.txt", "licenses/**"),
-                )
+                passthrough.set(listOf("licenses/**"))
                 archiveName.set("textmate.xz")
             }
         variant.sources.assets?.addGeneratedSourceDirectory(pack, PackTextAssets::output)

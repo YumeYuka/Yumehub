@@ -592,7 +592,7 @@ class ReferenceHtmlView(
                 uri.host == "appassets.androidplatform.net" && path.startsWith(WebPath) -> {
                     val name = path.removePrefix(WebPath)
                     if (name !in AssetNames) return blocked()
-                    if (name == "Inter.ttf" || name == "Inter-Italic.ttf") "fonts/$name"
+                    if (name.endsWith(".ttf")) "fonts/$name"
                     else "$AssetPath$name"
                 }
                 uri.host == "fixture.invalid" && path.startsWith("/media/") ->
@@ -669,8 +669,7 @@ class ReferenceHtmlView(
                 "suggested_changes.css",
                 "markdown.js",
                 "android-adapter.js",
-                "Inter.ttf",
-                "Inter-Italic.ttf",
+                "Ubuntu-Regular.ttf",
             )
     }
 }

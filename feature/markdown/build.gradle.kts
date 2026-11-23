@@ -41,7 +41,7 @@ configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {
                 val web = "github-markdown/webview"
                 source.set(layout.projectDirectory.dir("assets"))
                 archiveIncludes.set(listOf("$web/*.html", "$web/*.css", "$web/*.js"))
-                passthrough.set(emptyList())
+                passthrough.set(listOf("github-markdown/fonts/*"))
                 archiveName.set("github-markdown.xz")
             }
         variant.sources.assets?.addGeneratedSourceDirectory(pack, PackTextAssets::output)
