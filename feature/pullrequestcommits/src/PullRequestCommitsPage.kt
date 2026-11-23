@@ -9,6 +9,7 @@ import androidx.paging.LoadState
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
@@ -28,8 +29,12 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
-data class PullRequestCommitsRoute(val owner: String, val name: String, val number: Int) :
-    GithubRoute
+data class PullRequestCommitsRoute(
+    val owner: String,
+    val name: String,
+    val number: Int,
+    val activityCommits: List<RepositoryActivityEntry>? = null,
+) : GithubRoute
 
 @Composable
 fun PullRequestCommitsPage(
@@ -37,6 +42,37 @@ fun PullRequestCommitsPage(
     account: String,
     onOpenCommit: (String) -> Unit,
 ) {
+    val strings = LocalGithubStrings.current
+    val host = requireNotNull(LocalGithubPageHost.current)
+    val activityCommits = route.activityCommits
+    // 时间线已携带这组提交的快照；不查询当前 PR 的完整提交列表。
+    if (activityCommits != null) {
+        GithubPage(
+            title = strings.WorkDetail.Commits,
+            smallTitle = strings.WorkDetail.Commits,
+            showTitle = false,
+            itemSpacing = 12.dp,
+        ) {
+            items(
+                count = activityCommits.size,
+                key = { activityCommits[it].id },
+                contentType = { "pr-commit" },
+            ) { index ->
+                val entry = activityCommits[index]
+                GlasmioGroupedList {
+                    PullRequestCommitSummary(
+                        entry,
+                        onClick =
+                            if (host.navigationEnabled && entry.id.isNotBlank()) {
+                                { onOpenCommit(entry.id) }
+                            } else null,
+                    )
+                }
+            }
+        }
+        return
+    }
+
     val viewModel: PullRequestCommitsViewModel =
         koinViewModel(
             key = "pr-commits:$account:$route",
@@ -50,8 +86,6 @@ fun PullRequestCommitsPage(
         refreshOnFirstActivation = false,
         onRefresh = viewModel::refresh,
     )
-    val strings = LocalGithubStrings.current
-    val host = requireNotNull(LocalGithubPageHost.current)
     val head = state.data?.head?.sha?.takeIf(String::isNotBlank)
     val contentKey = "pr-commits:$account:$route:$head"
     GithubPagingContent(viewModel.commits, contentKey = contentKey) { paging ->
@@ -91,11 +125,8 @@ fun PullRequestCommitsPage(
                     placeholder = { WorkspaceCommitPlaceholder() },
                 ) {
                     if (row != null && entry != null) {
-                        GithubCommitSummary(
-                            message = entry.title.ifBlank { strings.Activity.Unavailable },
-                            author = entry.login ?: strings.Workspaces.UnknownAuthor,
-                            avatarUrl = entry.avatarUrl,
-                            time = entry.timestamp?.let(::githubActivityTime),
+                        PullRequestCommitSummary(
+                            entry,
                             onClick =
                                 if (!revisionChanged && row.head == head && entry.id.isNotBlank()) {
                                     {
@@ -127,6 +158,18 @@ fun PullRequestCommitsPage(
             }
         }
     }
+}
+
+@Composable
+private fun PullRequestCommitSummary(entry: RepositoryActivityEntry, onClick: (() -> Unit)?) {
+    val strings = LocalGithubStrings.current
+    GithubCommitSummary(
+        message = entry.title.ifBlank { strings.Activity.Unavailable },
+        author = entry.login ?: strings.Workspaces.UnknownAuthor,
+        avatarUrl = entry.avatarUrl,
+        time = entry.timestamp?.let(::githubActivityTime),
+        onClick = onClick,
+    )
 }
 
 val pullRequestCommitsFeatureModule = module {

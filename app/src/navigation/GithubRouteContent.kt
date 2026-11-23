@@ -59,8 +59,6 @@ import moe.yumeyuka.yumehub.feature.starred.StarredPage
 import moe.yumeyuka.yumehub.feature.starred.StarredRoute
 import moe.yumeyuka.yumehub.feature.workdetail.WorkDetailPage
 import moe.yumeyuka.yumehub.feature.workdetail.WorkDetailRoute
-import moe.yumeyuka.yumehub.feature.workdetail.WorkInfoPage
-import moe.yumeyuka.yumehub.feature.workdetail.WorkInfoRoute
 import moe.yumeyuka.yumehub.feature.worklist.WorkListPage
 import moe.yumeyuka.yumehub.feature.worklist.WorkListRoute
 import moe.yumeyuka.yumehub.feature.workspaces.CommitHistoryPage
@@ -451,17 +449,22 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                     onOpenCommits = {
                         openRoute(PullRequestCommitsRoute(route.owner, route.name, route.number))
                     },
-                    onOpenInfo = {
-                        openRoute(WorkInfoRoute(route.owner, route.name, route.kind, route.number))
+                    onOpenCommitGroup = { commits ->
+                        openRoute(
+                            PullRequestCommitsRoute(
+                                route.owner,
+                                route.name,
+                                route.number,
+                                activityCommits = commits,
+                            )
+                        )
                     },
-                )
-            is WorkInfoRoute ->
-                WorkInfoPage(
-                    owner = route.owner,
-                    name = route.name,
-                    kind = route.kind,
-                    number = route.number,
-                    login = args.currentLogin,
+                    onOpenCommit = { oid ->
+                        openRoute(CommitDetailRoute(route.owner, route.name, oid))
+                    },
+                    onOpenWork = { owner, name, kind, number ->
+                        openRoute(WorkDetailRoute(owner, name, kind, number))
+                    },
                 )
             else -> Unit
         }

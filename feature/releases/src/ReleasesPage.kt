@@ -36,7 +36,6 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
 import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
 import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.GithubRepositoryCover
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.observeReaction
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseMetadataPlaceholder
@@ -151,11 +150,6 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         if (detail != null) {
             readingItem(key = "release-body:${detail.version.id}") {
                 GithubReadingGroup {
-                    GithubRepositoryCover(
-                        imageUrl = detail.openGraphImageUrl,
-                        description = strings.Explore.ReleaseCover(title),
-                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
-                    )
                     when {
                         detail.html.isNullOrBlank() ->
                             Text(
