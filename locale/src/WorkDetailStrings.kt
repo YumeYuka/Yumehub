@@ -17,6 +17,8 @@ public data class GithubStrings_WorkDetail(
     val CheckStatus: (String) -> String,
     val CheckConclusion: (String?) -> String?,
     val ReviewState: (String) -> String,
+    val TimelineReviewAction: (author: String, status: String) -> String,
+    val TimelineCommitsPushed: (author: String, count: Int) -> String,
     val MarkDone: String,
     val Done: String,
     val ConfirmDone: String,
@@ -29,9 +31,6 @@ public data class GithubStrings_WorkDetail(
     val Activity: String,
     val Changes: String,
     val TimelineEvent: (String, String?, String?) -> String,
-    val TimelineTitleChange: (currentTitle: String?) -> Pair<String, String>,
-    val TimelineForcePush:
-        (baseBranch: Boolean, branch: String?, before: String?, after: String?) -> String,
     val Created: (String) -> String,
     val CommitCount: (Int) -> String,
     val ReviewCount: (Int) -> String,
@@ -84,6 +83,8 @@ public data class GithubStrings_WorkDetail(
     val Approve: String,
     val RequestChanges: String,
     val Information: String,
+    val PullRequestInformation: String,
+    val IssueInformation: String,
     val EditTitle: String,
     val EditDescription: String,
     val ChangeBaseBranch: String,
@@ -96,15 +97,24 @@ public data class GithubStrings_WorkDetail(
     val ConfirmLockConversation: String,
     val RequestReview: String,
     val ReviewResults: String,
-    val MyReview: String,
+    val Review: String,
     val NoReviewRequests: String,
-    val NoReviewResults: String,
+    val ReviewUnavailable: String,
     val Properties: String,
     val Assignees: String,
+    val IssueFields: String,
+    val AddIssueField: String,
+    val NoIssueFieldValue: String,
+    val ClearIssueFieldValue: String,
+    val IssueFieldDateFormat: String,
+    val IssueFieldNumberFormat: String,
+    val PropertyChanged: String,
+    val AssigneeCount: (Int) -> String,
     val Labels: String,
     val Milestone: String,
     val LinkedItems: String,
     val SubIssues: String,
+    val ReferencedItems: String,
     val Projects: String,
     val EditProperty: String,
     val Unassigned: String,
@@ -115,10 +125,14 @@ public data class GithubStrings_WorkDetail(
     val NoProjects: String,
     val PropertyLoadFailed: String,
     val PropertySaveFailed: String,
-    val ContinueAdding: String,
     val PropertySearch: String,
     val NoPropertyOptions: String,
     val RequestedReviewers: String,
+    val ReviewPending: String,
+    val ReviewAgain: String,
+    val ReviewCompleted: String,
+    val ReviewAvailable: String,
+    val ReviewNotRequested: String,
     val Author: String,
     val Status: String,
     val Locked: String,
@@ -174,13 +188,15 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         ReviewState = { value ->
             when (value) {
                 "APPROVED" -> "已批准"
-                "CHANGES_REQUESTED" -> "请求修改"
+                "CHANGES_REQUESTED" -> "请求更改"
                 "COMMENTED" -> "评论"
                 "DISMISSED" -> "已撤销"
                 "PENDING" -> "待提交"
                 else -> value
             }
         },
+        TimelineReviewAction = { author, status -> "$author $status" },
+        TimelineCommitsPushed = { author, count -> "$author 推送了 $count 个提交" },
         MarkDone = "完成通知",
         Done = "通知已完成",
         ConfirmDone = "完成此通知？",
@@ -200,13 +216,6 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
                 "Reopened" -> "重新打开了此工作项"
                 "RenamedTitle" ->
                     eventDetail?.let { "将标题改为「$it」" } ?: "重命名了标题"
-                "Merged" ->
-                    when {
-                        eventSubject != null && eventDetail != null ->
-                            "已将提交 $eventDetail 合并到 $eventSubject"
-                        eventSubject != null -> "合并到 $eventSubject"
-                        else -> "合并了此拉取请求"
-                    }
                 "Labeled" -> eventSubject?.let { "添加标签：$it" } ?: "添加了标签"
                 "Unlabeled" -> eventSubject?.let { "移除标签：$it" } ?: "移除了标签"
                 "Assigned" -> eventSubject?.let { "指派给 $it" } ?: "指派了负责人"
@@ -271,24 +280,6 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
                 else -> "更新了状态"
             }
         },
-        TimelineTitleChange = { currentTitle ->
-            if (currentTitle.isNullOrBlank()) "更改了原标题「" to "」"
-            else "将标题从「" to "」改为「$currentTitle」"
-        },
-        TimelineForcePush = { baseBranch, branch, before, after ->
-            val action =
-                when {
-                    !branch.isNullOrBlank() -> "强制推送到「$branch」"
-                    baseBranch -> "强制推送了 PR 目标分支"
-                    else -> "强制推送了 PR 源分支"
-                }
-            when {
-                !before.isNullOrBlank() && !after.isNullOrBlank() -> "$action（$before → $after）"
-                !before.isNullOrBlank() -> "$action（原提交 $before）"
-                !after.isNullOrBlank() -> "$action（新提交 $after）"
-                else -> action
-            }
-        },
         Created = { author -> "$author 创建了此工作项" },
         CommitCount = { count -> "$count 个提交" },
         ReviewCount = { count -> "$count 个评审" },
@@ -316,9 +307,9 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         ReviewDecision = { value ->
             when (value) {
                 "APPROVED" -> "已批准"
-                "CHANGES_REQUESTED" -> "请求修改"
+                "CHANGES_REQUESTED" -> "请求更改"
                 "REVIEW_REQUIRED" -> "需要评审"
-                else -> "等待评审状态"
+                else -> "暂无评审"
             }
         },
         ReviewRequests = { count -> "$count 个评审请求" },
@@ -358,11 +349,13 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         SubmitReview = "提交评审",
         ReviewResult = "评审结果",
         Approve = "批准",
-        RequestChanges = "请求修改",
+        RequestChanges = "请求更改",
         Information = "工作项信息",
+        PullRequestInformation = "拉取请求信息",
+        IssueInformation = "议题信息",
         EditTitle = "编辑标题",
         EditDescription = "编辑描述",
-        ChangeBaseBranch = "更改基本分支",
+        ChangeBaseBranch = "更改目标分支",
         LockConversation = "锁定对话",
         UnlockConversation = "解锁对话",
         ClosePullRequest = "关闭拉取请求",
@@ -372,15 +365,24 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         ConfirmLockConversation = "确认锁定此对话？",
         RequestReview = "请求评审",
         ReviewResults = "评审结果",
-        MyReview = "我的评审",
+        Review = "评审",
         NoReviewRequests = "未选择评审人",
-        NoReviewResults = "暂无他人评审",
+        ReviewUnavailable = "当前无法提交评审",
         Properties = "属性",
         Assignees = "受理人",
+        IssueFields = "议题字段",
+        AddIssueField = "添加字段",
+        NoIssueFieldValue = "未填写",
+        ClearIssueFieldValue = "清空字段值",
+        IssueFieldDateFormat = "YYYY-MM-DD",
+        IssueFieldNumberFormat = "请输入有效数字",
+        PropertyChanged = "属性已在 GitHub 上更改，请重新加载后编辑",
+        AssigneeCount = { count -> "$count 位受理人" },
         Labels = "标签",
         Milestone = "里程碑",
         LinkedItems = "链接的项",
         SubIssues = "子议题",
+        ReferencedItems = "引用的项目",
         Projects = "项目",
         EditProperty = "编辑",
         Unassigned = "未分配",
@@ -391,10 +393,14 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         NoProjects = "未选择项目",
         PropertyLoadFailed = "属性加载失败",
         PropertySaveFailed = "未能确认保存结果，请刷新核对后重试；草稿已保留",
-        ContinueAdding = "继续添加",
         PropertySearch = "搜索选项",
         NoPropertyOptions = "没有可用选项",
         RequestedReviewers = "已请求评审",
+        ReviewPending = "待评审",
+        ReviewAgain = "重新评审",
+        ReviewCompleted = "已评审",
+        ReviewAvailable = "可请求评审",
+        ReviewNotRequested = "未请求",
         Author = "作者",
         Status = "状态",
         Locked = "讨论已锁定",
@@ -461,6 +467,8 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 else -> value
             }
         },
+        TimelineReviewAction = { author, status -> "$status by $author" },
+        TimelineCommitsPushed = { author, count -> "$author pushed $count commits" },
         MarkDone = "Mark notification as done",
         Done = "Notification completed",
         ConfirmDone = "Complete this notification?",
@@ -482,13 +490,6 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 "Reopened" -> "reopened this item"
                 "RenamedTitle" ->
                     eventDetail?.let { "renamed the title to \"$it\"" } ?: "renamed the title"
-                "Merged" ->
-                    when {
-                        eventSubject != null && eventDetail != null ->
-                            "merged commit $eventDetail into $eventSubject"
-                        eventSubject != null -> "merged into $eventSubject"
-                        else -> "merged this pull request"
-                    }
                 "Labeled" -> eventSubject?.let { "added label: $it" } ?: "added a label"
                 "Unlabeled" ->
                     eventSubject?.let { "removed label: $it" } ?: "removed a label"
@@ -584,24 +585,6 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 else -> "updated the status"
             }
         },
-        TimelineTitleChange = { currentTitle ->
-            if (currentTitle.isNullOrBlank()) "changed the previous title \"" to "\""
-            else "renamed the title from \"" to "\" to \"$currentTitle\""
-        },
-        TimelineForcePush = { baseBranch, branch, before, after ->
-            val action =
-                when {
-                    !branch.isNullOrBlank() -> "force-pushed to \"$branch\""
-                    baseBranch -> "force-pushed the PR base branch"
-                    else -> "force-pushed the PR head branch"
-                }
-            when {
-                !before.isNullOrBlank() && !after.isNullOrBlank() -> "$action ($before → $after)"
-                !before.isNullOrBlank() -> "$action (previous commit $before)"
-                !after.isNullOrBlank() -> "$action (new commit $after)"
-                else -> action
-            }
-        },
         Created = { author -> "$author opened this item" },
         CommitCount = { count -> "$count commits" },
         ReviewCount = { count -> "$count reviews" },
@@ -632,7 +615,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 "APPROVED" -> "Approved"
                 "CHANGES_REQUESTED" -> "Changes requested"
                 "REVIEW_REQUIRED" -> "Review required"
-                else -> "Review status pending"
+                else -> "No reviews yet"
             }
         },
         ReviewRequests = { count -> "$count review requests" },
@@ -674,6 +657,8 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         Approve = "Approve",
         RequestChanges = "Request changes",
         Information = "Work item information",
+        PullRequestInformation = "Pull request information",
+        IssueInformation = "Issue information",
         EditTitle = "Edit title",
         EditDescription = "Edit description",
         ChangeBaseBranch = "Change base branch",
@@ -686,15 +671,24 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         ConfirmLockConversation = "Lock this conversation?",
         RequestReview = "Request review",
         ReviewResults = "Review results",
-        MyReview = "My review",
+        Review = "Review",
         NoReviewRequests = "No reviewers selected",
-        NoReviewResults = "No reviews from others",
+        ReviewUnavailable = "You can’t submit a review right now",
         Properties = "Properties",
         Assignees = "Assignees",
+        IssueFields = "Issue fields",
+        AddIssueField = "Add field",
+        NoIssueFieldValue = "Not set",
+        ClearIssueFieldValue = "Clear field value",
+        IssueFieldDateFormat = "YYYY-MM-DD",
+        IssueFieldNumberFormat = "Enter a valid number",
+        PropertyChanged = "This property changed on GitHub. Reload it before editing",
+        AssigneeCount = { count -> if (count == 1) "1 assignee" else "$count assignees" },
         Labels = "Labels",
         Milestone = "Milestone",
         LinkedItems = "Linked items",
         SubIssues = "Sub-issues",
+        ReferencedItems = "Referenced items",
         Projects = "Projects",
         EditProperty = "Edit",
         Unassigned = "Unassigned",
@@ -706,10 +700,14 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         PropertyLoadFailed = "Unable to load properties",
         PropertySaveFailed =
             "Saving could not be confirmed. Refresh and check before retrying. Your draft is retained",
-        ContinueAdding = "Add more",
         PropertySearch = "Search options",
         NoPropertyOptions = "No available options",
         RequestedReviewers = "Requested reviewers",
+        ReviewPending = "Awaiting review",
+        ReviewAgain = "Review again",
+        ReviewCompleted = "Reviewed",
+        ReviewAvailable = "Available reviewers",
+        ReviewNotRequested = "Not requested",
         Author = "Author",
         Status = "Status",
         Locked = "Conversation locked",

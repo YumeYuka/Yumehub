@@ -65,7 +65,7 @@ internal val ZhHansExploreStrings: GithubStrings_Explore =
         Merged = "已合并",
         Closed = "已关闭",
         Draft = "草稿",
-        Open = "打开",
+        Open = "开启",
         WorkTitle = { pullRequest, number ->
             "${if (pullRequest) "拉取请求" else "议题"} #${number ?: ""}"
         },

@@ -82,7 +82,7 @@ internal val ZhHansHomeStrings: GithubStrings_Home =
         FavoriteIncomplete = "收藏信息不完整，请重试",
         RepositoryLoadFailed = "无法读取仓库，请重试",
         FavoritesLimit = "最多可收藏 25 个项目",
-        FavoritesSaveFailed = "保存收藏失败，请刷新后重试",
+        FavoritesSaveFailed = "收藏保存失败，请刷新后重试",
     )
 
 internal val EnHomeStrings: GithubStrings_Home =
@@ -125,6 +125,6 @@ internal val EnHomeStrings: GithubStrings_Home =
         AccountChanged = "Your account has changed. Reopen the repository",
         FavoriteIncomplete = "Favorite information is incomplete. Please retry",
         RepositoryLoadFailed = "Unable to load the repository. Please retry",
-        FavoritesLimit = "You can favorite up to 25 items",
+        FavoritesLimit = "You can add up to 25 favorites",
         FavoritesSaveFailed = "Unable to save favorites. Refresh and retry",
     )
