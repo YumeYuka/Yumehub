@@ -195,7 +195,7 @@ fun WorkDetailPage(
             GlasmioTheme.typography.headlineLarge.copy(
                 fontSize = 22.sp,
                 lineHeight = 32.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
             ),
         back = true,
         listState = listState,

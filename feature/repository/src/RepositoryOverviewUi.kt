@@ -25,6 +25,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
@@ -71,8 +72,13 @@ internal fun RepositoryHeaderCard(
                     Modifier.fillMaxWidth()
                         .padding(start = 14.dp, end = 14.dp)
                         .clickable(enabled = enabled, onClick = onOpenDescription),
-                style = GlasmioTheme.textStyles.body,
-                color = colors.content,
+                style =
+                    GlasmioTheme.textStyles.body.copy(
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                color = colors.secondaryContent,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

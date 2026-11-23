@@ -274,7 +274,10 @@ fun RepositoryPage(
                     is RepositoryDetailPage.Readme -> strings.Readme
                     is RepositoryDetailPage.License -> strings.License
                 },
-            titleStyle = if (overviewActions) GlasmioTheme.typography.headlineLarge else null,
+            titleStyle =
+                if (overviewActions) {
+                    GlasmioTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold)
+                } else null,
             // 总览页大标题上方放 @属主徽标、行尾放属主头像，大标题自然下移让位。
             // 属主来自路由，头像在数据到达前先占位，顶栏高度不随加载变化。
             titleEyebrow =
@@ -283,7 +286,7 @@ fun RepositoryPage(
                         Text(
                             "@$currentOwner",
                             style = GlasmioTheme.textStyles.footnote,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.ExtraBold,
                             color = GlasmioTheme.colors.secondaryContent,
                             maxLines = 1,
                         )
