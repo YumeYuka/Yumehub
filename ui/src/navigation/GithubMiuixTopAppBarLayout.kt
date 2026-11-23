@@ -7,12 +7,14 @@ import android.icu.text.BreakIterator
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -96,6 +98,8 @@ internal fun GithubMiuixTopAppBarLayout(
     largeTitleEyebrow: (@Composable () -> Unit)? = null,
     /** 挂在大标题行尾（右对齐）的控件，与上方徽标同一视觉行起点。 */
     largeTitleTrailing: (@Composable () -> Unit)? = null,
+    largeTitleFooter: (@Composable () -> Unit)? = null,
+    largeTitleOnClick: (() -> Unit)? = null,
     largeTitleBlurRadius: Dp = 0.dp,
 ) {
     val detailPresentation = LocalGithubDetailPresentation.current?.chromeState
@@ -191,12 +195,11 @@ internal fun GithubMiuixTopAppBarLayout(
             ) {
                 actions()
             }
-            Row(
+            ExpandedTitleBlock(
                 modifier =
                     Modifier.layoutId("largeTitle")
                         .clipTopAppBarTitle(titleClip) { titleClip.largeTitleOrigin }
                         .padding(top = TopAppBarDefaults.CollapsedHeight)
-                        .padding(horizontal = titlePadding)
                         .graphicsLayer {
                             alpha = largeTitleAlpha()
                             // Assigned on every path, including the disabled one: the layer keeps
@@ -219,11 +222,10 @@ internal fun GithubMiuixTopAppBarLayout(
                             val v = scrolledOffset()
                             IntOffset(0, v.fastRoundToInt())
                         }
-                        .onSizeChanged { updateHeightOffsetLimit(it.height) }
-                        .padding(top = GithubLargeTitleTopPadding),
-                // 头像与标题首行顶部对齐：两行文字更高，居中对齐会让图标看起来偏移。
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .onSizeChanged { updateHeightOffsetLimit(it.height) },
+                titlePadding = titlePadding,
+                onClick = if (smallTitleVisible) null else largeTitleOnClick,
+                footer = largeTitleFooter,
             ) {
                 largeTitleLeading?.invoke()
                 Column(
@@ -479,6 +481,33 @@ internal fun GithubMiuixTopAppBarLayout(
                 )
             largeTitlePlaceable.placeRelative(x = 0, y = 0)
         }
+    }
+}
+
+@Composable
+private fun ExpandedTitleBlock(
+    modifier: Modifier,
+    titlePadding: Dp,
+    onClick: (() -> Unit)?,
+    footer: (@Composable () -> Unit)?,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .then(
+                if (onClick == null) Modifier
+                else Modifier.clickable(interactionSource = null, indication = null, onClick = onClick)
+            )
+            .padding(horizontal = titlePadding)
+            .padding(top = GithubLargeTitleTopPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+        footer?.invoke()
     }
 }
 

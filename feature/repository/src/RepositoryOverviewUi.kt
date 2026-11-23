@@ -1,7 +1,6 @@
 package moe.yumeyuka.yumehub.feature.repository
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -40,7 +39,21 @@ import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
 import moe.yumeyuka.yumehub.ui.theme.GithubHomeColors
 
-/** 仓库头部：简介与元信息胶囊；@属主、大标题和头像由顶栏大标题槽位承担。 */
+@Composable
+internal fun RepositoryHeaderDescription(description: String) {
+    Text(
+        text = description,
+        style = GlasmioTheme.textStyles.body.copy(
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        color = GlasmioTheme.colors.secondaryContent,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
 @Composable
 internal fun RepositoryHeaderCard(
     repository: RepositoryDto,
@@ -49,12 +62,9 @@ internal fun RepositoryHeaderCard(
     onToggleStar: () -> Unit,
     onFork: () -> Unit,
     onOpenLink: (String) -> Unit,
-    onOpenDescription: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current.Repository
-    val colors = GlasmioTheme.colors
     val overview = state.overview
-    val description = repository.description?.takeIf(String::isNotBlank)
     // 链接优先取仓库设置里的网站地址，未填写时回落到仓库自身的 GitHub 地址。
     val link =
         overview?.homepage?.takeIf(String::isNotBlank)
@@ -63,40 +73,19 @@ internal fun RepositoryHeaderCard(
     val stars = overview?.stars ?: repository.stargazersCount
     val forks = overview?.forks ?: repository.forksCount
     val starred = overview?.starred == true
-    Column(Modifier.fillMaxWidth()) {
-        description?.let {
-            Text(
-                it,
-                // 与大标题左缘对齐：页面内容 12dp 再补 14dp（Miuix 标题内边距 26dp）。
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp)
-                        .clickable(enabled = enabled, onClick = onOpenDescription),
-                style =
-                    GlasmioTheme.textStyles.body.copy(
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                color = colors.secondaryContent,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        RepositoryMetadataBar(
-            link,
-            starred,
-            stars,
-            forks,
-            strings,
-            enabled,
-            onToggleStar,
-            onFork,
-            onOpenLink,
-            // 星标请求进行中只禁用这颗胶囊，其余入口保持可点。
-            starEnabled = enabled && !state.busy,
-        )
-    }
+    RepositoryMetadataBar(
+        link,
+        starred,
+        stars,
+        forks,
+        strings,
+        enabled,
+        onToggleStar,
+        onFork,
+        onOpenLink,
+        // 星标请求进行中只禁用这颗胶囊，其余入口保持可点。
+        starEnabled = enabled && !state.busy,
+    )
 }
 
 /** 仓库设置里的网站地址转成展示用的主机名，去掉协议与末尾斜杠。 */

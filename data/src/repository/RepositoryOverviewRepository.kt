@@ -30,6 +30,14 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import retrofit2.HttpException
 
 @Serializable
+data class ForkParent(
+    val url: String,
+    val login: String,
+    val avatarUrl: String?,
+    val ownerType: String?,
+)
+
+@Serializable
 data class RepositoryOverview(
     val id: String,
     val starred: Boolean,
@@ -53,6 +61,7 @@ data class RepositoryOverview(
     val license: String?,
     /** 仓库设置里的网站地址；未填写时为 null。 */
     val homepage: String? = null,
+    val forkParent: ForkParent? = null,
     val subscriptionTypes: Set<String> = emptySet(),
 ) {
     val canEditDescription: Boolean
@@ -75,7 +84,7 @@ class RepositoryOverviewRepository(
     fun resource(account: String, owner: String, name: String) =
         cache.resource(
             account,
-            "repository-home-v3:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
+            "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
             RepositoryOverview.serializer(),
         )
 
@@ -406,6 +415,16 @@ internal fun parseRepositoryOverview(node: JsonObject): RepositoryOverview =
         archived = node.requiredBoolean("isArchived"),
         // 官方仓库 fragment 同样使用 homepageUrl（仓库 Settings 里的 Website）。
         homepage = node.text("homepageUrl")?.takeIf(String::isNotBlank),
+        forkParent =
+            (node["parent"] as? JsonObject)?.let { parent ->
+                val owner = parent.requiredObject("owner")
+                ForkParent(
+                    url = parent.requiredText("url"),
+                    login = owner.requiredText("login"),
+                    avatarUrl = owner.text("avatarUrl"),
+                    ownerType = owner.text("__typename"),
+                )
+            },
         license =
             (node["licenseInfo"] as? JsonObject)?.let {
                 it.text("spdxId")?.takeUnless { id -> id == "NOASSERTION" } ?: it.text("name")
@@ -470,7 +489,7 @@ private const val RepositoryHomeQuery =
 query RepositoryHome(${'$'}owner: String!, ${'$'}name: String!) {
   repository(owner: ${'$'}owner, name: ${'$'}name) {
     id viewerHasStarred viewerSubscription viewerSubscriptionTypes viewerPermission stargazerCount forkCount
-    homepageUrl
+    homepageUrl parent { url owner { __typename login avatarUrl } }
     hasIssuesEnabled hasDiscussionsEnabled isArchived
     watchers { totalCount } issues(states: OPEN) { totalCount }
     pullRequests(states: OPEN) { totalCount } discussions { totalCount } releases { totalCount }

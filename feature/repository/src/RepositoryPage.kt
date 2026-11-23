@@ -21,8 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
@@ -36,7 +34,6 @@ import io.github.yumeyucca.lucide.MessagesSquare
 import io.github.yumeyucca.lucide.Pencil
 import io.github.yumeyucca.lucide.Pin
 import io.github.yumeyucca.lucide.Plus
-import io.github.yumeyucca.lucide.Share
 import java.util.LinkedHashMap
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.GithubLinkTarget
@@ -227,8 +224,9 @@ fun RepositoryPage(
     if (!overviewActions) {
         GithubBackHandler { if (host.backEnabled) viewModel.navigateUp() }
     }
-    // 简介在头部只显示两行，点击后用 alert 展示完整内容，单个确认按钮关闭。
-    var descriptionOpen by remember { mutableStateOf(false) }
+    // 头部（头像、大标题与简介）点击后打开仓库信息面板。
+    var infoOpen by remember { mutableStateOf(false) }
+    val description = details?.description?.takeIf(String::isNotBlank)
     var currentReadmeAnchor by rememberSaveable { mutableStateOf(readme?.anchor) }
     val parentLinkHandler = LocalGithubLinkHandler.current
     val repositoryLinkHandler: (String) -> Unit =
@@ -292,6 +290,14 @@ fun RepositoryPage(
                         )
                     }
                 } else null,
+            titleFooter =
+                if (overviewActions && description != null) {
+                    { RepositoryHeaderDescription(description) }
+                } else null,
+            titleOnClick =
+                if (overviewActions && details != null && host.navigationEnabled) {
+                    { infoOpen = true }
+                } else null,
             titleTrailing =
                 if (overviewActions) {
                     {
@@ -313,22 +319,19 @@ fun RepositoryPage(
             locked = forkState?.submitting == true,
             itemSpacing = 12.dp,
             actions = {
-                Box {
-                var creating by remember(viewModel, pageKey) { mutableStateOf(false) }
-                var expanded by remember(viewModel, pageKey) { mutableStateOf(false) }
-                val createAnchor = rememberGlasmioMenuAnchorState()
-                val moreAnchor = rememberGlasmioMenuAnchorState()
-                GithubToolbarActions(
-                    if (overviewActions)
+                if (overviewActions) Box {
+                    var creating by remember(viewModel, pageKey) { mutableStateOf(false) }
+                    var expanded by remember(viewModel, pageKey) { mutableStateOf(false) }
+                    val createAnchor = rememberGlasmioMenuAnchorState()
+                    val moreAnchor = rememberGlasmioMenuAnchorState()
+                    GithubToolbarActions(
                         toolbarIcon(Lucide.Plus, strings.Create, menuAnchor = createAnchor) {
                             if (host.navigationEnabled) creating = true
-                        }
-                    else null,
-                    toolbarIcon(Lucide.Ellipsis, strings.Actions, menuAnchor = moreAnchor) {
-                        if (host.navigationEnabled) expanded = true
-                    },
-                )
-                if (overviewActions) {
+                        },
+                        toolbarIcon(Lucide.Ellipsis, strings.Actions, menuAnchor = moreAnchor) {
+                            if (host.navigationEnabled) expanded = true
+                        },
+                    )
                     GlasmioMenu(
                         expanded = creating,
                         onExpandedChange = { creating = it },
@@ -400,16 +403,14 @@ fun RepositoryPage(
                             )
                         }
                     }
-                }
-                GlasmioMenu(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it },
-                    itemCount = if (!overviewActions) 1 else if (overview.pinned == null) 4 else 5,
-                    menuAnchorState = moreAnchor,
-                    externalAnchorBounds = moreAnchor.bounds,
-                    anchor = {},
-                ) { backdrop, close ->
-                    if (overviewActions) {
+                    GlasmioMenu(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
+                        itemCount = if (overview.pinned == null) 3 else 4,
+                        menuAnchorState = moreAnchor,
+                        externalAnchorBounds = moreAnchor.bounds,
+                        anchor = {},
+                    ) { backdrop, close ->
                         GlasmioMenuItem(
                             title = strings.NotificationSettings,
                             backdrop = backdrop,
@@ -436,20 +437,6 @@ fun RepositoryPage(
                                 details?.nodeId?.let(listsViewModel::open)
                             },
                         )
-                    }
-                    GlasmioMenuItem(
-                        title = strings.ShareLink,
-                        backdrop = backdrop,
-                        icon = {
-                            GithubIcon(Lucide.Share, contentDescription = null, size = 20.dp)
-                        },
-                        onClick = {
-                            close()
-                            expanded = false
-                            share()
-                        },
-                    )
-                    if (overviewActions) {
                         val pinned = overview.pinned
                         if (pinned != null)
                             GlasmioMenuItem(
@@ -488,7 +475,6 @@ fun RepositoryPage(
                         )
                     }
                 }
-                }
             },
         ) {
             RepositoryDetailScreen(
@@ -524,10 +510,6 @@ fun RepositoryPage(
                 overviewState = overview,
                 onToggleStar = {
                     if (host.navigationEnabled && !overview.busy) overviewViewModel.star()
-                },
-                onOpenDescription = {
-                    if (host.navigationEnabled && details?.description?.isNotBlank() == true)
-                        descriptionOpen = true
                 },
                 onRetryOverviewReadme = {
                     if (host.navigationEnabled) viewModel.retryOverviewReadme()
@@ -593,18 +575,23 @@ fun RepositoryPage(
         onCheckName = forkViewModel::checkName,
         onCreate = forkViewModel::create,
     )
-    // 关闭时保留调用，仅设 visible=false，让库完成退场动画。
-    GlasmioAlertDialog(
-        visible = descriptionOpen,
-        onDismissRequest = { descriptionOpen = false },
-        title = strings.Description,
-        message = details?.description.orEmpty(),
-        buttons =
-            listOf(
-                GlasmioAlertButtonSpec(
-                    label = common.Confirm,
-                    onClick = { descriptionOpen = false },
-                ),
-            ),
+    RepositoryInfoSheet(
+        visible = infoOpen,
+        onDismiss = { infoOpen = false },
+        repository = details,
+        overview = overview.overview,
+        repositoryUrl = repositoryUrl,
+        onShare = {
+            if (infoOpen && host.navigationEnabled) {
+                infoOpen = false
+                share()
+            }
+        },
+        onOpenLink = { url ->
+            if (infoOpen && host.navigationEnabled) {
+                infoOpen = false
+                openGithubLink(url)
+            }
+        },
     )
 }

@@ -47,6 +47,8 @@ internal fun GithubMiuixGlassTopAppBar(
     largeTitleSuffix: String? = null,
     largeTitleEyebrow: (@Composable () -> Unit)? = null,
     largeTitleTrailing: (@Composable () -> Unit)? = null,
+    largeTitleFooter: (@Composable () -> Unit)? = null,
+    largeTitleOnClick: (() -> Unit)? = null,
     actions: @Composable () -> Unit = {},
 ) {
     val source =
@@ -87,6 +89,8 @@ internal fun GithubMiuixGlassTopAppBar(
             largeTitleSuffix = largeTitleSuffix,
             largeTitleEyebrow = largeTitleEyebrow,
             largeTitleTrailing = largeTitleTrailing,
+            largeTitleFooter = largeTitleFooter,
+            largeTitleOnClick = largeTitleOnClick,
             actions = actions,
         )
     }

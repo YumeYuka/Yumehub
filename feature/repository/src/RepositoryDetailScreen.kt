@@ -47,7 +47,6 @@ internal fun LazyListScope.RepositoryDetailScreen(
     readmeAnchor: String? = null,
     overviewState: RepositoryOverviewState,
     onToggleStar: () -> Unit,
-    onOpenDescription: () -> Unit,
     onRetryOverviewReadme: () -> Unit,
     onRepositoryExternal: (String) -> Unit,
     onOpenLicense: () -> Unit,
@@ -82,7 +81,6 @@ internal fun LazyListScope.RepositoryDetailScreen(
                 overviewState,
                 enabled,
                 onToggleStar,
-                onOpenDescription,
                 onBrowseFiles,
                 onOpenIssues,
                 onOpenPullRequests,
@@ -131,7 +129,6 @@ private fun LazyListScope.repositoryOverview(
     overview: RepositoryOverviewState,
     enabled: Boolean,
     onToggleStar: () -> Unit,
-    onOpenDescription: () -> Unit,
     onBrowseFiles: () -> Unit,
     onOpenIssues: (() -> Unit)?,
     onOpenPullRequests: (() -> Unit)?,
@@ -153,7 +150,6 @@ private fun LazyListScope.repositoryOverview(
                     onToggleStar,
                     onFork = { onExternal("fork") },
                     onOpenLink = onExternal,
-                    onOpenDescription = onOpenDescription,
                 )
         }
     }
