@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
         var firstCompositionReady = false
         splash.setKeepOnScreenCondition { !firstCompositionReady }
         loginOpen = savedInstanceState?.getBoolean(LoginOpenKey) == true
-        // 在首次组合前配置窗口；Compose 的 inset 会在视图收到分发后更新。
+        // Configure the window before composition; Compose updates insets after view dispatch.
         WindowCompat.enableEdgeToEdge(window)
         val initialHdrOutput =
             settingsStore.glassHdrEnabled.state.value &&
@@ -73,9 +73,10 @@ class MainActivity : ComponentActivity() {
         navigationComponent.initializeLink(link)
         setContent {
             var initialInsetsReady by remember { mutableStateOf(false) }
-            // 首次组合时 Compose 的系统栏 inset 可能仍为 0，Scaffold 会按错误的顶栏高度
-            // 测量列表，分发后再整体下移。仅等 decorView 分发不足以保证 Compose 已更新；
-            // 首屏必须等 Compose 与窗口实际值一致再组合，实际值也可能合法地为 0。
+            // Compose may initially report zero system bar insets, causing Scaffold to measure the
+            // list with an incomplete top bar height and shift it down after inset dispatch.
+            // A decorView dispatch alone does not mean Compose has updated: wait for its inset to
+            // match the actual window value before composing the first screen. Zero can be valid.
             if (
                 initialInsetsReady ||
                     WindowInsets.systemBars.getTop(LocalDensity.current) ==
