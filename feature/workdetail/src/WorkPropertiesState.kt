@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
+import moe.yumeyuka.yumehub.data.api.dto.IssueFields
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperties
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
@@ -30,6 +31,7 @@ internal data class WorkPropertiesState(
     val failed: Boolean = false,
     val value: WorkProperties? = null,
     val references: List<WorkPropertyOption> = emptyList(),
+    val issueFields: IssueFields? = null,
     val editor: WorkPropertyEditor? = null,
     val drafts: Map<WorkProperty, List<WorkPropertyOption>> = emptyMap(),
     val submitting: Boolean = false,

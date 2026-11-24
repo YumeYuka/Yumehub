@@ -75,7 +75,12 @@ internal fun WorkDetailHeader(
                         }
                     }
                     WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Assignees) }) {
-                        GithubIcon(Lucide.UserRound, contentDescription = null, size = 16.dp)
+                        GithubIcon(
+                            Lucide.UserRound,
+                            contentDescription = null,
+                            size = 16.dp,
+                            tint = GithubWorkColors.muted,
+                        )
                         WorkHeaderText(
                             when (entry.assignedActors.size) {
                                 0 -> strings.Unassigned
@@ -87,7 +92,12 @@ internal fun WorkDetailHeader(
                 }
                 val progress = entry.taskProgress
                 WorkHeaderButton(enabled, onInformation) {
-                    GithubIcon(Lucide.ListChecks, contentDescription = null, size = 16.dp)
+                    GithubIcon(
+                        Lucide.ListChecks,
+                        contentDescription = null,
+                        size = 16.dp,
+                        tint = GithubWorkColors.muted,
+                    )
                     WorkHeaderText(strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0))
                 }
                 if (isPullRequest) WorkHeaderChecks(entry, enabled, onChecks)
@@ -105,7 +115,7 @@ private fun WorkHeaderLabels(labels: List<CollaborationLabelDto>, enabled: Boole
                 Lucide.Tag,
                 contentDescription = null,
                 size = 16.dp,
-                tint = GlasmioTheme.colors.secondaryContent,
+                tint = GithubWorkColors.muted,
             )
             WorkHeaderText(strings.NoLabels)
         } else {
@@ -138,7 +148,7 @@ private fun WorkHeaderProject(
             Lucide.Package,
             contentDescription = null,
             size = 16.dp,
-            tint = GlasmioTheme.colors.secondaryContent,
+            tint = GithubWorkColors.muted,
         )
         WorkHeaderText(title ?: strings.NoProjects, Modifier.weight(1f, fill = false))
     }
@@ -159,7 +169,7 @@ private fun WorkHeaderReviewers(
                 Lucide.UserRound,
                 contentDescription = null,
                 size = 16.dp,
-                tint = GlasmioTheme.colors.secondaryContent,
+                tint = GithubWorkColors.muted,
             )
             WorkHeaderText(strings.NoReviewRequests, Modifier.weight(1f, fill = false))
         } else {
@@ -192,7 +202,7 @@ private fun WorkHeaderChecks(entry: CollaborationItemDto, enabled: Boolean, onCl
             checks.any {
                 it.state == "PENDING" || it.state == "EXPECTED" || it.state == "IN_PROGRESS"
             } -> GithubWorkColors.draft
-            else -> GlasmioTheme.colors.secondaryContent
+            else -> GithubWorkColors.muted
         }
     val label =
         when {

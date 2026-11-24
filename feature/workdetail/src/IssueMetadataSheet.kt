@@ -378,7 +378,7 @@ private fun IssueFieldValue?.optionIds(): Set<String> = when (this) {
     else -> emptySet()
 }
 
-private fun IssueField.displayValue(value: IssueFieldValue): String = when (value) {
+internal fun IssueField.displayValue(value: IssueFieldValue): String = when (value) {
     is IssueFieldValue.Date -> value.value
     is IssueFieldValue.Number -> java.math.BigDecimal.valueOf(value.value).stripTrailingZeros().toPlainString()
     is IssueFieldValue.Text -> value.value

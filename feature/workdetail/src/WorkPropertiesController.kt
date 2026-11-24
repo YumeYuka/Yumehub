@@ -16,6 +16,7 @@ internal class WorkPropertiesController(
     private val scope: CoroutineScope,
     private val state: () -> WorkPropertiesState,
     private val update: ((WorkPropertiesState) -> WorkPropertiesState) -> Unit,
+    private val loadIssueFields: Boolean,
 ) {
     private var loadJob: Job? = null
     private var editorJob: Job? = null
@@ -44,9 +45,21 @@ internal class WorkPropertiesController(
                             emptyList<WorkPropertyOption>()
                         }
                     }
+                    // 议题字段只属于 Issue，失败时不影响属性面板。
+                    val fields = async {
+                        if (!loadIssueFields) return@async null
+                        try {
+                            detail.issueFields()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
                     val props = value.await()
                     val refs = references.await()
-                    update { it.copy(value = props, references = refs, loading = false, failed = false) }
+                    val issues = fields.await()
+                    update { it.copy(value = props, references = refs, issueFields = issues, loading = false, failed = false) }
                 }
             } catch (error: CancellationException) {
                 throw error

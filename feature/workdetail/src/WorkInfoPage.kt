@@ -49,10 +49,9 @@ import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusIcon
+import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.githubWorkStatusLabel
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -200,16 +199,29 @@ private fun WorkInfoSections(
     onOpenIssueFields: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
-    item?.let { WorkInfoStatusSection(it, kind, onOpenBaseBranch) }
+    item?.let {
+        WorkInfoDetailsSection(it)
+        if (kind == CollaborationKind.PullRequest) WorkInfoStatusSection(it, kind, onOpenBaseBranch)
+    }
     if (kind == CollaborationKind.Issue && item?.viewerCanSeeIssueFields == true) {
-        GlasmioGroupedList {
-            GlasmioListRow(
-                title = strings.IssueFields,
-                leading = { GithubIcon(Lucide.Settings, contentDescription = null, size = 20.dp) },
-                showTopSeparator = false,
-                enabled = !state.submitting,
-                onClick = onOpenIssueFields,
-            )
+        WorkEditableSection(
+            title = strings.IssueFields,
+            editable = state.issueFields?.editable == true && !state.submitting,
+            onEdit = onOpenIssueFields,
+        ) {
+            val fields = state.issueFields?.fields.orEmpty()
+            if (fields.isEmpty()) {
+                GlasmioListRow(title = strings.NoIssueFieldValue, showDisclosure = false)
+            } else {
+                fields.forEachIndexed { index, field ->
+                    GlasmioListRow(
+                        title = field.name,
+                        detail = field.value?.let { field.displayValue(it) } ?: strings.NoIssueFieldValue,
+                        showTopSeparator = index > 0,
+                        showDisclosure = false,
+                    )
+                }
+            }
         }
     }
     val value = state.value
@@ -217,16 +229,22 @@ private fun WorkInfoSections(
         if (!state.failed) workInfoPlaceholders(kind, strings)
         return
     }
-    GlasmioGroupedList {
-        GlasmioListRow(
-            title = strings.Milestone,
-            subtitle =
-                state.valuesFor(WorkProperty.Milestone).singleOrNull()?.title ?: strings.NoMilestone,
-            leading = { GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp) },
-            showTopSeparator = false,
-            enabled = !state.submitting,
-            onClick = if (value.editable) ({ viewModel.edit(WorkProperty.Milestone) }) else null,
-        )
+    val milestone = state.valuesFor(WorkProperty.Milestone).singleOrNull()?.title
+    WorkEditableSection(
+        title = strings.Milestone,
+        editable = value.editable && !state.submitting,
+        onEdit = { viewModel.edit(WorkProperty.Milestone) },
+    ) {
+        if (milestone == null) {
+            GlasmioListRow(title = strings.NoMilestone, showDisclosure = false)
+        } else {
+            GlasmioListRow(
+                title = milestone,
+                leading = { GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp) },
+                showTopSeparator = false,
+                showDisclosure = false,
+            )
+        }
     }
     WorkLinkedSection(
         title = strings.LinkedItems,
@@ -292,22 +310,6 @@ private fun WorkInfoStatusSection(
             "CHANGES_REQUESTED" -> GithubWorkColors.closed
             else -> GlasmioTheme.colors.secondaryContent
         }
-    GlasmioGroupedList {
-        GlasmioListRow(
-            title = githubWorkStatusLabel(kind, item.state, item.draft, item.merged),
-            leading = {
-                GithubWorkStatusIcon(
-                    kind,
-                    item.state,
-                    item.draft,
-                    item.merged,
-                    item.stateReason,
-                    size = 20.dp,
-                )
-            },
-            showTopSeparator = false,
-        )
-    }
     GithubSection(strings.Status) {
         if (kind == CollaborationKind.PullRequest) {
             GlasmioListRow(
@@ -333,7 +335,6 @@ private fun WorkInfoStatusSection(
             showTopSeparator = kind == CollaborationKind.PullRequest,
         )
     }
-    if (kind != CollaborationKind.PullRequest) return
     val head = item.head?.ref?.takeIf(String::isNotBlank)
     val base = item.baseRefName?.takeIf(String::isNotBlank)
     if (head == null && base == null) return
@@ -372,6 +373,46 @@ private fun WorkInfoStatusSection(
 }
 
 @Composable
+private fun WorkInfoDetailsSection(item: CollaborationItemDto) {
+    val all = LocalGithubStrings.current
+    val login = item.user?.login?.takeIf(String::isNotBlank) ?: all.Workspaces.UnknownAuthor
+    GlasmioGroupedList {
+        GlasmioListRow(
+            title = all.WorkDetail.Author,
+            leading = { GithubIcon(Lucide.AtSign, contentDescription = null, size = 20.dp, tint = GlasmioTheme.colors.secondaryContent) },
+            showTopSeparator = false,
+            showDisclosure = false,
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    GithubAvatar(item.user?.avatarUrl, login, size = 20.dp)
+                    Text(
+                        text = login,
+                        style = GlasmioTheme.textStyles.body,
+                        color = GlasmioTheme.colors.secondaryContent,
+                    )
+                }
+            },
+        )
+        GlasmioListRow(
+            title = all.WorkDetail.CreatedAt,
+            detail = item.createdAt?.let(::githubActivityTime),
+            leading = {
+                GithubIcon(
+                    Lucide.Clock,
+                    contentDescription = null,
+                    size = 20.dp,
+                    tint = GlasmioTheme.colors.secondaryContent,
+                )
+            },
+            showDisclosure = false,
+        )
+    }
+}
+
+@Composable
 private fun WorkLinkedSection(
     title: String,
     values: List<WorkPropertyOption>,
@@ -382,30 +423,7 @@ private fun WorkLinkedSection(
     repo: String,
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    GithubSection(
-        title = title,
-        trailing =
-            if (editable && !submitting) {
-                {
-                    // 分节标题右侧的铅笔是普通小图标，不带按钮底衬，点击进入链接编辑。
-                    GithubIcon(
-                        Lucide.Pencil,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onEdit,
-                            ),
-                        contentDescription = strings.EditProperty,
-                        size = 14.dp,
-                        tint = GlasmioTheme.colors.secondaryContent,
-                    )
-                }
-            } else {
-                null
-            },
-    ) {
+    WorkEditableSection(title, editable && !submitting, onEdit) {
         if (values.isEmpty()) {
             GlasmioListRow(title = empty, showDisclosure = false)
         } else {
@@ -414,6 +432,38 @@ private fun WorkLinkedSection(
             }
         }
     }
+}
+
+@Composable
+private fun WorkEditableSection(
+    title: String,
+    editable: Boolean,
+    onEdit: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    GithubSection(
+        title = title,
+        trailing =
+            if (editable) {
+                {
+                    GithubIcon(
+                        Lucide.Pencil,
+                        modifier =
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onEdit,
+                            ),
+                        contentDescription = LocalGithubStrings.current.WorkDetail.EditProperty,
+                        size = 14.dp,
+                        tint = GlasmioTheme.colors.secondaryContent,
+                    )
+                }
+            } else {
+                null
+            },
+        content = content,
+    )
 }
 
 /** 复用提交详情「关联 PR」的行样式：品牌图标、编号与状态图标，点击直接跳转。 */
@@ -478,7 +528,7 @@ private fun workInfoPlaceholders(
     kind: CollaborationKind,
     strings: GithubStrings_WorkDetail,
 ) {
-    GlasmioGroupedList { WorkInfoRowPlaceholder(showArrow = true) }
+    WorkInfoSectionPlaceholder(strings.Milestone, showArrow = false)
     WorkInfoSectionPlaceholder(strings.LinkedItems)
     if (kind == CollaborationKind.Issue) {
         WorkInfoSectionPlaceholder(strings.SubIssues)
@@ -486,10 +536,10 @@ private fun workInfoPlaceholders(
 }
 
 @Composable
-private fun WorkInfoSectionPlaceholder(title: String) {
+private fun WorkInfoSectionPlaceholder(title: String, showArrow: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GithubSectionHeader(title)
-        GlasmioGroupedList { WorkInfoRowPlaceholder(showArrow = true) }
+        GlasmioGroupedList { WorkInfoRowPlaceholder(showArrow = showArrow) }
     }
 }
 

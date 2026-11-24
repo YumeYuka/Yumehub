@@ -27,6 +27,7 @@ internal class WorkInfoViewModel(
             viewModelScope,
             { mutableUiState.value },
             { transform -> mutableUiState.update(transform) },
+            loadIssueFields = kind == CollaborationKind.Issue,
         )
 
     fun load() = controller.load()

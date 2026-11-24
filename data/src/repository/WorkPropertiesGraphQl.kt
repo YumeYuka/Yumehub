@@ -723,7 +723,6 @@ internal class WorkPropertiesGraphQl(
                 WorkProperty.Assignees -> "assigneeIds"
                 WorkProperty.Labels -> "labelIds"
                 WorkProperty.Milestone -> "milestoneId"
-                else -> error("Unsupported property")
             }
         require(property != WorkProperty.Milestone || selected.size <= 1)
         val input = buildJsonObject {
