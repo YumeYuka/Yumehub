@@ -57,6 +57,10 @@ internal fun NotificationDto.toTarget(): NotificationTarget? {
         }
     }
 
+    if (url != null && (url.host == "github.com" || url.host == "gist.github.com")) {
+        return NotificationTarget.Web(url.toString())
+    }
+
     val fallbackRepository =
         repository?.fullName?.let(::parseNotificationRepository)
             ?: subjectRepository?.takeIf { url?.host == "api.github.com" }

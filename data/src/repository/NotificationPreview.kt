@@ -51,13 +51,21 @@ internal fun parseNotificationPage(
     GithubGraphQlPage(connection.graphNodes().map(::notification), connection.graphCursor(after))
 
 private fun notification(node: JsonObject): NotificationDto {
-    val subject = node["optionalSubject"] as? JsonObject
-    val list = node["optionalList"] as? JsonObject
+    val subject = node["subject"] as? JsonObject
+    val list = node["list"] as? JsonObject
     val repo =
         (subject?.get("repository") as? JsonObject)
             ?: list?.takeIf { it.graphText("__typename") == "Repository" }
     val author = node["summaryItemAuthor"] as? JsonObject
-    val state = subject?.graphText("issueState") ?: subject?.graphText("pullRequestState")
+    val check =
+        when (subject?.graphText("__typename")) {
+            "CheckSuite" -> subject
+            "WorkflowRun" -> subject["checkSuite"] as? JsonObject
+            else -> null
+        }
+    val state =
+        subject?.graphText("issueState") ?: subject?.graphText("pullRequestState")
+            ?: check?.graphText("conclusion") ?: check?.graphText("status")
     return NotificationDto(
         id = node.graphRequiredText("id"),
         unread = (node["isUnread"] as? JsonPrimitive)?.booleanOrNull ?: throw GithubPageException(),
@@ -66,7 +74,10 @@ private fun notification(node: JsonObject): NotificationDto {
             NotificationSubjectDto(
                 title = node.graphText("title") ?: throw GithubPageException(),
                 type = subject?.graphText("__typename") ?: node.graphText("threadType"),
-                url = subject?.graphText("url") ?: subject?.graphText("permalink"),
+                url =
+                    (subject?.get("workflowRun") as? JsonObject)?.graphText("url")
+                        ?: subject?.graphText("url") ?: subject?.graphText("permalink")
+                        ?: subject?.graphText("notificationsPermalink") ?: node.graphText("url"),
             ),
         repository =
             repo?.let {
@@ -97,7 +108,7 @@ private fun notification(node: JsonObject): NotificationDto {
 
 private val Whitespace = Regex("\\s+")
 
-// GitHub Mobile v1.283.0-beta，defpackage/pyo.java:48。
+// GitHub Mobile: NotificationsQuery (base.apk, defpackage/x3p.java:48).
 private val NotificationThreadsQuery =
     """
     query NotificationsQuery(
@@ -108,14 +119,14 @@ private val NotificationThreadsQuery =
             notificationThreads(first: ${'$'}first, after: ${'$'}after, filterBy: ${'$'}filterBy, query: ${'$'}query) {
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                    id threadType title isUnread lastUpdatedAt reason
+                    id threadType title isUnread lastUpdatedAt reason url
                     summaryItemAuthor { __typename login avatarUrl }
                     summaryItemBody
-                    optionalList {
+                    list {
                         __typename
                         ... on Repository { name owner { login } }
                     }
-                    optionalSubject {
+                    subject {
                         __typename
                         ... on Issue {
                             url issueState: state stateReason
@@ -129,11 +140,13 @@ private val NotificationThreadsQuery =
                         ... on Discussion { url repository { name owner { login } } }
                         ... on Commit { url }
                         ... on Gist { url }
-                        ... on CheckSuite { url }
-                        ... on WorkflowRun { url }
+                        ... on CheckSuite { url conclusion status workflowRun { url } }
+                        ... on WorkflowRun { url checkSuite { conclusion status } }
                         ... on RepositoryInvitation { permalink }
                         ... on RepositoryVulnerabilityAlert { permalink }
                         ... on RepositoryAdvisory { url }
+                        ... on RepositoryDependabotAlertsThread { notificationsPermalink }
+                        ... on SecurityAdvisory { notificationsPermalink }
                     }
                 }
             }

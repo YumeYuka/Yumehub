@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.feature.notifications
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,6 +33,7 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTokens
+import moe.yumeyuka.yumehub.ui.component.GithubWorkflowStatusIcon
 import moe.yumeyuka.yumehub.ui.component.githubRelativeTime
 import moe.yumeyuka.yumehub.ui.component.githubTitleOpticalCenter
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
@@ -92,6 +97,7 @@ private fun NotificationCardContent(
             GithubWorkStatusTokens.IconSize,
             with(LocalDensity.current) { titleStyle.lineHeight.toDp() },
         )
+    val statusAlignment = with(LocalDensity.current) { statusSlotSize.roundToPx() / 2 }
     val number =
         when (val target = notification.toTarget()) {
             is NotificationTarget.Issue -> target.number
@@ -120,17 +126,32 @@ private fun NotificationCardContent(
             horizontalArrangement = Arrangement.spacedBy(NotificationRowTokens.ContentGap),
             verticalAlignment = Alignment.Top,
         ) {
-            Box(
-                Modifier.width(statusSlotSize).height(statusSlotSize).alignBy {
-                    it.measuredHeight / 2
-                },
-                contentAlignment = Alignment.Center,
+            Column(
+                Modifier.width(statusSlotSize).alignBy { statusAlignment },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                NotificationSubjectIcon(
-                    notification.subject?.type,
-                    preview,
-                    GithubWorkStatusTokens.IconSize,
-                )
+                Box(Modifier.height(statusSlotSize), contentAlignment = Alignment.Center) {
+                    NotificationSubjectIcon(
+                        notification.subject?.type,
+                        preview,
+                        GithubWorkStatusTokens.IconSize,
+                    )
+                }
+                if (!isSelecting && notification.unread) {
+                    Box(
+                        Modifier.size(10.dp)
+                            .background(
+                                readableForeground(
+                                    colors.accent,
+                                    colors.elevatedBackground,
+                                    colors.content,
+                                ),
+                                CircleShape,
+                            )
+                            .semantics { contentDescription = strings.Unread },
+                    )
+                }
             }
             Column(
                 Modifier.weight(1f).alignBy(githubTitleOpticalCenter(title, titleStyle)),
@@ -166,18 +187,6 @@ private fun NotificationCardContent(
                     }
                     if (isSelecting && isSelected) {
                         GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
-                    } else if (!isSelecting && notification.unread) {
-                        GithubIcon(
-                            Lucide.Dot,
-                            contentDescription = strings.Unread,
-                            size = 16.dp,
-                            tint =
-                                readableForeground(
-                                    colors.accent,
-                                    colors.elevatedBackground,
-                                    colors.content,
-                                ),
-                        )
                     }
                 }
                 if (hasActivity) {
@@ -231,6 +240,10 @@ private fun NotificationSubjectIcon(
     preview: NotificationPreviewDto?,
     iconSize: Dp,
 ) {
+    if (type == "CheckSuite" || type == "WorkflowRun") {
+        GithubWorkflowStatusIcon(preview?.state, contentDescription = null, size = iconSize)
+        return
+    }
     val pullRequest = type == "PullRequest"
     val closed = preview?.state == "CLOSED"
     val completed = closed && preview.stateReason == "COMPLETED"
@@ -245,6 +258,13 @@ private fun NotificationSubjectIcon(
             type == "Issue" -> Lucide.CircleDot
             type == "Release" -> Lucide.Tag
             type == "Discussion" -> Lucide.MessageSquare
+            type == "Commit" -> Lucide.GitCommitHorizontal
+            type == "Gist" -> Lucide.Code
+            type == "RepositoryInvitation" || type == "MemberFeatureRequestNotification" ->
+                Lucide.UserPlus
+            type == "RepositoryVulnerabilityAlert" || type == "RepositoryAdvisory" ||
+                type == "RepositoryDependabotAlertsThread" || type == "SecurityAdvisory" ->
+                Lucide.ShieldAlert
             else -> Lucide.Bell
         }
     val color =
