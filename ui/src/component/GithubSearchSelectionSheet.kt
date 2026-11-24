@@ -37,6 +37,13 @@ fun GithubSearchSelectionSheet(
 ) {
     val common = LocalGithubStrings.current.Common
     val listState = rememberLazyListState()
+    val edgeDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
+    val edgeProgress by remember(listState, edgeDistancePx) {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / edgeDistancePx).coerceIn(0f, 1f)
+        }
+    }
     var query by remember { mutableStateOf(TextFieldValue()) }
     var searching by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
@@ -60,10 +67,11 @@ fun GithubSearchSelectionSheet(
         title = title,
         sheetState = sheetState,
         skipPartiallyExpanded = false,
+        topBarBlurProgress = edgeProgress,
         dismissOnBackPress = enabled && !finishing,
         dismissOnClickOutside = enabled && !finishing,
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = enabled && !finishing) {

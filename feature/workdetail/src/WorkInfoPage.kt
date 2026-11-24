@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -79,7 +79,8 @@ internal fun WorkInfoSheet(
     if (!opened) return
     val strings = LocalGithubStrings.current.WorkDetail
     val common = LocalGithubStrings.current.Common
-    val colors = GlasmioTheme.colors
+    val scroll = rememberScrollState()
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     val title =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
         else strings.IssueInformation
@@ -104,8 +105,9 @@ internal fun WorkInfoSheet(
         skipPartiallyExpanded = false,
         dismissOnBackPress = !state.submitting,
         dismissOnClickOutside = !state.submitting,
+        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !state.submitting) {
@@ -124,8 +126,7 @@ internal fun WorkInfoSheet(
     ) {
         Column(
             Modifier.fillMaxSize()
-                .background(colors.groupedBackground)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

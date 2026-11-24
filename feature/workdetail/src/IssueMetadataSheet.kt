@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
@@ -226,16 +227,19 @@ private fun IssueFieldValueSheet(
     }
     val isChoice = field.kind == IssueFieldKind.SingleSelect || field.kind == IssueFieldKind.MultiSelect
     val valid = isChoice || text.isBlank() || value != null
+    val scroll = rememberScrollState()
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
         title = field.name,
         sheetState = sheet,
         fitContent = true,
+        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         dismissOnBackPress = !state.saving,
         dismissOnClickOutside = !state.saving,
         onDismissRequest = { if (!state.saving) onDismiss() },
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = field.name,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !state.saving) {
@@ -253,7 +257,7 @@ private fun IssueFieldValueSheet(
         },
     ) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.fillMaxWidth().verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

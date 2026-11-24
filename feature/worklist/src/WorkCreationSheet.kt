@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.Check
@@ -125,6 +126,8 @@ internal fun WorkCreationSheet(
     LaunchedEffect(visible, branchPicker.defaultBranch) {
         if (visible && base.text.isBlank()) base.replaceFormText(branchPicker.defaultBranch.orEmpty())
     }
+    val scroll = rememberScrollState()
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
         onDismissRequest = { if (!submitting) onDismiss() },
@@ -132,8 +135,9 @@ internal fun WorkCreationSheet(
         dismissOnClickOutside = !submitting,
         fitContent = true,
         title = title,
+        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !submitting) {
@@ -184,7 +188,7 @@ internal fun WorkCreationSheet(
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

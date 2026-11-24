@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.feature.repository
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -102,7 +101,6 @@ internal fun RepositoryManagementSheet(
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .background(colors.groupedBackground)
                 .verticalScroll(rememberScrollState())
                 .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(horizontal = 12.dp, vertical = 12.dp),

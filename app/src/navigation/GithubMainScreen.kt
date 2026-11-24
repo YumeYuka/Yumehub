@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.rememberLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import io.github.neoruaa.glasmio.scaffold.rememberGlasmioNavigationScrollState
+import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import moe.yumeyuka.yumehub.feature.profile.ProfileRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageChrome
@@ -136,6 +137,7 @@ private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
             parent = checkNotNull(LocalNavigationEventDispatcherOwner.current),
             enabled = isActive,
         )
+    val pageBackdrop = LocalGithubShellArgs.current.pageBackdrops.getValue(tab)
     val state =
         viewModel<GithubMainPageStateViewModel>(key = "main-tab-${tab.name}") {
             GithubMainPageStateViewModel()
@@ -144,7 +146,8 @@ private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
         LocalLifecycleOwner provides lifecycleOwner,
         LocalNavigationEventDispatcherOwner provides dispatcherOwner,
         LocalGithubPageState provides state.pageState,
-        LocalGithubPageBackdrop provides LocalGithubShellArgs.current.pageBackdrops.getValue(tab),
+        LocalGithubPageBackdrop provides pageBackdrop,
+        LocalBlurBackdrop provides pageBackdrop,
     ) {
         GithubRouteContent(route = tab.rootRoute(), navigator = navigator)
     }

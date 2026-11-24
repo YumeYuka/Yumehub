@@ -48,7 +48,7 @@ internal fun WorkChecksSheet(
     val title = strings.WorkDetail.Checks
     val scroll = rememberScrollState()
     val contentPadding = 12.dp
-    val fadeDistance = with(LocalDensity.current) { contentPadding.toPx() }
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     LaunchedEffect(visible) { if (visible) scroll.scrollTo(0) }
     GlasmioBottomSheet(
         visible = visible,
@@ -58,7 +58,7 @@ internal fun WorkChecksSheet(
         skipPartiallyExpanded = false,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -103,6 +103,8 @@ internal fun WorkReviewSheet(
     val busy = state.submitting
     val editable = state.canReview && !busy
     val result = state.item?.viewerReviewLabel(review)
+    val scroll = rememberScrollState()
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
         onDismissRequest = { if (!busy) onDismiss() },
@@ -110,8 +112,9 @@ internal fun WorkReviewSheet(
         dismissOnClickOutside = !busy,
         fitContent = true,
         title = review.Review,
+        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = review.Review,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !busy) {
@@ -128,7 +131,7 @@ internal fun WorkReviewSheet(
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -238,6 +241,8 @@ internal fun WorkMergeSheet(
             !state.loading &&
             !state.submissionUncertain &&
             (!editMessage || messageReady && headline.isNotBlank())
+    val scroll = rememberScrollState()
+    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
         onDismissRequest = { if (!busy) onDismiss() },
@@ -245,8 +250,9 @@ internal fun WorkMergeSheet(
         dismissOnClickOutside = !busy,
         title = strings.MergePullRequest,
         fitContent = true,
+        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioTopBar(
+            GlasmioSheetTopToolbar(
                 title = strings.MergePullRequest,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !busy) {
@@ -273,7 +279,7 @@ internal fun WorkMergeSheet(
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current)
                 .animateContentSize(tween(420))
                 .padding(12.dp),

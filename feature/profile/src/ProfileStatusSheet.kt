@@ -161,7 +161,7 @@ private fun StatusEditorContent(
     var pickerOpen by remember { mutableStateOf(false) }
     val message = rememberFormTextFieldState(editor.message, onMessageChange)
     val remaining = (StatusMaxLength - message.text.length).coerceAtLeast(0)
-    Box(Modifier.fillMaxSize().background(colors.groupedBackground)) {
+    Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize()
                 .padding(LocalGlasmioSheetContentPadding.current)
