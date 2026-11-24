@@ -18,7 +18,10 @@ configure<LibraryExtension> {
   }
   sourceSets.getByName("main") {
     manifest.srcFile("src/AndroidManifest.xml")
-    java.setSrcDirs(listOf("src"))
+    java.directories.apply {
+        clear()
+        add("src")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17

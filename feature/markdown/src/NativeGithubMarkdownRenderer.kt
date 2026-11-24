@@ -99,7 +99,7 @@ internal object NativeGithubMarkdownRenderer : GithubMarkdownRenderer {
             }
             val revealed = document != null && readyRevision === document.revision
             LaunchedEffect(presentation, renderToken, revealed, state.revision) {
-                if (revealed && document?.revision === state.revision && session.isCurrent()) {
+                if (revealed && document.revision === state.revision && session.isCurrent()) {
                     presentation?.documentReady(renderToken)
                 }
             }

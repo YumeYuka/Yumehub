@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.arkivanov.decompose.DelicateDecomposeApi
 import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.navigate
@@ -49,6 +50,7 @@ internal class GithubNavigator(private val state: GithubNavigationState) {
      *
      * 不检查提交锁：调用方（路由表）负责判断当前页是否仍在栈顶。锁的释放要靠一次重组，页面在提交 完成的事件回调里发起的 push 可能早于这次重组，在这里拦会把跳转静默丢掉。
      */
+    @OptIn(DelicateDecomposeApi::class)
     fun push(route: GithubRoute) {
         navigation.push(GithubRouteEntry(route))
     }

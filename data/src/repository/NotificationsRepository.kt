@@ -142,7 +142,7 @@ class NotificationsRepository(
                                 throughPage,
                                 previous,
                             )
-                        if (rolling && previous != null) {
+                        if (rolling) {
                             return@await previous.appendWindow(page, fromPage)
                         }
                         if (replace || fromPage == 1 || previous == null) {

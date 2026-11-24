@@ -11,10 +11,4 @@ kotlin {
     sourceSets.getByName("test").kotlin.setSrcDirs(listOf("test"))
 }
 
-apply(plugin = "com.ncorti.ktfmt.gradle")
-
-configure<com.ncorti.ktfmt.gradle.KtfmtExtension> {
-    kotlinLangStyle()
-    maxWidth.set(100)
-    removeUnusedImports.set(true)
-}
+apply(from = rootProject.file("gradle/ktfmt.gradle.kts"))

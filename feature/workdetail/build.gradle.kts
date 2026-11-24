@@ -2,7 +2,7 @@ plugins { id("github.android.feature") }
 
 configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "moe.yumeyuka.yumehub.feature.workdetail"
-    sourceSets.getByName("test") { kotlin.srcDirs("test") }
+    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 dependencies { testImplementation(libs.junit) }

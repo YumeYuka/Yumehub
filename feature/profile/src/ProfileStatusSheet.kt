@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,6 +72,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubEmojiChoiceCell
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
+import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
 
 private const val StatusMaxLength = 80
 
@@ -156,7 +159,8 @@ private fun StatusEditorContent(
     val colors = GlasmioTheme.colors
     val focus = LocalFocusManager.current
     var pickerOpen by remember { mutableStateOf(false) }
-    val remaining = (StatusMaxLength - editor.message.length).coerceAtLeast(0)
+    val message = rememberFormTextFieldState(editor.message, onMessageChange)
+    val remaining = (StatusMaxLength - message.text.length).coerceAtLeast(0)
     Box(Modifier.fillMaxSize().background(colors.groupedBackground)) {
         Column(
             Modifier.fillMaxSize()
@@ -180,22 +184,26 @@ private fun StatusEditorContent(
                     )
                     Spacer(Modifier.width(12.dp))
                     BasicTextField(
-                        value = editor.message,
-                        onValueChange = { if (it.length <= StatusMaxLength) onMessageChange(it) },
+                        state = message,
+                        inputTransformation = InputTransformation {
+                            if (length > StatusMaxLength) revertAllChanges()
+                        },
                         modifier = Modifier.weight(1f),
                         enabled = !editor.submitting,
                         textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
                         cursorBrush = SolidColor(colors.accent),
-                        singleLine = true,
-                        decorationBox = { inner ->
-                            if (editor.message.isEmpty()) {
-                                Text(
-                                    text = strings.StatusPlaceholder,
-                                    style = GlasmioTheme.textStyles.body,
-                                    color = colors.tertiaryContent,
-                                )
+                        lineLimits = TextFieldLineLimits.SingleLine,
+                        decorator = { inner ->
+                            Box {
+                                if (message.text.isEmpty()) {
+                                    Text(
+                                        text = strings.StatusPlaceholder,
+                                        style = GlasmioTheme.textStyles.body,
+                                        color = colors.tertiaryContent,
+                                    )
+                                }
+                                inner()
                             }
-                            inner()
                         },
                     )
                 }

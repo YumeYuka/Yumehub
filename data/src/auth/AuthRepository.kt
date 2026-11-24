@@ -105,7 +105,7 @@ class GitHubAuthRepository(
         tokenStore.saveAccount(
             SavedAccount(
                 login = login,
-                avatarUrl = viewer?.get("avatarUrl")?.jsonPrimitive?.contentOrNull,
+                avatarUrl = viewer["avatarUrl"]?.jsonPrimitive?.contentOrNull,
                 accessToken = accessToken,
                 refreshToken = tokenResponse.refreshToken.orEmpty(),
                 scope = scope,

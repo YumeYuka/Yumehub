@@ -5,8 +5,8 @@ plugins { id("github.android.compose") }
 
 configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "moe.yumeyuka.yumehub.ui"
-    sourceSets.getByName("main") { resources.srcDir("resources") }
-    sourceSets.getByName("test") { kotlin.srcDirs("test") }
+    sourceSets.getByName("main") { resources.directories += "resources" }
+    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {

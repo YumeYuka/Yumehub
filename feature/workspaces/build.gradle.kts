@@ -5,7 +5,7 @@ configure<com.android.build.api.dsl.LibraryExtension> {
 }
 
 configure<com.android.build.api.dsl.LibraryExtension> {
-    sourceSets.getByName("test") { kotlin.srcDirs("test") }
+    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 dependencies { testImplementation(libs.junit) }

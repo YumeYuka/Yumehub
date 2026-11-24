@@ -29,7 +29,7 @@ import top.yukonga.miuix.kmp.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.glass.GlassTopAppBarDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 由 Miuix 绘制背景带，前景保留项目的多行标题、占位及操作槽。 */
+/** 普通标题直接交给 Miuix；只有自定义标题槽、详情占位或隐藏标题才需要独立前景。 */
 @Composable
 internal fun GithubMiuixGlassTopAppBar(
     title: String,
@@ -58,6 +58,27 @@ internal fun GithubMiuixGlassTopAppBar(
             null
         }
     val backdrop = remember(source) { source?.let(::MiuixTopBarBackdrop) }
+    if (
+        largeTitle.isNotEmpty() && largeTitleMaxLines == 1 && largeTitleStyle == null &&
+            largeTitleLeading == null && largeTitleSuffix == null && largeTitleEyebrow == null &&
+            largeTitleTrailing == null && largeTitleFooter == null && largeTitleOnClick == null &&
+            largeTitleSubtitle == null && LocalGithubDetailPresentation.current == null
+    ) {
+        GlassTopAppBar(
+            title = title,
+            largeTitle = largeTitle,
+            modifier = modifier,
+            contentModifier = contentModifier,
+            scrollBehavior = scrollBehavior,
+            isContentScrolled = isContentScrolled,
+            progressiveBlur = backdrop != null,
+            backdrop = backdrop,
+            bandBrush = GlassTopAppBarDefaults.bandBrush(backgroundColor),
+            navigationIcon = navigationIcon,
+            actions = { actions() },
+        )
+        return
+    }
     Box(modifier = modifier) {
         // 原生顶栏只绘制背景带；不传折叠状态，避免它重设前景的高度范围。
         GlassTopAppBar(

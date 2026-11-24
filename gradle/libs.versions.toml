@@ -3,7 +3,7 @@ agp = "9.4.1"
 aaptProto = "9.4.1-15978811"
 protobuf = "3.25.9"
 kotlin = "2.4.21"
-ktfmt = "0.28.0"
+ktfmt = "0.65"
 
 coreKtx = "1.19.1"
 coreSplashscreen = "1.2.0"
@@ -22,7 +22,7 @@ coroutines = "1.11.0"
 serialization = "1.12.0"
 koin = "4.2.2"
 
-miuix = "0.9.5-d82b40fa-SNAPSHOT"
+miuix = "0.9.5-ae3be934-SNAPSHOT"
 glasmio = "0.1.4"
 decompose = "3.5.0"
 lucide = "1.0.0-SNAPSHOT"
@@ -46,7 +46,7 @@ protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "p
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-compose-gradlePlugin = { module = "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin", version.ref = "kotlin" }
-ktfmt-gradlePlugin = { module = "com.ncorti.ktfmt.gradle:com.ncorti.ktfmt.gradle.gradle.plugin", version.ref = "ktfmt" }
+ktfmt = { module = "org.jetbrains.kotlinx:ktfmt", version.ref = "ktfmt" }
 
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
@@ -117,4 +117,3 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }

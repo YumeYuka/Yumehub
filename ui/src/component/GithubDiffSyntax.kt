@@ -113,13 +113,7 @@ internal fun parseGithubUnifiedDiff(patch: String): GithubDiffDocument {
                     (oldCount > 0 || newCount > 0) &&
                     oldStart.toLong() + oldCount - (if (oldCount > 0) 1 else 0) <= Int.MAX_VALUE &&
                     newStart.toLong() + newCount - (if (newCount > 0) 1 else 0) <= Int.MAX_VALUE
-            if (
-                !rangesValid ||
-                    oldStart == null ||
-                    newStart == null ||
-                    oldCount == null ||
-                    newCount == null
-            ) {
+            if (!rangesValid) {
                 invalid = true
                 hunks +=
                     GithubDiffHunk(null, listOf(GithubDiffLine(text, GithubDiffLineKind.Metadata)))

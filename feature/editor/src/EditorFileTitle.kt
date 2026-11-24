@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.feature.editor
 
+import android.content.ClipData
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,18 +10,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
+import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
@@ -28,7 +31,8 @@ import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 @Composable
 internal fun EditorFileTitle(session: GithubEditorSession) {
     var expanded by remember(session) { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val openExternalUri = rememberExternalUriHandler()
     val available = !session.submitting && !session.closeRequested
     val path = session.filePath?.takeIf { it.isNotBlank() } ?: session.title
@@ -71,7 +75,7 @@ internal fun EditorFileTitle(session: GithubEditorSession) {
             title = path,
             enabled = available,
             onClick = {
-                clipboard.setText(AnnotatedString(path))
+                scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", path))) }
                 expanded = false
                 close()
             },

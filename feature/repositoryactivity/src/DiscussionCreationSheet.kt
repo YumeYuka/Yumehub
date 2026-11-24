@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,7 +61,7 @@ internal fun DiscussionCreationSheet(
     var selectedId by rememberSaveable(visible) { mutableStateOf<String?>(null) }
     val category = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
     var expanded by rememberSaveable(visible) { mutableStateOf(false) }
-    var title by rememberSaveable(visible) { mutableStateOf("") }
+    val title = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
     var submitting by rememberSaveable(visible) { mutableStateOf(false) }
     var failed by rememberSaveable(visible) { mutableStateOf(false) }
     GlasmioBottomSheet(
@@ -79,14 +81,14 @@ internal fun DiscussionCreationSheet(
                 },
                 actions = {
                     GlasmioIconButton(
-                        enabled = !submitting && title.isNotBlank() && category != null,
+                        enabled = !submitting && title.text.isNotBlank() && category != null,
                         onClick = {
                             val selected = category ?: return@GlasmioIconButton
                             submitting = true
                             failed = false
                             scope.launch {
                                 try {
-                                    val number = onCreate(selected.id, title.trim(), body)
+                                    val number = onCreate(selected.id, title.text.trim().toString(), body)
                                     onDismiss()
                                     onCreated(number)
                                 } catch (error: CancellationException) {
@@ -132,7 +134,7 @@ internal fun DiscussionCreationSheet(
                     }
                 }
             }
-            DiscussionCreationTitle(work.CreationTitle, title, { title = it }, submitting)
+            DiscussionCreationTitle(work.CreationTitle, title, submitting)
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = work.CreationBody,
@@ -153,15 +155,13 @@ internal fun DiscussionCreationSheet(
 @Composable
 private fun DiscussionCreationTitle(
     label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
+    state: TextFieldState,
     busy: Boolean,
 ) {
     val colors = GlasmioTheme.colors
     GlasmioGroupedList {
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = state,
             modifier =
                 Modifier.fillMaxWidth()
                     .padding(16.dp)
@@ -170,13 +170,13 @@ private fun DiscussionCreationTitle(
             enabled = !busy,
             textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
             cursorBrush = SolidColor(colors.accent),
-            singleLine = true,
-            decorationBox = { inner ->
+            lineLimits = TextFieldLineLimits.SingleLine,
+            decorator = { inner ->
                 Box(
                     Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (value.isEmpty()) {
+                    if (state.text.isEmpty()) {
                         Text(
                             label,
                             style = GlasmioTheme.textStyles.body,

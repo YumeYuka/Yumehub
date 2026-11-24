@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
@@ -193,7 +194,7 @@ internal constructor(
             checkCurrent(version)
             if (hydrated) return@locked
             hydrated = true
-            if (value != null && response != null) {
+            if (value != null) {
                 mutableState.value =
                     mutableState.value.copy(
                         data = value,
@@ -270,6 +271,7 @@ internal constructor(
             null
         }
 
+    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
     private class ResourceStateFlow<T : Any>(
         @Suppress("unused") private val owner: CachedResource<T>,
         delegate: StateFlow<CachedDataState<T>>,

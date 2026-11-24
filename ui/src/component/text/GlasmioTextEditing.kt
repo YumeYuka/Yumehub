@@ -41,8 +41,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuData
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuItem
@@ -50,6 +48,10 @@ import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
@@ -118,10 +120,8 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -224,9 +224,12 @@ fun GlasmioEditableText(
     textStyle: TextStyle = IosTypography.body,
     singleLine: Boolean = true,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    outputTransformation: OutputTransformation? = null,
+    password: Boolean = false,
+    keyboardOptions: KeyboardOptions =
+        if (password) KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false)
+        else KeyboardOptions.Default,
+    onKeyboardAction: KeyboardActionHandler? = null,
     cursorBrush: Brush = SolidColor(LocalGlassColors.current.accent),
     onTextLayout: (TextLayoutResult) -> Unit = {},
     decorationBox: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { it() },
@@ -242,22 +245,27 @@ fun GlasmioEditableText(
     searchHighlights: GithubCodeSearchHighlights? = null,
 ) {
     require(maxLines > 0) { "maxLines must be positive." }
+    require(!password || singleLine) { "Secure fields must be single-line." }
+    require(!password || outputTransformation == null) { "Secure fields own their output transformation." }
     val inputModifier = modifier.swipeBackExcluded(enabled)
     val host = LocalGlasmioTextEditingHost.current
     val view = LocalView.current
     val source = value.text
     val latestSource by rememberUpdatedState(source)
     val visibleCallback by rememberUpdatedState(onVisibleTextRange)
-    val transformed =
-        remember(value.annotatedString, visualTransformation) {
-            visualTransformation.filter(value.annotatedString)
-        }
+    val formatter = remember(outputTransformation, singleLine) {
+        outputTransformation?.let { EditorOutputFormatter(it, singleLine) }
+    }
+    val plainPresentation = remember(source, password, singleLine) {
+        EditorTextPresentation(source, password, singleLine)
+    }
+    var measuredPresentation by remember(formatter) { mutableStateOf<EditorTextPresentation?>(null) }
+    val presentation = measuredPresentation?.takeIf { it.source == source } ?: plainPresentation
     var visibleLayout by remember { mutableStateOf<VisibleTextLayout?>(null) }
     // 不换行且无文本变换时，Compose 布局的视觉行就是逻辑行，行号直接读布局，
     // 不再为全文另行扫描行首表；换行或存在变换时才需要独立索引。
     val needsLineNumbers = !singleLine && lineNumbers
-    val needsLineIndex =
-        needsLineNumbers && (wordWrap || visualTransformation !== VisualTransformation.None)
+    val needsLineIndex = needsLineNumbers && (wordWrap || formatter != null)
     val generatedIndex by
         produceState<TextLineIndex?>(null, source, needsLineIndex) {
             this.value =
@@ -265,9 +273,13 @@ fun GlasmioEditableText(
                 else null
         }
     val lineIndex = generatedIndex?.takeIf { it.source == source }
-    val captureLayout: (TextLayoutResult) -> Unit = { result ->
-        if (onVisibleTextRange != null && result.layoutInput.text.text == transformed.text.text) {
-            visibleLayout = VisibleTextLayout(source, result, transformed.offsetMapping)
+    val captureLayout: (TextLayoutResult, EditorTextPresentation?) -> Unit = { result, formatted ->
+        val measured = formatted ?: plainPresentation
+        if (measured.displayText == result.layoutInput.text.text) {
+            measuredPresentation = formatted
+            if (onVisibleTextRange != null) {
+                visibleLayout = VisibleTextLayout(measured.source, result, measured)
+            }
         }
         onTextLayout(result)
     }
@@ -303,22 +315,23 @@ fun GlasmioEditableText(
                     }
             }
         }
-        BasicTextField(
-            value,
-            onValueChange,
-            if (onVisibleTextRange != null) inputModifier.onSizeChanged { fallbackSize = it }
-            else inputModifier,
-            enabled,
-            readOnly,
-            textStyle,
-            keyboardOptions,
-            keyboardActions,
-            singleLine,
-            maxLines,
-            visualTransformation = visualTransformation,
+        NativeEditorField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = if (onVisibleTextRange != null) inputModifier.onSizeChanged { fallbackSize = it }
+                else inputModifier,
+            enabled = enabled,
+            readOnly = readOnly,
+            textStyle = textStyle,
+            keyboardOptions = keyboardOptions,
+            onKeyboardAction = onKeyboardAction,
+            lineLimits = if (singleLine) TextFieldLineLimits.SingleLine
+                else TextFieldLineLimits.MultiLine(maxHeightInLines = maxLines),
+            password = password,
+            formatter = formatter,
             onTextLayout = captureLayout,
             cursorBrush = cursorBrush,
-            decorationBox = decorationBox,
+            decorator = decorationBox,
         )
         return
     }
@@ -346,7 +359,6 @@ fun GlasmioEditableText(
                     get() = false
             }
         }
-    val offsetMapping = transformed.offsetMapping
     val colors = LocalGlassColors.current
     SideEffect {
         if (editor.value.text != value.text) {
@@ -355,10 +367,10 @@ fun GlasmioEditableText(
         }
         editor.value = value
         editor.change = onValueChange
-        editor.mapping = offsetMapping
+        editor.mapping = presentation
         editor.enabled = enabled
         editor.readOnly = readOnly
-        editor.password = visualTransformation is PasswordVisualTransformation
+        editor.password = password
         editor.realWindowFocused = realWindow.isWindowFocused
         editor.density = density
         editor.singleLine = singleLine
@@ -398,8 +410,8 @@ fun GlasmioEditableText(
             editor.blink = !editor.blink
         }
     }
-    val displayedText by rememberUpdatedState(transformed.text.text)
-    LaunchedEffect(editor, textStyle, density, offsetMapping, enabled, readOnly) {
+    val displayedText by rememberUpdatedState(presentation.displayText)
+    LaunchedEffect(editor, textStyle, density, password, enabled, readOnly) {
         editor.caretMotion.reset()
         snapshotFlow {
             // 输入回调先于新布局到达；等待匹配布局，不用旧字符几何重启动画。
@@ -644,17 +656,10 @@ fun GlasmioEditableText(
         LocalTextContextMenuToolbarProvider provides editor.modernAdapter,
         LocalTextSelectionColors provides TextSelectionColors(colors.accent, Color.Transparent),
     ) {
-        BasicTextField(
+        NativeEditorField(
             value = value,
             onValueChange = { next ->
                 val textEdited = editor.value.text != next.text
-                if (
-                    !textEdited &&
-                        next.composition == editor.value.composition &&
-                        next.selection.collapsed &&
-                        editor.preservedTapSelection != null
-                )
-                    return@BasicTextField
                 editor.value = next
                 if (!editor.touching && editor.draggingHandle == null) {
                     if (textEdited) {
@@ -666,22 +671,30 @@ fun GlasmioEditableText(
                 }
                 onValueChange(next)
             },
+            inputTransformation = remember(editor) {
+                InputTransformation {
+                    val preserved = editor.preservedTapSelection
+                    if (preserved != null && changes.changeCount == 0 && selection.collapsed) {
+                        selection = preserved
+                    }
+                }
+            },
             modifier = fieldModifier,
             enabled = enabled,
             readOnly = readOnly,
             textStyle = textStyle,
             keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = singleLine,
+            onKeyboardAction = onKeyboardAction,
             // The decoration owns scrolling and must see the entire text layout.
-            maxLines = if (singleLine) 1 else Int.MAX_VALUE,
-            visualTransformation = visualTransformation,
-            onTextLayout = {
-                editor.layout = it
-                captureLayout(it)
+            lineLimits = if (singleLine) TextFieldLineLimits.SingleLine else TextFieldLineLimits.Default,
+            password = password,
+            formatter = formatter,
+            onTextLayout = { result, formatted ->
+                editor.layout = result
+                captureLayout(result, formatted)
             },
             cursorBrush = SolidColor(Color.Transparent),
-            decorationBox = { nativeInner ->
+            decorator = { nativeInner ->
                 decorationBox {
                     val maximumHeight =
                         if (!singleLine && maxLines != Int.MAX_VALUE) {
@@ -702,7 +715,7 @@ fun GlasmioEditableText(
                         } else Dp.Infinity
                     val textMeasurer = rememberTextMeasurer()
                     val gutterSnapshot =
-                        remember(editor, visualTransformation, wordWrap, textStyle) {
+                        remember(editor, password, wordWrap, textStyle) {
                             mutableStateOf<TextGutterSnapshot?>(null)
                         }
                     // 栏宽沿用最近一份与正文匹配的完整快照；重建期间不缩回 1 位。
@@ -714,14 +727,14 @@ fun GlasmioEditableText(
                         } else if (
                             (lineIndex != null || !needsLineIndex) &&
                                 gutterLayout != null &&
-                                gutterLayout.layoutInput.text.text == transformed.text.text
+                                gutterLayout.layoutInput.text.text == presentation.displayText
                         ) {
                             val current =
                                 if (lineIndex != null) {
                                     lineIndex.lineAt(value.selection.end)
                                 } else {
                                     gutterLayout.getLineForOffset(
-                                        offsetMapping
+                                        presentation
                                             .originalToTransformed(value.selection.end)
                                             .coerceIn(0, gutterLayout.layoutInput.text.length),
                                     )
@@ -730,7 +743,7 @@ fun GlasmioEditableText(
                                 TextGutterSnapshot(
                                     gutterLayout,
                                     lineIndex,
-                                    offsetMapping,
+                                    presentation,
                                     current,
                                 )
                             gutterDigits =
@@ -988,8 +1001,7 @@ fun GlasmioEditableText(
                                                     if (
                                                         syntaxPainter != null &&
                                                             !singleLine &&
-                                                            visualTransformation ===
-                                                                VisualTransformation.None &&
+                                                            formatter == null && !password &&
                                                             result != null &&
                                                             result.layoutInput.text.text ==
                                                                 value.text
@@ -1104,80 +1116,6 @@ fun GlasmioEditableText(
     }
 }
 
-@Composable
-internal fun GlasmioEditableTextField(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    readOnly: Boolean = false,
-    textStyle: TextStyle = IosTypography.body,
-    singleLine: Boolean = true,
-    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-    cursorBrush: Brush = SolidColor(LocalGlassColors.current.accent),
-    decorationBox: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { it() },
-) =
-    GlasmioEditableText(
-        value,
-        onValueChange,
-        modifier,
-        enabled,
-        readOnly,
-        textStyle,
-        singleLine,
-        maxLines,
-        visualTransformation,
-        keyboardOptions,
-        keyboardActions,
-        cursorBrush,
-        decorationBox = decorationBox,
-    )
-
-@Composable
-internal fun GlasmioEditableTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    textStyle: TextStyle = IosTypography.body,
-    singleLine: Boolean = true,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-    cursorBrush: Brush = SolidColor(LocalGlassColors.current.accent),
-    decorationBox: @Composable (innerTextField: @Composable () -> Unit) -> Unit = { it() },
-) {
-    var owned by remember { mutableStateOf(TextFieldValue(value)) }
-    var lastText by remember(value) { mutableStateOf(value) }
-    val current = owned.copy(text = value)
-    SideEffect {
-        if (owned.selection != current.selection || owned.composition != current.composition)
-            owned = current
-    }
-    GlasmioEditableText(
-        current,
-        { next ->
-            owned = next
-            if (next.text != lastText) {
-                lastText = next.text
-                onValueChange(next.text)
-            }
-        },
-        modifier = modifier,
-        enabled = enabled,
-        textStyle = textStyle,
-        singleLine = singleLine,
-        visualTransformation = visualTransformation,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
-        decorationBox = decorationBox,
-    )
-}
-
 @Suppress("DEPRECATION")
 internal class GlasmioTextEditor(
     val host: GlasmioTextEditingHost,
@@ -1210,7 +1148,7 @@ internal class GlasmioTextEditor(
     var density: Density = Density(1f)
     var singleLine = true
     var reverseScroll = false
-    var mapping: OffsetMapping = OffsetMapping.Identity
+    var mapping = EditorTextPresentation(initial.text, password = false, singleLine = false)
     var change: (TextFieldValue) -> Unit = {}
     var touching = false
     var blink by mutableStateOf(true)

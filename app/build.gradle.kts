@@ -132,24 +132,17 @@ android {
     sourceSets {
         getByName("main") {
             manifest.srcFile("src/AndroidManifest.xml")
-            java.srcDirs("src")
-            kotlin.srcDirs("src")
-            res.srcDirs("res")
+            java.directories += "src"
+            kotlin.directories += "src"
+            res.directories += "res"
         }
     }
 
     buildFeatures { compose = true }
 }
 
-// 使用 ktfmt 官方 Kotlinlang 风格，格式化配置与共享模块保持一致。
-// Applied after android { } so the plugin sees the custom app/src source dirs.
-apply(plugin = "com.ncorti.ktfmt.gradle")
-
-configure<com.ncorti.ktfmt.gradle.KtfmtExtension> {
-    kotlinLangStyle()
-    maxWidth.set(100)
-    removeUnusedImports.set(true)
-}
+// Register the formatter after configuring the custom app/src roots.
+apply(plugin = "github.android.ktfmt")
 
 dependencies {
     implementation(libs.androidx.core.splashscreen)

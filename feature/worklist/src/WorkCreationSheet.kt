@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +48,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubChoiceSheet
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.replaceFormText
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
 @Composable
@@ -93,10 +96,10 @@ internal fun WorkCreationSheet(
         else strings.Repository.NewPullRequest
     val scope = rememberCoroutineScope()
     var branchTarget by rememberSaveable(visible) { mutableStateOf<BranchTarget?>(null) }
-    var subject by rememberSaveable(visible) { mutableStateOf("") }
-    var body by rememberSaveable(visible) { mutableStateOf("") }
-    var base by rememberSaveable(visible) { mutableStateOf("") }
-    var head by rememberSaveable(visible) { mutableStateOf("") }
+    val subject = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
+    val body = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
+    val base = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
+    val head = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
     var issueTypeId by rememberSaveable(visible) { mutableStateOf<String?>(null) }
     var issueTemplate by remember(visible) { mutableStateOf<IssueTemplateOptionDto?>(null) }
     var preTemplateDraft by remember(visible) { mutableStateOf<IssueCreationDraft?>(null) }
@@ -120,7 +123,7 @@ internal fun WorkCreationSheet(
         if (visible && kind == CollaborationKind.PullRequest) onBranchQueryChange("")
     }
     LaunchedEffect(visible, branchPicker.defaultBranch) {
-        if (visible && base.isBlank()) base = branchPicker.defaultBranch.orEmpty()
+        if (visible && base.text.isBlank()) base.replaceFormText(branchPicker.defaultBranch.orEmpty())
     }
     GlasmioBottomSheet(
         visible = visible,
@@ -141,9 +144,10 @@ internal fun WorkCreationSheet(
                     GlasmioIconButton(
                         enabled =
                             !submitting &&
-                                subject.isNotBlank() &&
+                                subject.text.isNotBlank() &&
                                 (kind == CollaborationKind.Issue ||
-                                    base.isNotBlank() && head.isNotBlank() && base != head),
+                                    base.text.isNotBlank() && head.text.isNotBlank() &&
+                                        !base.text.contentEquals(head.text)),
                         onClick = {
                             submitting = true
                             failure = false
@@ -151,10 +155,10 @@ internal fun WorkCreationSheet(
                                 try {
                                     val number =
                                         onCreate(
-                                            subject.trim(),
-                                            body,
-                                            base.trim(),
-                                            head.trim(),
+                                            subject.text.toString().trim(),
+                                            body.text.toString(),
+                                            base.text.toString().trim(),
+                                            head.text.toString().trim(),
                                             issueTypeId,
                                             milestoneId,
                                             labelIds,
@@ -206,8 +210,8 @@ internal fun WorkCreationSheet(
                                 onSelected = { selected ->
                                     if (selected.name.isBlank()) {
                                         preTemplateDraft?.let { draft ->
-                                            subject = draft.title
-                                            body = draft.body
+                                            subject.replaceFormText(draft.title)
+                                            body.replaceFormText(draft.body)
                                             issueTypeId = draft.issueTypeId
                                             labelIds = draft.labelIds
                                             selectedAssignees = draft.assignees
@@ -218,16 +222,16 @@ internal fun WorkCreationSheet(
                                         if (issueTemplate == null) {
                                             preTemplateDraft =
                                                 IssueCreationDraft(
-                                                    title = subject,
-                                                    body = body,
+                                                    title = subject.text.toString(),
+                                                    body = body.text.toString(),
                                                     issueTypeId = issueTypeId,
                                                     labelIds = labelIds,
                                                     assignees = selectedAssignees,
                                                 )
                                         }
                                         issueTemplate = selected
-                                        subject = selected.title.orEmpty()
-                                        body = selected.body.orEmpty()
+                                        subject.replaceFormText(selected.title.orEmpty())
+                                        body.replaceFormText(selected.body.orEmpty())
                                         issueTypeId = selected.issueTypeId
                                         labelIds = selected.labels.mapNotNull { it.id }
                                         selectedAssignees = selected.assignees
@@ -243,7 +247,6 @@ internal fun WorkCreationSheet(
             WorkCreationField(
                 work.CreationTitle,
                 subject,
-                { subject = it },
                 submitting,
                 singleLine = true,
             )
@@ -320,7 +323,6 @@ internal fun WorkCreationSheet(
                 WorkCreationBranchField(
                     work.BaseBranch,
                     base,
-                    { base = it },
                     submitting,
                     work.BaseBranch,
                     { branchTarget = BranchTarget.Base },
@@ -328,13 +330,12 @@ internal fun WorkCreationSheet(
                 WorkCreationBranchField(
                     work.HeadBranch,
                     head,
-                    { head = it },
                     submitting,
                     work.HeadBranch,
                     { branchTarget = BranchTarget.Head },
                 )
             }
-            WorkCreationField(work.CreationBody, body, { body = it }, submitting)
+            WorkCreationField(work.CreationBody, body, submitting)
             if (failure) {
                 GlasmioGroupedList {
                     GlasmioListRow(title = work.CreationFailed, systemName = null)
@@ -350,8 +351,8 @@ internal fun WorkCreationSheet(
         query = branchPicker.query,
         selectedValue =
             when (branchTarget) {
-                BranchTarget.Base -> base.takeIf(String::isNotBlank)?.let { "refs/heads/$it" }
-                BranchTarget.Head -> head.takeIf(String::isNotBlank)?.let { "refs/heads/$it" }
+                BranchTarget.Base -> base.text.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
+                BranchTarget.Head -> head.text.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
                 null -> null
             },
         loading = branchPicker.loading && branchPicker.branches.isEmpty(),
@@ -367,8 +368,8 @@ internal fun WorkCreationSheet(
         onSelect = { selected ->
             val branch = selected.removePrefix("refs/heads/")
             when (branchTarget) {
-                BranchTarget.Base -> base = branch
-                BranchTarget.Head -> head = branch
+                BranchTarget.Base -> base.replaceFormText(branch)
+                BranchTarget.Head -> head.replaceFormText(branch)
                 null -> Unit
             }
             branchTarget = null
@@ -512,8 +513,7 @@ private enum class BranchTarget {
 @Composable
 private fun WorkCreationBranchField(
     label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
+    state: TextFieldState,
     busy: Boolean,
     branchPickerLabel: String,
     onPickBranch: () -> Unit,
@@ -525,8 +525,7 @@ private fun WorkCreationBranchField(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
+                state = state,
                 modifier =
                     Modifier.weight(1f).padding(vertical = 16.dp).heightIn(min = 24.dp).semantics {
                         contentDescription = label
@@ -534,10 +533,10 @@ private fun WorkCreationBranchField(
                 enabled = !busy,
                 textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
                 cursorBrush = SolidColor(colors.accent),
-                singleLine = true,
-                decorationBox = { inner ->
+                lineLimits = TextFieldLineLimits.SingleLine,
+                decorator = { inner ->
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                        if (value.isEmpty()) {
+                        if (state.text.isEmpty()) {
                             Text(
                                 label,
                                 style = GlasmioTheme.textStyles.body,
@@ -562,16 +561,14 @@ private fun WorkCreationBranchField(
 @Composable
 private fun WorkCreationField(
     label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
+    state: TextFieldState,
     busy: Boolean,
     singleLine: Boolean = false,
 ) {
     val colors = GlasmioTheme.colors
     GlasmioGroupedList {
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = state,
             modifier =
                 Modifier.fillMaxWidth()
                     .padding(16.dp)
@@ -580,16 +577,16 @@ private fun WorkCreationField(
             enabled = !busy,
             textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
             cursorBrush = SolidColor(colors.accent),
-            singleLine = singleLine,
-            minLines = if (singleLine) 1 else 4,
-            maxLines = if (singleLine) 1 else 8,
-            decorationBox = { inner ->
+            lineLimits =
+                if (singleLine) TextFieldLineLimits.SingleLine
+                else TextFieldLineLimits.MultiLine(minHeightInLines = 4, maxHeightInLines = 8),
+            decorator = { inner ->
                 Box(
                     Modifier.fillMaxWidth(),
                     contentAlignment =
                         if (singleLine) Alignment.CenterStart else Alignment.TopStart,
                 ) {
-                    if (value.isEmpty()) {
+                    if (state.text.isEmpty()) {
                         Text(
                             label,
                             style = GlasmioTheme.textStyles.body,

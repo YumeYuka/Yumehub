@@ -2,7 +2,7 @@ plugins { id("github.android.library") }
 
 configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "moe.yumeyuka.yumehub.core.model"
-    sourceSets.getByName("test") { kotlin.srcDirs("test") }
+    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 dependencies { testImplementation(libs.junit) }

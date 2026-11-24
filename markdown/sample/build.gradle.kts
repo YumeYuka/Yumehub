@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("github.android.ktfmt") apply false
 }
 
 android {
@@ -24,20 +25,18 @@ android {
     sourceSets {
         getByName("main") {
             manifest.srcFile("AndroidManifest.xml")
-            java.srcDirs("src")
-            kotlin.srcDirs("src")
-            res.srcDirs("res")
-            assets.srcDirs(
-                rootProject.file("feature/markdown/assets"),
-                rootProject.file("markdown/fixtures"),
-            )
+            java.directories += "src"
+            kotlin.directories += "src"
+            res.directories += "res"
+            assets.directories += rootProject.file("feature/markdown/assets").path
+            assets.directories += rootProject.file("markdown/fixtures").path
             providers.gradleProperty("markdown.referenceAssetsDir").orNull?.let { path ->
-                assets.srcDir(file(path))
+                assets.directories += file(path).path
             }
         }
         getByName("androidTest") {
-            java.srcDirs("androidTest")
-            kotlin.srcDirs("androidTest")
+            java.directories += "androidTest"
+            kotlin.directories += "androidTest"
         }
     }
 }
@@ -72,13 +71,7 @@ androidComponents.onVariants { variant ->
     variant.sources.assets?.addGeneratedSourceDirectory(prepare, PrepareSampleFontAssets::output)
 }
 
-apply(plugin = "com.ncorti.ktfmt.gradle")
-
-configure<com.ncorti.ktfmt.gradle.KtfmtExtension> {
-    kotlinLangStyle()
-    maxWidth.set(100)
-    removeUnusedImports.set(true)
-}
+apply(plugin = "github.android.ktfmt")
 
 dependencies {
     implementation(project(":markdown:core"))

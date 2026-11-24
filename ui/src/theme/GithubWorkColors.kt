@@ -21,6 +21,9 @@ object GithubWorkColors {
 
     val draft: Color
         @Composable get() = if (GlasmioTheme.colors.isDark) Color(0xFF656C76) else Color(0xFF59636E)
+    /** fgColor.muted（neutral.9）：工作项头部标签、项目、任务等元数据 chip 的图标色。 */
+    val muted: Color
+        @Composable get() = if (GlasmioTheme.colors.isDark) Color(0xFF9198A1) else Color(0xFF59636E)
 
     // GitHub Releases 的 Latest 和 Pre-release 标签分别使用 success 与 attention 前景色。
     val releaseLatest: Color

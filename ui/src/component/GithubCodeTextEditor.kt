@@ -144,7 +144,6 @@ fun GithubCodeTextEditor(
         textStyle = editorTextStyle,
         singleLine = false,
         maxLines = Int.MAX_VALUE,
-        visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
         syntaxOverlay = syntax,
         syntaxPainter = syntaxPainter,
         revealSelection = revealSelection,

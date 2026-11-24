@@ -129,8 +129,7 @@ internal fun ReleaseVersionSheet(
                                 showTopSeparator = matches.isNotEmpty(),
                                 showDisclosure = false,
                                 onClick = {
-                                    if (pages != null && pages.itemCount > 0)
-                                        pages[pages.itemCount - 1]
+                                    if (pages.itemCount > 0) pages[pages.itemCount - 1]
                                 },
                             )
                         else ->

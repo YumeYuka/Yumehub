@@ -1,7 +1,4 @@
-plugins {
-    `kotlin-dsl`
-    alias(libs.plugins.ktfmt)
-}
+plugins { `kotlin-dsl` }
 
 group = "moe.yumeyuka.yumehub.buildlogic"
 
@@ -12,11 +9,6 @@ dependencies {
     implementation(libs.android.gradlePlugin)
     implementation(libs.kotlin.gradlePlugin)
     implementation(libs.kotlin.compose.gradlePlugin)
-    implementation(libs.ktfmt.gradlePlugin)
 }
 
-ktfmt {
-    kotlinLangStyle()
-    maxWidth.set(100)
-    removeUnusedImports.set(true)
-}
+apply(from = "../gradle/ktfmt.gradle.kts")

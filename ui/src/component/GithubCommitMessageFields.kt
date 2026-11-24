@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,6 +19,11 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 
+private val FirstLineOnly = InputTransformation {
+    val lineBreak = asCharSequence().indexOfFirst { it == '\n' || it == '\r' }
+    if (lineBreak >= 0) replace(lineBreak, length, "")
+}
+
 @Composable
 fun GithubCommitMessageFields(
     headline: String,
@@ -28,7 +35,7 @@ fun GithubCommitMessageFields(
     val strings = LocalGithubStrings.current.Workspaces
     CommitTextField(
         value = headline,
-        onValueChange = { onHeadlineChange(it.lineSequence().first()) },
+        onValueChange = onHeadlineChange,
         placeholder = strings.CommitSummary,
         enabled = enabled,
         singleLine = true,
@@ -64,10 +71,10 @@ private fun CommitTextField(
     maxLines: Int = 1,
 ) {
     val colors = GlasmioTheme.colors
+    val field = rememberFormTextFieldState(value, onValueChange)
     GlasmioGroupedList {
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = field,
             modifier =
                 Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 20.dp).semantics {
                     contentDescription = placeholder
@@ -75,16 +82,17 @@ private fun CommitTextField(
             enabled = enabled,
             textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
             cursorBrush = SolidColor(colors.accent),
-            singleLine = singleLine,
-            minLines = minLines,
-            maxLines = maxLines,
-            decorationBox = { innerTextField ->
+            inputTransformation = if (singleLine) FirstLineOnly else null,
+            lineLimits =
+                if (singleLine) TextFieldLineLimits.SingleLine
+                else TextFieldLineLimits.MultiLine(minLines, maxLines),
+            decorator = { innerTextField ->
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment =
                         if (singleLine) Alignment.CenterStart else Alignment.TopStart,
                 ) {
-                    if (value.isEmpty()) {
+                    if (field.text.isEmpty()) {
                         Text(
                             text = placeholder,
                             style = GlasmioTheme.textStyles.body,

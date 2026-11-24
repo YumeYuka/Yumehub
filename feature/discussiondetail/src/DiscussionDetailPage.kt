@@ -333,7 +333,7 @@ private fun DiscussionCommentCard(
                   if (comment.isAnswer) strings.Activity.UnmarkAsAnswer
                   else strings.Activity.MarkAsAnswer,
               enabled = answerEnabled,
-              onClick = { onSetAnswer?.invoke(comment.id, !comment.isAnswer) },
+              onClick = { onSetAnswer(comment.id, !comment.isAnswer) },
           ),
       )
     }

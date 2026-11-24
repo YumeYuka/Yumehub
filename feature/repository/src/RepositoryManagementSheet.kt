@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +32,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
+import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
 
 @Composable
 internal fun RepositoryManagementSheet(
@@ -109,8 +112,10 @@ internal fun RepositoryManagementSheet(
                 RepositorySheet.Description ->
                     GithubSection(strings.Description) {
                         BasicTextField(
-                            value = editor.description,
-                            onValueChange = onDescription,
+                            state = rememberFormTextFieldState(editor.description, onDescription),
+                            inputTransformation = InputTransformation {
+                                if (length > RepositoryDescriptionMaxLength) revertAllChanges()
+                            },
                             modifier =
                                 Modifier.fillMaxWidth().padding(16.dp).semantics {
                                     contentDescription = strings.Description
@@ -118,8 +123,7 @@ internal fun RepositoryManagementSheet(
                             enabled = !state.busy,
                             textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
                             cursorBrush = SolidColor(colors.accent),
-                            minLines = 4,
-                            maxLines = 8,
+                            lineLimits = TextFieldLineLimits.MultiLine(4, 8),
                         )
                     }
                 RepositorySheet.Notifications ->

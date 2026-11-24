@@ -17,6 +17,8 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryOverview
 import moe.yumeyuka.yumehub.data.repository.RepositoryOverviewRepository
 import moe.yumeyuka.yumehub.locale.GithubTxt
 
+internal const val RepositoryDescriptionMaxLength = 350
+
 internal enum class RepositorySheet {
     Description,
     Notifications,
@@ -148,7 +150,7 @@ internal class RepositoryOverviewViewModel(
     }
 
     fun description(value: String) {
-        if (value.length <= 350 && !mutableState.value.busy)
+        if (value.length <= RepositoryDescriptionMaxLength && !mutableState.value.busy)
             updateSheet(RepositorySheet.Description) { it.copy(description = value, error = null) }
     }
 

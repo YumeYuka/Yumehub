@@ -46,7 +46,7 @@ private class CollaborationPagingSource<T : Any, R : Any>(
             if (params is LoadParams.Refresh && startPage == 1) {
                 val initial = snapshot?.initialPage(CollaborationPageSize)
                 if (initial != null) {
-                    snapshot?.context?.revalidate(this) {
+                    snapshot.context?.revalidate(this) {
                         val updated =
                             loadNetwork(1, backwards = false, force = true, saveFirst = false)
                         snapshot.save(updated)
@@ -76,7 +76,7 @@ private class CollaborationPagingSource<T : Any, R : Any>(
             currentCoroutineContext().ensureActive()
             val context = snapshot?.context
             val result =
-                if (context == null || snapshot == null) request(page)
+                if (context == null) request(page)
                 else
                     context.await(
                         key = "page:$page:size:$CollaborationPageSize",
