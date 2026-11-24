@@ -318,12 +318,6 @@ fun WorkDetailPage(
                     baseBranchVisible = true
                 }
             } else null,
-        onOpenIssueMetadata = { panel ->
-            if (host.navigationEnabled && presentation.interactive) {
-                infoVisible = false
-                issueEditor.open(panel)
-            }
-        },
         onDismiss = {
             baseBranchVisible = false
             infoVisible = false

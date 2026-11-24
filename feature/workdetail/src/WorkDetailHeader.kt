@@ -91,12 +91,6 @@ internal fun WorkDetailHeader(
                         }
                     }
                 }
-                entry.taskProgress?.let { progress ->
-                    WorkHeaderButton(enabled, onInformation) {
-                        GithubIcon(Lucide.ListChecks, contentDescription = null, size = 16.dp)
-                        WorkHeaderText(strings.TaskProgress(progress.completed, progress.total))
-                    }
-                }
                 if (isPullRequest) WorkHeaderChecks(entry, enabled, onChecks)
             }
         }

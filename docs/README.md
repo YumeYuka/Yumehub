@@ -9,6 +9,10 @@ official app's shortcomings. It supports all GitHub Mobile features and aims to 
 official client. Beyond the core client features, we may add extensibility features in
 the future.
 
+On issue and pull request pages, open **Information** to see the milestone and task progress.
+Items without checklist tasks show `0/0`. Issue type, assignees, and issue fields stay in the
+issue header.
+
 ## Background
 
 For a long time, the official GitHub Android app has offered a terrible experience, and the

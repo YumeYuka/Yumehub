@@ -48,11 +48,9 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusIcon
 import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
 import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.githubWorkStatusLabel
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -72,7 +70,6 @@ internal fun WorkInfoSheet(
     item: CollaborationItemDto?,
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
     onOpenBaseBranch: (() -> Unit)?,
-    onOpenIssueMetadata: (IssueMetadataPanel) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var opened by remember { mutableStateOf(false) }
@@ -134,9 +131,6 @@ internal fun WorkInfoSheet(
             WorkInfoSections(
                 state, viewModel, kind, item, "$owner/$name", onOpenWork, onOpenBaseBranch
             )
-            if (kind == CollaborationKind.Issue && item != null) {
-                IssueMetadataRows(item, onOpenIssueMetadata)
-            }
         }
     }
     if (visible) WorkPropertySelectionSheet(state, viewModel)
@@ -251,63 +245,26 @@ private fun WorkInfoStatusSection(
 ) {
     val all = LocalGithubStrings.current
     val strings = all.WorkDetail
-    val total = item.requiredStatusCheckCount ?: 0
-    val checks = item.requiredStatusChecks
-    val passed = checks.count { it.state == "SUCCESS" }
-    val failed = checks.count { it.state in setOf("FAILURE", "ERROR") }
-    val pending =
-        checks.any { it.state in setOf("PENDING", "EXPECTED", "IN_PROGRESS") }
-    val checksColor =
-        when {
-            item.allStatusChecksPassed -> GithubWorkColors.open
-            failed > 0 -> GithubWorkColors.closed
-            pending -> GithubWorkColors.draft
-            else -> GlasmioTheme.colors.secondaryContent
-        }
-    val checksIcon =
-        when {
-            item.allStatusChecksPassed -> Lucide.CircleCheck
-            failed > 0 -> Lucide.CircleSlash
-            else -> Lucide.CircleDot
-        }
     val reviewColor =
         when (item.reviewDecision) {
             "APPROVED" -> GithubWorkColors.open
             "CHANGES_REQUESTED" -> GithubWorkColors.closed
             else -> GlasmioTheme.colors.secondaryContent
         }
-    // 状态行是弹窗开头的状态摘要，放在状态分节标题之上，不占用分节内行位。
-    GlasmioGroupedList {
+    GithubSection(strings.Status) {
+        val progress = item.taskProgress
         GlasmioListRow(
-            title = githubWorkStatusLabel(kind, item.state, item.draft, item.merged),
+            title = strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0),
             leading = {
-                GithubWorkStatusIcon(
-                    kind,
-                    item.state,
-                    item.draft,
-                    item.merged,
-                    item.stateReason,
+                GithubIcon(
+                    Lucide.ListChecks,
+                    contentDescription = null,
                     size = 20.dp,
+                    tint = GlasmioTheme.colors.secondaryContent,
                 )
             },
             showTopSeparator = false,
         )
-    }
-    GithubSection(strings.Status) {
-        item.taskProgress?.let { progress ->
-            GlasmioListRow(
-                title = strings.TaskProgress(progress.completed, progress.total),
-                leading = {
-                    GithubIcon(
-                        Lucide.ListChecks,
-                        contentDescription = null,
-                        size = 20.dp,
-                        tint = GlasmioTheme.colors.secondaryContent,
-                    )
-                },
-                showTopSeparator = false,
-            )
-        }
         if (kind == CollaborationKind.PullRequest) {
             GlasmioListRow(
                 title = strings.ReviewResults,
@@ -320,22 +277,9 @@ private fun WorkInfoStatusSection(
                         tint = reviewColor,
                     )
                 },
-                showTopSeparator = item.taskProgress == null,
+                showTopSeparator = true,
             )
         }
-        GlasmioListRow(
-            title = strings.Checks,
-            detail = if (total > 0) "$passed/$total" else null,
-            leading = {
-                GithubIcon(
-                    checksIcon,
-                    contentDescription = null,
-                    size = 20.dp,
-                    tint = checksColor,
-                )
-            },
-            showTopSeparator = item.taskProgress != null || kind == CollaborationKind.PullRequest,
-        )
     }
     if (kind != CollaborationKind.PullRequest) return
     val head = item.head?.ref?.takeIf(String::isNotBlank)

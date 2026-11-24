@@ -30,35 +30,6 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 
 @Composable
-internal fun IssueMetadataRows(item: CollaborationItemDto, onOpen: (IssueMetadataPanel) -> Unit) {
-    val strings = LocalGithubStrings.current
-    val detail = strings.WorkDetail
-    val showType = item.viewerCanTypeIssue || item.issueType != null
-    GithubSection(detail.Properties) {
-        if (showType) {
-            GlasmioListRow(
-                title = strings.WorkList.IssueType,
-                detail = item.issueType ?: strings.WorkList.NoIssueType,
-                onClick = { onOpen(IssueMetadataPanel.Type) },
-            )
-        }
-        GlasmioListRow(
-            title = detail.Assignees,
-            detail = item.assignedActors.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: detail.Unassigned,
-            showTopSeparator = showType,
-            onClick = { onOpen(IssueMetadataPanel.Assignees) },
-        )
-        if (item.viewerCanSeeIssueFields) {
-            GlasmioListRow(
-                title = detail.IssueFields,
-                showTopSeparator = true,
-                onClick = { onOpen(IssueMetadataPanel.Fields) },
-            )
-        }
-    }
-}
-
-@Composable
 internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, editor: IssueMetadataEditor) {
     val panel = state.panel
     val all = LocalGithubStrings.current
