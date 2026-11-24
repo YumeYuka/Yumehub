@@ -49,8 +49,10 @@ import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
+import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusIcon
 import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
+import moe.yumeyuka.yumehub.ui.component.githubWorkStatusLabel
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -70,6 +72,7 @@ internal fun WorkInfoSheet(
     item: CollaborationItemDto?,
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
     onOpenBaseBranch: (() -> Unit)?,
+    onOpenIssueFields: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var opened by remember { mutableStateOf(false) }
@@ -129,7 +132,14 @@ internal fun WorkInfoSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             WorkInfoSections(
-                state, viewModel, kind, item, "$owner/$name", onOpenWork, onOpenBaseBranch
+                state,
+                viewModel,
+                kind,
+                item,
+                "$owner/$name",
+                onOpenWork,
+                onOpenBaseBranch,
+                onOpenIssueFields,
             )
         }
     }
@@ -187,9 +197,21 @@ private fun WorkInfoSections(
     repo: String,
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
     onOpenBaseBranch: (() -> Unit)?,
+    onOpenIssueFields: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
     item?.let { WorkInfoStatusSection(it, kind, onOpenBaseBranch) }
+    if (kind == CollaborationKind.Issue && item?.viewerCanSeeIssueFields == true) {
+        GlasmioGroupedList {
+            GlasmioListRow(
+                title = strings.IssueFields,
+                leading = { GithubIcon(Lucide.Settings, contentDescription = null, size = 20.dp) },
+                showTopSeparator = false,
+                enabled = !state.submitting,
+                onClick = onOpenIssueFields,
+            )
+        }
+    }
     val value = state.value
     if (value == null) {
         if (!state.failed) workInfoPlaceholders(kind, strings)
@@ -245,26 +267,48 @@ private fun WorkInfoStatusSection(
 ) {
     val all = LocalGithubStrings.current
     val strings = all.WorkDetail
+    val total = item.requiredStatusCheckCount ?: 0
+    val checks = item.requiredStatusChecks
+    val passed = checks.count { it.state == "SUCCESS" }
+    val failed = checks.any { it.state == "FAILURE" || it.state == "ERROR" }
+    val pending =
+        checks.any { it.state == "PENDING" || it.state == "EXPECTED" || it.state == "IN_PROGRESS" }
+    val checksColor =
+        when {
+            item.allStatusChecksPassed -> GithubWorkColors.open
+            failed -> GithubWorkColors.closed
+            pending -> GithubWorkColors.draft
+            else -> GlasmioTheme.colors.secondaryContent
+        }
+    val checksIcon =
+        when {
+            item.allStatusChecksPassed -> Lucide.CircleCheck
+            failed -> Lucide.CircleSlash
+            else -> Lucide.CircleDot
+        }
     val reviewColor =
         when (item.reviewDecision) {
             "APPROVED" -> GithubWorkColors.open
             "CHANGES_REQUESTED" -> GithubWorkColors.closed
             else -> GlasmioTheme.colors.secondaryContent
         }
-    GithubSection(strings.Status) {
-        val progress = item.taskProgress
+    GlasmioGroupedList {
         GlasmioListRow(
-            title = strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0),
+            title = githubWorkStatusLabel(kind, item.state, item.draft, item.merged),
             leading = {
-                GithubIcon(
-                    Lucide.ListChecks,
-                    contentDescription = null,
+                GithubWorkStatusIcon(
+                    kind,
+                    item.state,
+                    item.draft,
+                    item.merged,
+                    item.stateReason,
                     size = 20.dp,
-                    tint = GlasmioTheme.colors.secondaryContent,
                 )
             },
             showTopSeparator = false,
         )
+    }
+    GithubSection(strings.Status) {
         if (kind == CollaborationKind.PullRequest) {
             GlasmioListRow(
                 title = strings.ReviewResults,
@@ -277,9 +321,17 @@ private fun WorkInfoStatusSection(
                         tint = reviewColor,
                     )
                 },
-                showTopSeparator = true,
+                showTopSeparator = false,
             )
         }
+        GlasmioListRow(
+            title = strings.Checks,
+            detail = if (total > 0) "$passed/$total" else null,
+            leading = {
+                GithubIcon(checksIcon, contentDescription = null, size = 20.dp, tint = checksColor)
+            },
+            showTopSeparator = kind == CollaborationKind.PullRequest,
+        )
     }
     if (kind != CollaborationKind.PullRequest) return
     val head = item.head?.ref?.takeIf(String::isNotBlank)
@@ -570,7 +622,7 @@ private fun WorkPropertySelectionSheet(
                                         option,
                                         checked = editor.selected.any { it.id == option.id },
                                         showTopSeparator = index > 0,
-                                        onSelect = { viewModel.select(option) },
+                                        onSelect = if (editor.editable) ({ viewModel.select(option) }) else null,
                                     )
                                 }
                             }
@@ -624,7 +676,7 @@ private fun WorkPropertyOptionRow(
     option: WorkPropertyOption,
     checked: Boolean,
     showTopSeparator: Boolean,
-    onSelect: () -> Unit,
+    onSelect: (() -> Unit)?,
 ) {
     GlasmioListRow(
         title = option.title,
@@ -638,7 +690,7 @@ private fun WorkPropertyOptionRow(
                 if (checked) GithubIcon(Lucide.Check, contentDescription = null)
             }
         },
-        onClick = onSelect.takeIf { option.editable },
+        onClick = onSelect?.takeIf { option.editable },
     )
 }
 

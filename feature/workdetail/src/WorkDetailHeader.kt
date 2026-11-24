@@ -60,7 +60,7 @@ internal fun WorkDetailHeader(
                     onClick = onInformation,
                     enabled = enabled,
                 )
-                WorkHeaderLabels(entry, enabled, onLabels)
+                WorkHeaderLabels(entry.labels, enabled, onLabels)
                 WorkHeaderProject(projectTitle, enabled, onProjects)
                 if (isPullRequest) WorkHeaderReviewers(entry, enabled, onReviewers)
                 if (kind == CollaborationKind.Issue) {
@@ -84,12 +84,11 @@ internal fun WorkDetailHeader(
                             }
                         )
                     }
-                    if (entry.viewerCanSeeIssueFields) {
-                        WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Fields) }) {
-                            GithubIcon(Lucide.Settings, contentDescription = null, size = 16.dp)
-                            WorkHeaderText(strings.IssueFields)
-                        }
-                    }
+                }
+                val progress = entry.taskProgress
+                WorkHeaderButton(enabled, onInformation) {
+                    GithubIcon(Lucide.ListChecks, contentDescription = null, size = 16.dp)
+                    WorkHeaderText(strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0))
                 }
                 if (isPullRequest) WorkHeaderChecks(entry, enabled, onChecks)
             }
@@ -98,15 +97,9 @@ internal fun WorkDetailHeader(
 }
 
 @Composable
-private fun WorkHeaderLabels(
-    entry: CollaborationItemDto,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun WorkHeaderLabels(labels: List<CollaborationLabelDto>, enabled: Boolean, onClick: () -> Unit) {
     val strings = LocalGithubStrings.current.WorkDetail
-    val labels = entry.labels
-    WorkHeaderButton(enabled, onClick, modifier) {
+    WorkHeaderButton(enabled, onClick) {
         if (labels.isEmpty()) {
             GithubIcon(
                 Lucide.Tag,
@@ -114,13 +107,20 @@ private fun WorkHeaderLabels(
                 size = 16.dp,
                 tint = GlasmioTheme.colors.secondaryContent,
             )
-            WorkHeaderText(strings.NoLabels, Modifier.weight(1f, fill = false))
+            WorkHeaderText(strings.NoLabels)
         } else {
-            WorkHeaderLabelColors(labels)
-            val text =
-                if (labels.size > 2) strings.LabelCount(labels.size)
-                else labels.joinToString(", ") { it.name }
-            WorkHeaderText(text, Modifier.weight(1f, fill = false))
+            val outline = GlasmioTheme.colors.elevatedBackground
+            Row(horizontalArrangement = Arrangement.spacedBy((-4).dp)) {
+                for (index in 0 until minOf(labels.size, 3)) {
+                    Box(
+                        Modifier.zIndex(-index.toFloat())
+                            .size(12.dp)
+                            .background(githubLabelColor(labels[index].color), CircleShape)
+                            .border(1.dp, outline, CircleShape)
+                    )
+                }
+            }
+            WorkHeaderText(strings.LabelCount(labels.size))
         }
     }
 }
@@ -173,21 +173,6 @@ private fun WorkHeaderReviewers(
             WorkHeaderText(
                 strings.ReviewRequests(entry.reviewRequestCount ?: reviewers.size),
                 Modifier.weight(1f, fill = false),
-            )
-        }
-    }
-}
-
-@Composable
-private fun WorkHeaderLabelColors(labels: List<CollaborationLabelDto>) {
-    val outline = GlasmioTheme.colors.elevatedBackground
-    Row(horizontalArrangement = Arrangement.spacedBy((-4).dp)) {
-        labels.take(3).forEachIndexed { index, label ->
-            Box(
-                Modifier.zIndex(-index.toFloat())
-                    .size(12.dp)
-                    .background(githubLabelColor(label.color), CircleShape)
-                    .border(1.dp, outline, CircleShape)
             )
         }
     }

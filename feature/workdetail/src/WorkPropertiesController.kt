@@ -65,13 +65,23 @@ internal class WorkPropertiesController(
             return
         }
         val value = current.value ?: return
-        if (current.submitting || !value.editable) return
+        if (current.submitting || (!value.editable && property != WorkProperty.Labels)) return
         if (current.editor?.property == property) return
         val original = value.values[property].orEmpty()
         val selected = current.drafts[property] ?: original
         editorJob?.cancel()
-        update { it.copy(editor = WorkPropertyEditor(property, original, selected)) }
-        loadOptions(property)
+        update {
+            it.copy(
+                editor = WorkPropertyEditor(
+                    property,
+                    original,
+                    selected,
+                    loading = value.editable,
+                    editable = value.editable,
+                )
+            )
+        }
+        if (value.editable) loadOptions(property)
     }
 
     fun closeEditor() {

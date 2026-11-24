@@ -628,7 +628,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         ChecksProgress = { passed, total -> "Checks $passed/$total" },
         ChecksPassed = { passed, total -> "$passed/$total passed" },
         TaskProgress = { completed, total -> "Tasks $completed/$total" },
-        LabelCount = { count -> "$count labels" },
+        LabelCount = { count -> if (count == 1) "1 label" else "$count labels" },
         Comment = "Comment",
         CommentActions = "Comment actions",
         EditComment = "Edit comment",
