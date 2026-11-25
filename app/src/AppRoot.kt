@@ -205,6 +205,10 @@ internal fun AppRoot(
                                         onApprove = twoFactorViewModel::approve,
                                         onReject = twoFactorViewModel::reject,
                                         onDismiss = twoFactorViewModel::dismiss,
+                                        onAcknowledgeSubmissionUncertain =
+                                            twoFactorViewModel::acknowledgeSubmissionUncertain,
+                                        onAcknowledgeRegistrationUncertain =
+                                            twoFactorViewModel::acknowledgeRegistrationUncertain,
                                     )
                                     if (fpsCounter) {
                                         GithubFpsCounter(

@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.navigation
 
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -22,12 +22,9 @@ import com.arkivanov.decompose.childContext
 import com.arkivanov.decompose.extensions.compose.stack.animation.Direction
 import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
 import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimator
-import com.arkivanov.decompose.extensions.compose.stack.animation.fade
-import com.arkivanov.decompose.extensions.compose.stack.animation.plus
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.PredictiveBackAnimatable
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.androidPredictiveBackAnimatableV1
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
-import com.arkivanov.decompose.extensions.compose.stack.animation.scale
 import com.arkivanov.decompose.extensions.compose.stack.animation.slide
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.backhandler.BackEvent
@@ -44,10 +41,8 @@ private const val MaxPredictiveBackPercent = 100f
 
 /** 全部页面共用同一导航转场；编辑器仅延迟自动聚焦到入场结束。 */
 internal fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> {
-    val routeAnimator =
-        fade(tween(300, easing = CubicBezierEasing(0.4f, 0.4f, 0.17f, 0.9f))) +
-            slide(tween(400, easing = CubicBezierEasing(0.48f, 0.19f, 0.05f, 1.03f))) +
-            scale(tween(500, easing = CubicBezierEasing(0.55f, 0.55f, 0f, 1f)))
+    // 两个不透明的页面同步滑动，交接时不露出宿主底色。
+    val routeAnimator = slide(tween(400, easing = FastOutSlowInEasing))
     val pageAnimator = PageChromeAnimator(routeAnimator)
     val editorAnimator = EditorFocusAnimator(pageAnimator)
     return stackAnimation(
