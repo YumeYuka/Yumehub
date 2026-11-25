@@ -72,7 +72,6 @@ fun UserProfilePage(
         title = targetLogin.ifBlank { strings.Profile.ProfileLink },
         showTitle = false,
         itemSpacing = 12.dp,
-        locked = state.followSubmitting,
         actions = {
                 UserProfileActions(
                     visible = !viewModel.isSelf && !state.unavailable && targetLogin.isNotBlank(),

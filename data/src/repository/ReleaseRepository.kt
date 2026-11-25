@@ -42,6 +42,7 @@ data class GithubReleaseDetail(
     val reactions: List<GithubReactionGroup>,
 )
 
+@Serializable
 data class GithubReleaseAsset(
     val id: String,
     val name: String,
@@ -142,6 +143,7 @@ class ReleaseRepository(
             "release-assets.v1:$id",
             paging,
             GithubReleaseAsset::id,
+            serializer = GithubReleaseAsset.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<GithubReleaseAsset> = { after ->
@@ -168,6 +170,7 @@ class ReleaseRepository(
             "release-timeline.v1:${owner.lowercase()}/${name.lowercase()}",
             paging,
             GithubReleaseVersion::id,
+            serializer = GithubReleaseVersion.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<GithubReleaseVersion> = { after ->

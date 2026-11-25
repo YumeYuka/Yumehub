@@ -217,6 +217,7 @@ class WorkListRepository(
           "work-viewer-issues-graphql.v1:$filterField",
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
+          serializer = CollaborationItemDto.serializer(),
       ) {
         val session = GithubGraphQlSession(api, tokens, account)
         val query =
@@ -265,6 +266,15 @@ class WorkListRepository(
           "work-search-graphql.v1:$query",
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
+          serializer = CollaborationItemDto.serializer(),
+          mapItem = { item ->
+            val merged = item.workTarget()?.let { cache.changes(account).isMerged(it) } == true
+            when {
+              !merged -> item
+              state == CollaborationStateFilter.Open -> null
+              else -> item.copy(merged = true, state = "closed")
+            }
+          },
       ) {
         val session = GithubGraphQlSession(api, tokens, account)
         val load: suspend (String?) -> GithubGraphQlPage<CollaborationItemDto> = { after ->
@@ -275,20 +285,7 @@ class WorkListRepository(
           val data = session.execute(WorkSearchQuery, variables)
           val search = data.graphObject("search")
           val items =
-              search
-                  .safeNodes()
-                  .mapNotNull { node ->
-                    node.toCollaborationItem()?.let { item ->
-                      if (
-                          item.workTarget()?.let {
-                            cache.changes(account).isMerged(it)
-                          } == true
-                      ) {
-                        item.copy(merged = true, state = "closed")
-                      } else item
-                    }
-                  }
-                  .filterNot { state == CollaborationStateFilter.Open && it.merged }
+              search.safeNodes().mapNotNull { it.toCollaborationItem() }
           GithubGraphQlPage(items, search.graphCursor(after))
         }
         load
@@ -307,6 +304,15 @@ class WorkListRepository(
           "repository-work-search.v2:$owner/$name:${kind.name}:$filter",
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
+          serializer = CollaborationItemDto.serializer(),
+          mapItem = { item ->
+            val merged = cache.changes(account).isMerged(WorkTarget(owner, name, item.number, kind))
+            when {
+              !merged -> item
+              filter.state == CollaborationStateFilter.Open -> null
+              else -> item.copy(merged = true, state = "closed")
+            }
+          },
       ) {
         val session = GithubGraphQlSession(api, tokens, account)
         val query = workSearchQuery(account, kind, filter, repository = "$owner/$name")
@@ -318,19 +324,7 @@ class WorkListRepository(
           val data = session.execute(WorkSearchQuery, variables)
           val search = data.graphObject("search")
           val items =
-              search
-                  .safeNodes()
-                  .mapNotNull { node ->
-                    val item = node.toCollaborationItem(kind) ?: return@mapNotNull null
-                    val merged =
-                        cache
-                            .changes(account)
-                            .isMerged(
-                                WorkTarget(owner, name, item.number, kind),
-                            )
-                    if (merged) item.copy(merged = true, state = "closed") else item
-                  }
-                  .filterNot { filter.state == CollaborationStateFilter.Open && it.merged }
+              search.safeNodes().mapNotNull { it.toCollaborationItem(kind) }
           GithubGraphQlPage(items, search.graphCursor(after))
         }
         load

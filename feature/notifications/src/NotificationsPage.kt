@@ -90,7 +90,8 @@ fun NotificationsPage(
             ?: remember(source) { LazyListState() }
     val allocator = remember(source) { GithubPagingSlotKeys("notifications:$source") }
     val query = searchInput.text.trim()
-    val visibleNotifications = state.visibleNotifications
+    val visibleNotifications =
+        remember(state.notifications, state.reasonFilter) { state.visibleNotifications }
     val notifications =
         remember(visibleNotifications, query) {
             if (query.isEmpty()) visibleNotifications
@@ -116,7 +117,7 @@ fun NotificationsPage(
         enabled = searching && !filtersVisible && !state.isSelecting,
         onBack = closeSearch,
     )
-    GithubBackHandler(enabled = state.isSelecting) {
+    GithubBackHandler(enabled = state.isSelecting && !state.isProcessing) {
         if (!viewModel.uiState.value.isProcessing) {
             viewModel.endSelection()
         }
@@ -126,7 +127,6 @@ fun NotificationsPage(
     GithubLoadFailureToast(failure, failure.orEmpty())
     GithubPage(
         title = strings.Title,
-        locked = state.isProcessing,
         listState = listState,
         listTransition = GithubListTransition(source, initialLoading, state.filter.ordinal),
         itemSpacing = 12.dp,
@@ -147,7 +147,7 @@ fun NotificationsPage(
             val anchor = rememberGlasmioMenuAnchorState()
             Box {
                 GithubToolbarActions(
-                    if (!state.isSelecting) toolbarIcon(Lucide.Search, common.Search, !state.isProcessing) {
+                    if (!state.isSelecting) toolbarIcon(Lucide.Search, common.Search) {
                         if (searching) {
                             searchFocus.requestFocus()
                             keyboard?.show()
@@ -183,7 +183,6 @@ fun NotificationsPage(
                         cancelLabel = common.Close,
                         placeholder = common.Search,
                         focusRequester = searchFocus,
-                        enabled = !state.isProcessing,
                         modifier =
                             Modifier.consumeWindowInsets(PaddingValues(bottom = bottomPadding))
                                 .imePadding()

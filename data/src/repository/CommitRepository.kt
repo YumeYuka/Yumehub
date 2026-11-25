@@ -101,6 +101,7 @@ class CommitRepository(
             "commit-links.v3:$owner/$name:$oid:$parents",
             paging,
             RepositoryActivityEntry::id,
+            serializer = RepositoryActivityEntry.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val field = if (parents) "parents" else "associatedPullRequests"

@@ -3,6 +3,7 @@ package moe.yumeyuka.yumehub.data.repository
 import androidx.paging.PagingData
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -37,6 +38,7 @@ class ProfileCollectionsRepository(
             RepoFields,
             { it.nodeId.orEmpty() },
             ::repositoryItem,
+            serializer = RepositoryDto.serializer(),
         )
     }
 
@@ -61,6 +63,7 @@ class ProfileCollectionsRepository(
             { it.nodeId.orEmpty() },
             ::repositoryItem,
             query.trim().takeIf(String::isNotEmpty),
+            serializer = RepositoryDto.serializer(),
         )
 
     suspend fun userLists(account: String, login: String): List<UserRepositoryList> {
@@ -183,6 +186,7 @@ class ProfileCollectionsRepository(
                 search.trim().lowercase(Locale.ROOT),
             paging,
             { it.nodeId.orEmpty() },
+            serializer = RepositoryDto.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokenStore, account)
             val query =
@@ -236,6 +240,7 @@ class ProfileCollectionsRepository(
             "__typename login name avatarUrl description url",
             { it.login.orEmpty() },
             { it.dashboardUser() },
+            serializer = UserDto.serializer(),
         )
     }
 
@@ -252,8 +257,9 @@ class ProfileCollectionsRepository(
         identity: (T) -> String,
         decode: (JsonObject) -> T,
         searchQuery: String? = null,
+        serializer: KSerializer<T>,
     ): Flow<PagingData<T>> =
-        githubGraphQlPager(account, key, paging, identity) {
+        githubGraphQlPager(account, key, paging, identity, serializer = serializer) {
             val session = GithubGraphQlSession(api, tokenStore, account)
             val loginVariable = if (root == "viewer") "" else "\u0024login: String!, "
             val loginArgument = if (root == "viewer") "" else "(login: \u0024login)"

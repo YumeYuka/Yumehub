@@ -252,7 +252,7 @@ private fun NotificationRow(
     onOpenNotification: (NotificationDto) -> Unit,
     onThreadActions: (NotificationDto) -> Unit,
 ) {
-    val target = notification?.toTarget()
+    val target = remember(notification) { notification?.toTarget() }
     val threadId = notification?.threadId
     val selectable = isSelecting && threadId != null
     Box(if (selectable) Modifier.semantics { selected = isSelected } else Modifier) {
@@ -267,8 +267,8 @@ private fun NotificationRow(
                 } else null,
             onClick =
                 when {
-                    !enabled -> null
-                    isSelecting -> threadId?.let { id -> { onToggleSelection(id) } }
+                    isSelecting ->
+                        threadId?.takeIf { enabled }?.let { id -> { onToggleSelection(id) } }
                     notification != null && target != null -> ({
                             onOpenNotification(notification)
                             onOpenTarget(target)

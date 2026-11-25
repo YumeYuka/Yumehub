@@ -4,6 +4,7 @@ import java.lang.ref.WeakReference
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
@@ -85,27 +86,28 @@ class NotificationsRepository(
                     account,
                     key = identity.query.cacheKey(),
                     serializer = NotificationsSnapshot.serializer(),
+                    // 可见页面负责刷新节流；不要在网络完成后再叠加 60 秒 TTL。
+                    maxAgeMillis = 0L,
                 )
                 .also { resources[identity] = WeakReference(it) }
         }
     }
 
-    fun refresh(account: String, query: NotificationsQuery, force: Boolean = false) =
+    fun refresh(account: String, query: NotificationsQuery): Job =
         runtime(account).let { runtime ->
-            runtime.scope.launch {
-                runtime.mutex(query.normalized()).withLock {
+            val normalized = query.normalized()
+            runtime.refresh(normalized) {
+                runtime.mutex(normalized).withLock {
                     val resource = resource(account, query)
-                    resource
-                        .refresh(force) {
-                            val previous = resource.cached.takeUnless { force }
-                            loadWindow(
-                                account,
-                                query,
-                                previous?.loadedFromPage ?: 1,
-                                previous?.loadedThroughPage?.coerceAtLeast(1) ?: 1,
-                            )
-                        }
-                        .join()
+                    resource.refresh {
+                        val previous = resource.cached
+                        loadWindow(
+                            account,
+                            query,
+                            previous?.loadedFromPage ?: 1,
+                            previous?.loadedThroughPage?.coerceAtLeast(1) ?: 1,
+                        )
+                    }.join()
                 }
             }
         }
@@ -432,6 +434,24 @@ class NotificationsRepository(
         val resources =
             mutableMapOf<ResourceKey, WeakReference<CachedResource<NotificationsSnapshot>>>()
         private val mutexes = mutableMapOf<NotificationsQuery, WeakReference<Mutex>>()
+        private val refreshes = mutableMapOf<NotificationsQuery, Job>()
+
+        fun refresh(query: NotificationsQuery, load: suspend () -> Unit): Job {
+            val job = synchronized(resources) {
+                refreshes[query]?.takeUnless { it.isCompleted } ?: run {
+                    val next = scope.launch(start = CoroutineStart.LAZY) { load() }
+                    refreshes[query] = next
+                    next.invokeOnCompletion {
+                        synchronized(resources) {
+                            if (refreshes[query] === next) refreshes.remove(query)
+                        }
+                    }
+                    next
+                }
+            }
+            job.start()
+            return job
+        }
 
         fun mutex(query: NotificationsQuery): Mutex =
             synchronized(resources) {

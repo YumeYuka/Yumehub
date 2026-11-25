@@ -37,17 +37,15 @@ internal fun UserProfileActions(
 ) {
     var expanded by remember(visible) { mutableStateOf(false) }
     val host = LocalGithubPageHost.current
-    // 栈顶归属只校验动作，不触发退场控件灰化；真正提交中仍保留禁用配色。
-    val enabled = !state.followSubmitting
     val anchor = rememberGlasmioMenuAnchorState()
     Box {
     GithubToolbarActions(
-        if (visible) toolbarIcon(Lucide.UserPlus, strings.UserActions, enabled, menuAnchor = anchor) {
+        if (visible) toolbarIcon(Lucide.UserPlus, strings.UserActions, menuAnchor = anchor) {
             if (host?.navigationEnabled == true) expanded = true
         } else null,
     )
     if (visible) GlasmioMenu(
-        expanded = expanded && enabled && host?.navigationEnabled == true,
+        expanded = expanded && host?.navigationEnabled == true,
         onExpandedChange = { if (!it || host?.navigationEnabled == true) expanded = it },
         itemCount = 2,
         forceBelowAnchor = true,

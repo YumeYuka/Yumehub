@@ -325,6 +325,7 @@ class WorkDetailRepository(
             commentsKey,
             paging,
             { requireNotNull(it.nodeId) },
+            serializer = CollaborationCommentDto.serializer(),
         ) {
           graph::comments
         }
@@ -335,6 +336,7 @@ class WorkDetailRepository(
             reviewsKey,
             paging,
             { requireNotNull(it.nodeId) },
+            serializer = PullRequestReviewDto.serializer(),
         ) {
           graph::reviews
         }
@@ -345,6 +347,7 @@ class WorkDetailRepository(
             "work-commits.v1:$target:$head",
             paging,
             RepositoryActivityEntry::id,
+            serializer = RepositoryActivityEntry.serializer(),
         ) {
           { after -> graph.commits(head, after) }
         }
@@ -363,6 +366,7 @@ class WorkDetailRepository(
             checksKey(head),
             paging,
             { it.id },
+            serializer = PullRequestCheckRunDto.serializer(),
         ) {
           { after -> graph.checks(head, after) }
         }

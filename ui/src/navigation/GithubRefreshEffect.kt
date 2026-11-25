@@ -10,9 +10,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.DataFreshness
@@ -45,40 +45,37 @@ fun GithubRefreshEffect(
     val refreshEnabled by rememberUpdatedState(enabled)
     LaunchedEffect(owner, lifecycle, host, changes, pollWhileVisible) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            combine(
-                    snapshotFlow { host?.isCurrent != false && refreshEnabled },
-                    changes.versions,
-                    flow {
-                        emit(Unit)
-                        if (pollWhileVisible) {
-                            while (true) {
-                                delay(DataFreshness.ActiveMillis)
-                                emit(Unit)
-                            }
-                        }
-                    },
-                ) { active, versions, _ ->
+            combine(snapshotFlow { host?.isCurrent != false && refreshEnabled }, changes.versions) {
+                    active, versions ->
                     active to versions.filterKeys { it in dependencies }
                 }
-                .collect { (active, versions) ->
-                    if (
-                        active &&
-                            gate.acquire(
-                                System.nanoTime() / 1_000_000L,
-                                versions,
-                                refreshOnFirstActivation,
-                            )
-                    ) {
-                        refresh()
-                    }
+                .distinctUntilChanged()
+                .collectLatest { (active, versions) ->
+                    if (!active) return@collectLatest
+                    do {
+                        if (gate.acquire(monotonicMillis(), versions, refreshOnFirstActivation)) {
+                            refresh()
+                        }
+                        if (pollWhileVisible) {
+                            delay(gate.millisUntilNextCheck(monotonicMillis()).coerceAtLeast(1L))
+                        }
+                    } while (pollWhileVisible)
                 }
         }
     }
 }
 
+private fun monotonicMillis(): Long = System.nanoTime() / 1_000_000L
+
 internal class PageRefreshGate {
     private var checkedAt: Long? = null
     private var versions: Map<DataDomain, Long> = emptyMap()
+
+    fun millisUntilNextCheck(now: Long): Long {
+        val previous = checkedAt ?: return 0L
+        val elapsed = now - previous
+        return if (elapsed < 0L) 0L else (DataFreshness.ActiveMillis - elapsed).coerceAtLeast(0L)
+    }
 
     fun acquire(
         now: Long,
@@ -86,14 +83,7 @@ internal class PageRefreshGate {
         refreshInitially: Boolean = true,
     ): Boolean {
         val previous = checkedAt
-        if (
-            previous != null &&
-                now - previous >= 0L &&
-                now - previous < DataFreshness.ActiveMillis &&
-                current == versions
-        ) {
-            return false
-        }
+        if (millisUntilNextCheck(now) > 0L && current == versions) return false
         checkedAt = now
         versions = current.toMap()
         return previous != null || refreshInitially

@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.data.repository
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.core.model.CollaborationListFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationScopeFilter
@@ -14,6 +15,7 @@ import moe.yumeyuka.yumehub.data.api.dto.DiscussionListItemDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
+@Serializable
 data class RepositoryActivityEntry(
     val id: String,
     val title: String,
@@ -53,6 +55,7 @@ class RepositoryActivityRepository(
             "repository-activity.v1:$owner/$name:$kind:$nodeId:$projectNumber:$organization",
             paging,
             RepositoryActivityEntry::id,
+            serializer = RepositoryActivityEntry.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<RepositoryActivityEntry> = { after ->
@@ -199,6 +202,7 @@ class RepositoryActivityRepository(
             "discussion-search.v4:$owner/$name:$personal:$filter",
             paging,
             { it.nodeId ?: "${it.repository}#${it.number}" },
+            serializer = DiscussionListItemDto.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val query = discussionSearchQuery(account, owner, name, personal, filter)

@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub.data.network
 
 import android.os.Build
+import java.time.Duration
 import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.api.GitHubApi
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
@@ -57,8 +58,10 @@ object NetworkModule {
             .build()
     }
 
-    fun provideRetrofit(okHttpClient: OkHttpClient, json: Json, tokens: TokenStore): Retrofit =
-        Retrofit.Builder()
+    fun provideRetrofit(okHttpClient: OkHttpClient, json: Json, tokens: TokenStore): Retrofit {
+        // 与下载、图片共享连接池，只给业务 API 设置总时限，不截断流式传输。
+        val apiClient = okHttpClient.newBuilder().callTimeout(Duration.ofSeconds(30)).build()
+        return Retrofit.Builder()
             .baseUrl(BASE_URL)
             // 在调用方创建请求时绑定账号，不在 OkHttp 队列出队后读取新账号的令牌。
             .callFactory { request ->
@@ -72,10 +75,11 @@ object NetworkModule {
                     )
                         request.newBuilder().header("Authorization", "Bearer $token").build()
                     else request
-                okHttpClient.newCall(bound)
+                apiClient.newCall(bound)
             }
             .addConverterFactory(json.asConverterFactory(JSON_MEDIA_TYPE))
             .build()
+    }
 
     fun provideGitHubApi(retrofit: Retrofit): GitHubApi = retrofit.create(GitHubApi::class.java)
 

@@ -168,6 +168,7 @@ data class CollaborationFilterOptions(
 data class DiscussionCategoryDto(val id: String, val name: String)
 
 /** 讨论列表卡片；正文和回复仍由讨论详情页按需读取。 */
+@Serializable
 data class DiscussionListItemDto(
     val number: Int,
     val title: String,

@@ -27,10 +27,14 @@ class PagingSnapshot<T : Any>(
     internal fun bind(context: PagingContext): PagingSnapshot<T> =
         PagingSnapshot(store, account, key, serializer, context)
 
-    suspend fun initialPage(pageSize: Int): PagingSnapshotPage<T>? {
+    suspend fun initialPage(
+        pageSize: Int,
+        includeRevalidated: Boolean = false,
+    ): PagingSnapshotPage<T>? {
         // 无会话上下文的旧调用不能恢复账号级私有快照。
         val bound = context ?: return null
-        if (!bound.initialSnapshot || !initial.compareAndSet(true, false)) return null
+        if (!bound.initialSnapshot && !(includeRevalidated && !bound.forceRefresh)) return null
+        if (!initial.compareAndSet(true, false)) return null
         bound.ensureCurrent()
         val diskKey = bound.snapshotKey(key)
         val page =

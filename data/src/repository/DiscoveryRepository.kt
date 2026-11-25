@@ -23,7 +23,13 @@ class DiscoveryRepository(
     private val paging: PagingRepository,
 ) {
     fun trending(account: String, filter: TrendingFilter): Flow<PagingData<RepositoryDto>> =
-        githubGraphQlPager(account, "explore:trending:$filter", paging, { it.nodeId.orEmpty() }) {
+        githubGraphQlPager(
+            account,
+            "explore:trending:$filter",
+            paging,
+            { it.nodeId.orEmpty() },
+            serializer = RepositoryDto.serializer(),
+        ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<RepositoryDto> = {
                 session.execute(TrendingQuery, filter.variables()).trendingPage()
@@ -39,6 +45,7 @@ class DiscoveryRepository(
     ): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
             account, "explore:awesome:$recentlyUpdated:$language:$query", paging, { it.nodeId.orEmpty() },
+            serializer = RepositoryDto.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val search = query.isNotBlank() || language != null

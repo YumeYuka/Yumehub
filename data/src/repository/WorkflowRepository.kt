@@ -209,6 +209,7 @@ class WorkflowRepository(
     }
 
     fun history(account: String, owner: String, name: String) =
+        // 本地游标只索引当前 loader 的多路合并检查点，不能脱离该 loader 恢复。
         githubGraphQlPager(
             account,
             "actions:all:$owner/$name",
