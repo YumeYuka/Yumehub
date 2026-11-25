@@ -60,5 +60,5 @@ internal fun LazyListScope.FeedScreen(
             }
         GithubFeedActivity(event, state, { onRetry(event) }, { onToggle(event) }, open)
     }
-    collaborationPagingStatus(events, "动态", loadingPlaceholder = {}, emptyPlaceholder = false)
+    collaborationPagingStatus(events, "动态", loadingPlaceholder = {}, emptyPlaceholder = true)
 }

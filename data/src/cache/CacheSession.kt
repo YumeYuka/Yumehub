@@ -64,7 +64,9 @@ internal class CacheSession {
     }
 
     fun accepts(login: String, version: Long): Boolean =
-        generation == version && !signedOut && (account == null || account == login)
+        generation == version &&
+            !signedOut &&
+            (account == null || account == normalizeAccount(login))
 }
 
 internal fun normalizeAccount(account: String): String = account.trim().lowercase(Locale.ROOT)

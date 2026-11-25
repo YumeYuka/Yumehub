@@ -235,6 +235,7 @@ internal class FeedViewModel(
         val current =
             if (retry) existing ?: cachedCard(account, event)
             else cachedCard(account, event) ?: existing
+        val display = current ?: event.initialCard()
         if (
             !retry &&
                 current != null &&
@@ -251,7 +252,7 @@ internal class FeedViewModel(
         val stamp = if (coord != null && mutationKey != null) coord.beginRead(mutationKey) else null
         val job =
             viewModelScope.launch(start = CoroutineStart.LAZY) {
-                update(key, (current ?: FeedCardState()).copy(busy = true))
+                update(key, (display ?: FeedCardState()).copy(busy = true))
                 try {
                     val refreshed = cardRequests.withPermit {
                         dashboard.refreshCard(account, event)
@@ -269,7 +270,7 @@ internal class FeedViewModel(
                     ensureSlotObserver(account, key, refreshed)
                 } catch (_: Exception) {
                     currentCoroutineContext().ensureActive()
-                    update(key, (current ?: FeedCardState()).copy(busy = false))
+                    update(key, (display ?: FeedCardState()).copy(busy = false))
                 } finally {
                     if (jobs[key] === currentCoroutineContext()[Job]) jobs.remove(key)
                     if (automaticReads[key] === currentCoroutineContext()[Job])

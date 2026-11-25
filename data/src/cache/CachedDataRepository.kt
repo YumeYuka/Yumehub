@@ -304,14 +304,15 @@ class CachedDataRepository(
 
     /** 当前会话的分页/快照读取也使用同一账号校验，不依赖旧的持久 revision。 */
     internal suspend fun sessionId(account: String): String {
+        val normalized = normalizeAccount(account)
         initialized.await()
         val binding = locked {
-            if (!isCurrent(account, session.generation)) throw expiredSession()
+            if (!isCurrent(normalized, session.generation)) throw expiredSession()
             session.accountReady
         }
         val boundAccount = binding.await()
         return locked {
-            if (!isCurrent(account, session.generation) || boundAccount != account) {
+            if (!isCurrent(normalized, session.generation) || boundAccount != normalized) {
                 throw expiredSession()
             }
             checkNotNull(session.id)

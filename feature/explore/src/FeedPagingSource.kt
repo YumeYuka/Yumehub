@@ -119,22 +119,12 @@ private class FeedPagingSource(
         force: Boolean,
         cursors: MutableMap<Int, String?>,
     ): PagingSnapshotPage<FeedEventDto> {
-        val start = key ?: 1
-        var page = start
-        while (true) {
-            val response = requestPage(page, force, cursors)
-            val items = response.filtered(ascending = false)
-            val next = response.nextKey
-            if (items.isNotEmpty() || next == null) {
-                return response.copy(
-                    items = items,
-                    prevKey =
-                        if (page == start && key != null) (start - 1).takeIf { it >= 1 } else null,
-                )
-            }
-            check(next > page) { "GitHub 返回了循环分页链接" }
-            page = next
-        }
+        val page = key ?: 1
+        val response = requestPage(page, force, cursors)
+        return response.copy(
+            items = response.filtered(ascending = false),
+            prevKey = if (key != null) (page - 1).takeIf { it >= 1 } else null,
+        )
     }
 
     private suspend fun loadReverse(
@@ -222,11 +212,9 @@ private class FeedPagingSource(
         error("Invalid dashboard feed page")
     }
 
-    private fun PagingSnapshotPage<FeedEventDto>.filtered(ascending: Boolean): List<FeedEventDto> {
-        val events = items.filter { it.matches(filters) }
-        return if (ascending) events.sortedBy { it.createdAt.orEmpty() }
-        else events.sortedByDescending { it.createdAt.orEmpty() }
-    }
+    private fun PagingSnapshotPage<FeedEventDto>.filtered(ascending: Boolean): List<FeedEventDto> =
+        if (ascending) items.sortedBy { it.createdAt.orEmpty() }
+        else items.sortedByDescending { it.createdAt.orEmpty() }
 
     override fun getRefreshKey(state: PagingState<Int, FeedEventDto>): Int? = null
 }
