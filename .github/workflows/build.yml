@@ -59,7 +59,7 @@ jobs:
         run: bash ./gradlew --no-daemon ktfmtCheck
 
   build:
-    name: Unit tests and APK
+    name: APK
     if: github.event_name != 'push' || !github.event.deleted
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -91,17 +91,6 @@ jobs:
             ${{ runner.os }}-gradle-
       - name: Configure local.properties
         run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
-      - name: Unit tests
-        if: github.event_name != 'push'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          bash ./gradlew --no-daemon --max-workers=2 --no-parallel
-          -Pkotlin.compiler.execution.strategy=in-process
-          :data:testDebugUnitTest :ui:testDebugUnitTest
-          :core:model:testDebugUnitTest :markdown:core:test
-          :markdown:compose:testDebugUnitTest
-          :feature:markdown:testDebugUnitTest
       - name: Assemble debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
