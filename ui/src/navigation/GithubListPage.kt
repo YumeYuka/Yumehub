@@ -46,12 +46,18 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.scaffold.glasmioAdaptiveContent
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import kotlinx.coroutines.flow.StateFlow
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.LocalGithubMarkdownRenderer
 import moe.yumeyuka.yumehub.ui.component.LocalGithubMarkdownSelectionHosted
 import moe.yumeyuka.yumehub.ui.component.LocalMarkdownCardRetention
@@ -63,6 +69,14 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.utils.overScrollVertical
+
+data class GithubPagingRevalidationBinding(
+    val state: StateFlow<RevalidationState>,
+    val onRetry: () -> Unit,
+)
+
+val LocalGithubPagingRevalidation =
+    staticCompositionLocalOf<GithubPagingRevalidationBinding?> { null }
 
 /** 页面内容统一外边距；分组行仍保留 Glasmio 的 16dp 内部对齐。 */
 private val PageHorizontalPadding = 12.dp
@@ -241,6 +255,16 @@ internal fun GithubListPage(
                                     @Composable
                                     (Modifier, LazyListScope.() -> Unit) -> Unit =
                                     { listModifier, listRows ->
+                                        val revalidationBinding =
+                                            LocalGithubPagingRevalidation.current
+                                        val revalidationState =
+                                            revalidationBinding
+                                                ?.state
+                                                ?.collectAsStateWithLifecycle()
+                                                ?.value
+                                        val revalidationFailed =
+                                            revalidationState is RevalidationState.Failed &&
+                                                revalidationBinding != null
                                         LazyColumn(
                                             state = state,
                                             modifier =
@@ -293,6 +317,21 @@ internal fun GithubListPage(
                                                             Modifier.fillMaxWidth()
                                                                 .height(headerHeight),
                                                         )
+                                                    }
+                                                }
+                                                if (revalidationFailed && revalidationBinding != null) {
+                                                    item(key = "paging-cache-sync-failed") {
+                                                        val common =
+                                                            LocalGithubStrings.current.Common
+                                                        GlasmioGroupedList {
+                                                            GlasmioListRow(
+                                                                title = common.CacheSyncFailed,
+                                                                detail = common.Retry,
+                                                                showDisclosure = false,
+                                                                onClick =
+                                                                    revalidationBinding.onRetry,
+                                                            )
+                                                        }
                                                     }
                                                 }
                                                 listRows()

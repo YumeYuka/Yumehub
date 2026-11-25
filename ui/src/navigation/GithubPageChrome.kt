@@ -152,7 +152,7 @@ fun GithubPageChromeHost(content: @Composable () -> Unit) {
         } else {
             val target = if (entering) 1f else 0f
             coroutineScope {
-                // 页面栈动画为 500ms；控件叠层提前结束，避免延长 Decompose 的输入锁定。
+                // 控件叠层提前结束，避免延长 Decompose 的输入锁定。
                 launch { toolbarProgress.animateTo(target, tween(300)) }
                 launch { bottomProgress.animateTo(target, tween(300)) }
             }

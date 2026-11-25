@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,17 +20,26 @@ import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.navigation.GithubListTransition
+import moe.yumeyuka.yumehub.ui.navigation.GithubPagingRevalidationBinding
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubListFrameActive
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPagingRevalidation
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
 
 private val LocalPagingContentKey = staticCompositionLocalOf<Any?> { null }
+val IdleGithubPagingRevalidation: StateFlow<RevalidationState> =
+    MutableStateFlow<RevalidationState>(RevalidationState.Idle).asStateFlow()
 
 class GithubPagingPresentation<T : Any>
 internal constructor(
@@ -44,6 +54,8 @@ internal constructor(
 fun <T : Any> GithubPagingContent(
     source: Flow<PagingData<T>>,
     contentKey: Any,
+    revalidation: StateFlow<RevalidationState>,
+    onRetryRevalidation: () -> Unit,
     order: Int = 0,
     content: @Composable (GithubPagingPresentation<T>) -> Unit,
 ) {
@@ -84,7 +96,11 @@ fun <T : Any> GithubPagingContent(
             restorePending.value = false
         }
     }
-    CompositionLocalProvider(LocalPagingContentKey provides contentKey) {
+    CompositionLocalProvider(
+        LocalPagingContentKey provides contentKey,
+        LocalGithubPagingRevalidation provides
+            GithubPagingRevalidationBinding(revalidation, onRetryRevalidation),
+    ) {
         content(
             GithubPagingPresentation(
                 items,
@@ -174,13 +190,24 @@ fun <T : Any> rememberGithubPagingSlots(
         }
     }
     val append = items.loadState.append
-    val showInitialSlots = initialLoading && previous.value == null
+    val awaitingFirstPage = initialLoading && previous.value == null
+    val showInitialSlots =
+        remember(items, frameKey, awaitingFirstPage) { mutableStateOf(false) }
+    if (awaitingFirstPage) {
+        LaunchedEffect(items, frameKey) {
+            // 给会话回放和磁盘快照一个短窗口，避免在正文前只闪一帧骨架。
+            delay(120L)
+            showInitialSlots.value = true
+        }
+    }
+    val showSkeleton = showInitialSlots.value
+    val appending = append is LoadState.Loading
     val keys =
-        remember(allocator, snapshot, append, showInitialSlots) {
+        remember(allocator, snapshot, appending, showSkeleton) {
             allocator.update(
                 snapshot.map { it?.let(itemKey) },
-                append is LoadState.Loading,
-                showInitialSlots,
+                appending,
+                showSkeleton,
             )
         }
     return remember(items, snapshot, keys) { GithubPagingSlots(items, snapshot, keys) }
@@ -225,7 +252,7 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
         }
         Box(
             Modifier.animateItem(
-                fadeInSpec = tween(260),
+                fadeInSpec = null,
                 fadeOutSpec = tween(180),
                 placementSpec = spring(dampingRatio = 1f, stiffness = 400f),
             ),

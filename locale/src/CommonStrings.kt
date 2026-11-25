@@ -13,6 +13,17 @@ public data class GithubStrings_Common(
     val Retry: String,
     val UnknownError: String,
     val ExternalLinkOpenFailed: String,
+    val CacheSyncing: String,
+    val CacheSyncFailed: String,
+    val MutationPreparing: String,
+    val MutationPending: String,
+    val MutationUncertain: String,
+    val MutationReconcile: String,
+    val MutationAcknowledged: String,
+    val MutationNotSubmitted: String,
+    val MutationLimit: String,
+    val MutationRecoveryFailed: String,
+    val MutationAcknowledgeWarning: String,
 )
 
 internal val ZhHansCommonStrings: GithubStrings_Common =
@@ -29,6 +40,17 @@ internal val ZhHansCommonStrings: GithubStrings_Common =
         Retry = "重试",
         UnknownError = "未知错误",
         ExternalLinkOpenFailed = "无法打开链接",
+        CacheSyncing = "正在检查更新",
+        CacheSyncFailed = "同步失败，当前为缓存数据",
+        MutationPreparing = "正在准备操作",
+        MutationPending = "正在提交",
+        MutationUncertain = "结果尚未确认",
+        MutationReconcile = "刷新核对",
+        MutationAcknowledged = "已核对",
+        MutationNotSubmitted = "未提交",
+        MutationLimit = "请先核对待确认操作",
+        MutationRecoveryFailed = "未提交：无法恢复待核对操作",
+        MutationAcknowledgeWarning = "请先在 GitHub 核对；原操作仍可能稍后生效，继续不会重新提交",
     )
 
 internal val EnCommonStrings: GithubStrings_Common =
@@ -45,4 +67,16 @@ internal val EnCommonStrings: GithubStrings_Common =
         Retry = "Retry",
         UnknownError = "Unknown error",
         ExternalLinkOpenFailed = "Unable to open link",
+        CacheSyncing = "Checking for updates",
+        CacheSyncFailed = "Sync failed, showing cached data",
+        MutationPreparing = "Preparing action",
+        MutationPending = "Submitting",
+        MutationUncertain = "Result unconfirmed",
+        MutationReconcile = "Check again",
+        MutationAcknowledged = "Reviewed",
+        MutationNotSubmitted = "Not submitted",
+        MutationLimit = "Review unconfirmed actions first",
+        MutationRecoveryFailed = "Not submitted: unable to recover unconfirmed actions",
+        MutationAcknowledgeWarning =
+            "Check GitHub first; the original action may still complete later. Continuing will not resubmit it",
     )

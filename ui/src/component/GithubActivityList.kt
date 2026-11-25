@@ -10,7 +10,9 @@ import io.github.yumeyucca.lucide.FileText
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RefreshCw
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
@@ -29,13 +31,15 @@ fun GithubActivityListPage(
     icon: ImageVector = Lucide.FileText,
     header: (@Composable () -> Unit)? = null,
     pollWhileVisible: Boolean = false,
+    revalidation: StateFlow<RevalidationState> = IdleGithubPagingRevalidation,
+    onRetryRevalidation: () -> Unit = {},
     row: (@Composable (RepositoryActivityEntry, (() -> Unit)?) -> Unit)? = null,
     toolbar: (@Composable (refresh: () -> Unit) -> Unit)? = null,
     locked: Boolean = false,
 ) {
     val strings = LocalGithubStrings.current.Activity
     val host = requireNotNull(LocalGithubPageHost.current)
-    GithubPagingContent(source, contentKey) { paging ->
+    GithubPagingContent(source, contentKey, revalidation, onRetryRevalidation) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(

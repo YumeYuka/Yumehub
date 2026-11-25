@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import android.view.WindowInsets as AndroidWindowInsets
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -33,6 +32,7 @@ fun GithubSearchSelectionSheet(
     enabled: Boolean = true,
     confirmEnabled: Boolean = true,
     showConfirm: Boolean = true,
+    requestClose: Boolean = false,
     content: LazyListScope.(finishSelection: (() -> Unit) -> Unit) -> Unit,
 ) {
     val common = LocalGithubStrings.current.Common
@@ -47,48 +47,63 @@ fun GithubSearchSelectionSheet(
     var query by remember { mutableStateOf(TextFieldValue()) }
     var searching by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
-    var finishing by remember { mutableStateOf(false) }
-    val canDismiss by rememberUpdatedState(!visible || enabled || finishing)
+    val canDismiss by rememberUpdatedState(!visible || enabled)
     val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = false) {
         it != GlasmioSheetValue.Hidden || canDismiss
     }
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
     LaunchedEffect(visible) {
         if (visible) {
             query = TextFieldValue()
             searching = false
-            finishing = false
         }
     }
     LaunchedEffect(visible, searching) { if (visible && searching) sheetState.expand() }
     LaunchedEffect(visible, queryKey) { if (visible) listState.scrollToItem(0) }
+    LaunchedEffect(visible, requestClose, canDismiss) {
+        if (visible && requestClose && canDismiss) sheetState.hide()
+    }
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (enabled || finishing) onDismiss() },
+        onDismissRequest = { if (visible && enabled) onDismiss() },
         title = title,
         sheetState = sheetState,
         skipPartiallyExpanded = false,
         topBarBlurProgress = edgeProgress,
-        dismissOnBackPress = enabled && !finishing,
-        dismissOnClickOutside = enabled && !finishing,
+        dismissOnBackPress = visible && enabled,
+        dismissOnClickOutside = visible && enabled,
         topBar = {
             GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = enabled && !finishing) {
+                    GlasmioIconButton(
+                        onClick = {
+                            focus.clearFocus(force = true)
+                            keyboard?.hide()
+                            scope.launch { sheetState.hide() }
+                        },
+                        enabled = visible && enabled && !requestClose,
+                    ) {
                         GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
                     GithubToolbarActions(
                         if (!searching)
-                            toolbarIcon(Lucide.Search, common.Search, enabled) { searching = true }
+                            toolbarIcon(Lucide.Search, common.Search, visible && enabled && !requestClose) { searching = true }
                         else null,
                         if (showConfirm)
                             toolbarIcon(
                                 Lucide.Check,
                                 common.Confirm,
-                                enabled && confirmEnabled && !finishing,
-                                onClick = onConfirm,
+                                visible && enabled && confirmEnabled && !requestClose,
+                                onClick = {
+                                    focus.clearFocus(force = true)
+                                    keyboard?.hide()
+                                    onConfirm()
+                                },
                             )
                         else null,
                     )
@@ -96,32 +111,13 @@ fun GithubSearchSelectionSheet(
             )
         },
     ) {
-        val scope = rememberCoroutineScope()
-        val keyboard = LocalSoftwareKeyboardController.current
-        val focus = LocalFocusManager.current
-        val view = LocalView.current
-        val density = LocalDensity.current
-        val ime = WindowInsets.ime
-        val source = WindowInsets.imeAnimationSource
-        val target = WindowInsets.imeAnimationTarget
+        val contentDensity = LocalDensity.current
+        // Selection owns its result and visibility; onDismiss is cancellation only.
         val finish: (() -> Unit) -> Unit = { action ->
-            if (enabled && !finishing) {
-                finishing = true
-                action()
-                keyboard?.hide()
+            if (visible && enabled) {
                 focus.clearFocus(force = true)
-                scope.launch {
-                    do {
-                        withFrameNanos {}
-                        val showing =
-                            view.rootWindowInsets?.isVisible(AndroidWindowInsets.Type.ime()) == true
-                        val animating =
-                            ime.getBottom(density) > 0 ||
-                                source.getBottom(density) > 0 ||
-                                target.getBottom(density) > 0
-                    } while (showing || animating)
-                    sheetState.hide()
-                }
+                keyboard?.hide()
+                action()
             }
         }
         Box(
@@ -130,11 +126,11 @@ fun GithubSearchSelectionSheet(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = enabled && !finishing,
+                userScrollEnabled = visible && enabled,
                 contentPadding =
                     PaddingValues(
                         bottom =
-                            if (searching) with(density) { toolbarHeight.toDp() + 12.dp } else 0.dp,
+                            if (searching) with(contentDensity) { toolbarHeight.toDp() + 12.dp } else 0.dp,
                     ),
             ) {
                 content(finish)
@@ -143,7 +139,7 @@ fun GithubSearchSelectionSheet(
                 GlasmioSearchToolbar(
                     query = query,
                     onQueryChange = {
-                        if (enabled && !finishing) {
+                        if (visible && enabled) {
                             query = it
                             onQueryChange(it.text)
                         }
@@ -158,7 +154,7 @@ fun GithubSearchSelectionSheet(
                     },
                     cancelLabel = common.Close,
                     placeholder = placeholder,
-                    enabled = enabled && !finishing,
+                    enabled = visible && enabled,
                     modifier =
                         Modifier.align(Alignment.BottomCenter)
                             .fillMaxWidth()
