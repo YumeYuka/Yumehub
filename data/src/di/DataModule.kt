@@ -83,7 +83,7 @@ val dataModule = module {
     single { PagingRepository(get(), get()) }
     single { MyRepositoriesRepository(get(), get(), get()) }
     single { DashboardFeedRepository(get(), get(), get()) }
-    single { DiscoveryRepository(get(), get(), get()) }
+    single { DiscoveryRepository(get(), get(), get(), get()) }
     single { GraphQlSearchRepository(get(), get()) }
     single { WorkListRepository(get(), get(), get(), get()) }
     single { CommitRepository(get(), get(), get(), get(), get()) }

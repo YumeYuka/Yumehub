@@ -2,9 +2,11 @@ package moe.yumeyuka.yumehub.data.repository
 
 import androidx.paging.PagingData
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 enum class TrendingPeriod { DAILY, WEEKLY, MONTHLY }
@@ -15,12 +17,14 @@ data class TrendingFilter(
     val spokenLanguageCode: String? = null,
 )
 
+@Serializable
 data class DiscoveryLanguages(val programming: List<String>, val spoken: Map<String, String>)
 
 class DiscoveryRepository(
     private val api: GitHubGraphQlApi,
     private val tokens: TokenStore,
     private val paging: PagingRepository,
+    private val cache: CachedDataRepository,
 ) {
     fun trending(account: String, filter: TrendingFilter): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
@@ -69,7 +73,15 @@ class DiscoveryRepository(
             load
         }
 
-    suspend fun languages(account: String, includeSpoken: Boolean): DiscoveryLanguages {
+    suspend fun languages(account: String, includeSpoken: Boolean): DiscoveryLanguages =
+        cache.resource(
+            account,
+            "discovery.languages.v1:$includeSpoken",
+            DiscoveryLanguages.serializer(),
+            maxAgeMillis = 24 * 60 * 60_000L,
+        ).await { loadLanguages(account, includeSpoken) }
+
+    private suspend fun loadLanguages(account: String, includeSpoken: Boolean): DiscoveryLanguages {
         val session = GithubGraphQlSession(api, tokens, account)
         val data = session.execute(LanguageQuery, buildJsonObject { put("spoken", includeSpoken) })
         return DiscoveryLanguages(
