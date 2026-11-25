@@ -10,7 +10,6 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.repository.WorkflowInput
 import moe.yumeyuka.yumehub.data.repository.WorkflowOption
 import moe.yumeyuka.yumehub.data.repository.WorkflowRepository
@@ -28,16 +27,13 @@ internal fun WorkflowDispatchSheet(
     route: ActionsRoute,
     workflow: WorkflowOption,
     defaultBranch: String,
-    onBusy: (Boolean) -> Unit,
     onClose: () -> Unit,
-    onResult: (Boolean) -> Unit,
+    onDispatch: (branch: String, inputs: Map<String, String>) -> Unit,
 ) {
     val strings = LocalGithubStrings.current
-    val scope = rememberCoroutineScope()
     var branch by remember { mutableStateOf(defaultBranch) }
     var pickBranch by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
-    var busy by remember { mutableStateOf(false) }
     var fields by remember(branch, retry) { mutableStateOf<List<WorkflowInput>?>(null) }
     var unavailable by remember(branch, retry) { mutableStateOf(false) }
     var failed by remember(branch, retry) { mutableStateOf(false) }
@@ -61,40 +57,32 @@ internal fun WorkflowDispatchSheet(
     }
     GithubLoadFailureToast(failed.takeIf { it }, strings.Activity.LoadFailed)
     val ready =
-        !busy &&
-            fields?.all { field ->
-                val v = values[field.key]
-                when {
-                    v.isNullOrBlank() -> !field.required
-                    field.choices.isNotEmpty() -> v in field.choices
-                    field.type == "NUMBER" -> v.toBigDecimalOrNull() != null
-                    else -> true
-                }
-            } == true
+        fields?.all { field ->
+            val v = values[field.key]
+            when {
+                v.isNullOrBlank() -> !field.required
+                field.choices.isNotEmpty() -> v in field.choices
+                field.type == "NUMBER" -> v.toBigDecimalOrNull() != null
+                else -> true
+            }
+        } == true
     if (pickBranch) {
         RunBranchPicker(account, route, branch, onDismiss = { pickBranch = false }) {
             branch = it.removePrefix("refs/heads/")
         }
         return
     }
-    val state =
-        rememberGlasmioSheetState(skipPartiallyExpanded = true) {
-            it != GlasmioSheetValue.Hidden || !busy
-        }
     GlasmioBottomSheet(
         visible = true,
-        onDismissRequest = { if (!busy) onClose() },
+        onDismissRequest = onClose,
         title = strings.Activity.RunWorkflow,
-        sheetState = state,
         fitContent = true,
-        dismissOnBackPress = !busy,
-        dismissOnClickOutside = !busy,
         topBar = {
             GlasmioTopBar(
                 title = strings.Activity.RunWorkflow,
                 subtitle = workflow.name,
                 navigation = {
-                    GlasmioIconButton(onClick = onClose, enabled = !busy) {
+                    GlasmioIconButton(onClick = onClose) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
@@ -102,27 +90,7 @@ internal fun WorkflowDispatchSheet(
                     GlasmioIconButton(
                         enabled = ready,
                         onClick = {
-                            if (!busy && ready) {
-                                busy = true
-                                onBusy(true)
-                                val ref = branch
-                                val inputs = values.toMap().filterValues { it.isNotEmpty() }
-                                scope.launch {
-                                    val confirmed =
-                                        try {
-                                            repo.dispatch(account, workflow.id, ref, inputs)
-                                            true
-                                        } catch (e: CancellationException) {
-                                            throw e
-                                        } catch (_: Exception) {
-                                            false
-                                        } finally {
-                                            busy = false
-                                            onBusy(false)
-                                        }
-                                    onResult(confirmed)
-                                }
-                            }
+                            if (ready) onDispatch(branch, values.filterValues { it.isNotEmpty() })
                         },
                     ) {
                         GithubIcon(Lucide.Play, contentDescription = strings.Activity.RunWorkflow)
@@ -141,7 +109,6 @@ internal fun WorkflowDispatchSheet(
             GithubSection(strings.Activity.RunBranch) {
                 GlasmioListRow(
                     title = branch.ifBlank { strings.Workspaces.Branches },
-                    enabled = !busy,
                     onClick = { pickBranch = true },
                 )
             }
@@ -164,7 +131,7 @@ internal fun WorkflowDispatchSheet(
                                 field.choices.isNotEmpty() ->
                                     field.choices.forEach { option ->
                                         FilterRow(option, values[field.key] == option) {
-                                            if (!busy) values[field.key] = option
+                                            values[field.key] = option
                                         }
                                     }
                                 field.type == "BOOLEAN" ->
@@ -173,7 +140,6 @@ internal fun WorkflowDispatchSheet(
                                         trailing = {
                                             GlasmioSwitch(
                                                 checked = values[field.key] == "true",
-                                                enabled = !busy,
                                                 onCheckedChange = {
                                                     values[field.key] = it.toString()
                                                 },
@@ -184,7 +150,6 @@ internal fun WorkflowDispatchSheet(
                                     GlasmioTextField(
                                         value = values[field.key].orEmpty(),
                                         onValueChange = { values[field.key] = it },
-                                        enabled = !busy,
                                     )
                             }
                         }

@@ -13,8 +13,11 @@ import androidx.paging.cachedIn
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
 import moe.yumeyuka.yumehub.data.repository.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -28,10 +31,35 @@ internal class ActionsHistoryModel(
     val workflows: WorkflowRepository,
     activities: RepositoryActivityRepository,
     route: ActionsRoute,
-    account: String,
+    private val account: String,
 ) : ViewModel() {
     val selected = MutableStateFlow<WorkflowOption?>(null)
     var catalog by mutableStateOf<WorkflowCatalog?>(null)
+    var submitting by mutableStateOf(false)
+        private set
+
+    private val dispatchResults = Channel<Boolean>(Channel.CONFLATED)
+    val results = dispatchResults.receiveAsFlow()
+
+    fun dispatch(workflowId: String, branch: String, inputs: Map<String, String>): Boolean {
+        if (submitting) return false
+        submitting = true
+        viewModelScope.launch {
+            try {
+                workflows.dispatch(account, workflowId, branch, inputs)
+                dispatchResults.trySend(true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // A failed response does not prove GitHub skipped the mutation.
+                dispatchResults.trySend(false)
+            } finally {
+                submitting = false
+            }
+        }
+        return true
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val runs =
         selected
@@ -66,11 +94,21 @@ internal fun ActionsHistoryPage(
     val activity = strings.Activity
     var filter by remember { mutableStateOf(false) }
     var form by remember { mutableStateOf(false) }
-    var submitting by remember { mutableStateOf(false) }
     var refreshAfterSubmit by remember { mutableIntStateOf(0) }
     var retry by remember { mutableIntStateOf(0) }
     var failed by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    LaunchedEffect(vm, context, activity) {
+        vm.results.collect { confirmed ->
+            refreshAfterSubmit++
+            Toast.makeText(
+                    context,
+                    if (confirmed) activity.RunSubmitted else activity.RunUncertain,
+                    Toast.LENGTH_LONG,
+                )
+                .show()
+        }
+    }
     LaunchedEffect(filter, retry) {
         if (filter && vm.catalog == null) {
             failed = false
@@ -89,7 +127,6 @@ internal fun ActionsHistoryPage(
         subtitle = selected?.name,
         source = vm.runs,
         contentKey = "$route:${selected?.id}",
-        locked = submitting,
         canOpen = { it.targetId != null },
         onOpen = open,
         row = { entry, click -> WorkflowRow(entry, click) },
@@ -98,7 +135,9 @@ internal fun ActionsHistoryPage(
             GithubToolbarActions(
                 toolbarIcon(Lucide.ListFilter, activity.WorkflowFilter) { filter = true },
                 if (selected?.active == true && vm.catalog?.canWrite == true)
-                    toolbarIcon(Lucide.Play, activity.RunWorkflow) { form = true }
+                    toolbarIcon(Lucide.Play, activity.RunWorkflow, enabled = !vm.submitting) {
+                        if (!vm.submitting) form = true
+                    }
                 else toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = refresh),
             )
         },
@@ -162,17 +201,9 @@ internal fun ActionsHistoryPage(
             route,
             selected,
             vm.catalog?.branch.orEmpty(),
-            onBusy = { submitting = it },
             onClose = { form = false },
-            onResult = { confirmed ->
-                form = false
-                refreshAfterSubmit++
-                Toast.makeText(
-                        context,
-                        if (confirmed) activity.RunSubmitted else activity.RunUncertain,
-                        Toast.LENGTH_LONG,
-                    )
-                    .show()
+            onDispatch = { branch, inputs ->
+                if (form && vm.dispatch(selected.id, branch, inputs)) form = false
             },
         )
     }
