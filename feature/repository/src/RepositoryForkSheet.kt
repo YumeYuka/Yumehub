@@ -20,12 +20,10 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
-import io.github.neoruaa.glasmio.ui.GlasmioSheetValue
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
-import io.github.neoruaa.glasmio.ui.rememberGlasmioSheetState
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -50,8 +48,8 @@ internal fun RepositoryForkSheet(
     val colors = GlasmioTheme.colors
     val submitting = state?.submitting == true
     val checking = state?.nameStatus == ForkNameStatus.Checking
-    LaunchedEffect(state?.visible, state?.error, state?.nameStatus) {
-        if (state?.visible == true) {
+    LaunchedEffect(state?.error, state?.nameStatus) {
+        if (state != null) {
             state.error?.let { error ->
                 val message =
                     if (state.nameStatus == ForkNameStatus.Failed)
@@ -61,29 +59,22 @@ internal fun RepositoryForkSheet(
             }
         }
     }
-    LaunchedEffect(state?.visible, state?.name, state?.nameStatus) {
-        if (state?.visible == true && state.nameStatus == ForkNameStatus.Taken) {
+    LaunchedEffect(state?.name, state?.nameStatus) {
+        if (state?.nameStatus == ForkNameStatus.Taken) {
             Toast.makeText(context, strings.ForkNameTaken(state.name), Toast.LENGTH_SHORT).show()
         }
     }
-    val sheetState =
-        rememberGlasmioSheetState(skipPartiallyExpanded = true) { value ->
-            value != GlasmioSheetValue.Hidden || !submitting
-        }
     GlasmioBottomSheet(
         visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.ForkRepository,
         fitContent = true,
-        sheetState = sheetState,
-        dismissOnBackPress = !submitting,
-        dismissOnClickOutside = !submitting,
         topBar = {
             GlasmioTopBar(
                 title = strings.ForkRepository,
                 subtitle = state?.parent?.fullName,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !submitting) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },

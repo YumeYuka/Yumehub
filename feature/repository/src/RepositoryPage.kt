@@ -316,7 +316,6 @@ fun RepositoryPage(
                 }
             },
             listState = listState,
-            locked = forkState?.submitting == true,
             itemSpacing = 12.dp,
             actions = {
                 if (overviewActions) Box {

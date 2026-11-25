@@ -53,7 +53,6 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedTableFooter
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioPopUpButton
-import io.github.neoruaa.glasmio.ui.GlasmioSheetValue
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
@@ -93,23 +92,17 @@ internal fun ProfileStatusSheet(
     var displayed by remember { mutableStateOf(state) }
     LaunchedEffect(state) { if (state != null) displayed = state }
     val editor = state ?: displayed
-    val submitting = state?.submitting == true
-    val sheetState =
-        rememberGlasmioSheetState(skipPartiallyExpanded = true) { value ->
-            value != GlasmioSheetValue.Hidden || state?.submitting != true
-        }
+    val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = true)
     GlasmioBottomSheet(
-        visible = state != null,
+        visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.EditStatus,
         sheetState = sheetState,
-        dismissOnBackPress = !submitting,
-        dismissOnClickOutside = !submitting,
         topBar = {
             GlasmioTopBar(
                 title = strings.EditStatus,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !submitting) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },

@@ -47,7 +47,11 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
     private var revision = 0L
 
     fun open(parent: RepositoryDto) {
-        if (mutableState.value?.submitting == true) return
+        val previous = mutableState.value
+        if (previous?.submitting == true) {
+            mutableState.value = previous.copy(visible = true)
+            return
+        }
         val currentSession = source.session() ?: return
         session = currentSession
         mutableState.value =
@@ -61,7 +65,6 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
 
     fun dismiss() {
         val state = mutableState.value ?: return
-        if (state.submitting) return
         nameJob?.cancel()
         revision++
         mutableState.value = state.copy(visible = false)
@@ -140,7 +143,7 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
                 // 再检查一次，避免表单停留期间名称被其他客户端占用。
                 if (source.nameExists(currentSession, state.name)) {
                     mutableState.value =
-                        state.copy(
+                        mutableState.value?.copy(
                             submitting = false,
                             nameStatus = ForkNameStatus.Taken,
                             error = null,
@@ -155,16 +158,25 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
                         state.name,
                         state.defaultBranchOnly,
                     )
-                mutableState.value = state.copy(visible = false, created = created)
+                val latest = mutableState.value ?: return@launch
+                mutableState.value =
+                    latest.copy(
+                        visible = false,
+                        submitting = false,
+                        // Closing the sheet opts out of the success navigation, not the write.
+                        created = created.takeIf { latest.visible },
+                    )
             } catch (error: CancellationException) {
+                mutableState.value = null
                 throw error
             } catch (error: Exception) {
-                if (source.isActive(currentSession))
-                    mutableState.value =
-                        state.copy(
+                mutableState.value =
+                    if (source.isActive(currentSession)) {
+                        mutableState.value?.copy(
                             submitting = false,
                             error = message(error, submitting = true),
                         )
+                    } else null
             }
         }
     }

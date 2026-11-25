@@ -35,7 +35,7 @@ fun ProfilePage(
         viewModel,
         DataDomain.Profile,
         DataDomain.Relationships,
-        enabled = statusEditor == null,
+        enabled = statusEditor?.blocksRefresh != true,
     ) {
         viewModel.refresh()
     }
@@ -44,13 +44,15 @@ fun ProfilePage(
     ) {
         GithubLoadFailureToast(Unit, strings.Profile.LoadFailed)
     }
+    if (statusEditor?.let { !it.visible && it.failed } == true) {
+        GithubLoadFailureToast(Unit, strings.Profile.StatusSaveFailed)
+    }
     GithubPage(
         title = strings.Profile.Title,
         showTitle = false,
         back = true,
         horizontalPadding = 12.dp,
         itemSpacing = 12.dp,
-        locked = statusEditor?.submitting == true,
         actions = { ProfileAccountMenu(accounts, onAddAccount, onSwitchAccount) },
         backgroundColor = GlasmioTheme.colors.groupedBackground,
     ) {

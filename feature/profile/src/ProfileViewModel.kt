@@ -29,6 +29,7 @@ internal sealed interface ProfileUiState {
 }
 
 internal data class StatusEditorState(
+    val visible: Boolean = true,
     val hadStatus: Boolean = false,
     val emoji: String = "",
     val message: String = "",
@@ -38,7 +39,9 @@ internal data class StatusEditorState(
     val organizations: List<ProfileOrganizationDto> = emptyList(),
     val submitting: Boolean = false,
     val failed: Boolean = false,
-)
+) {
+    val blocksRefresh: Boolean get() = visible || submitting
+}
 
 internal enum class StatusExpiry(val millis: Long) {
     Never(0L),
@@ -65,11 +68,16 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     }
 
     fun refresh() {
-        if (mutableStatusEditor.value != null) return
+        if (mutableStatusEditor.value?.blocksRefresh == true) return
         repository.refresh(account, force = true)
     }
 
     fun openStatusEditor() {
+        val existing = mutableStatusEditor.value
+        if (existing != null) {
+            mutableStatusEditor.value = existing.copy(visible = true)
+            return
+        }
         val profile = (uiState.value as? ProfileUiState.Content)?.profile ?: return
         val status = profile.status
         mutableStatusEditor.value =
@@ -112,8 +120,9 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     }
 
     fun dismissStatusEditor() {
-        if (mutableStatusEditor.value?.submitting == true) return
-        mutableStatusEditor.value = null
+        val editor = mutableStatusEditor.value ?: return
+        // Closing the sheet is not a cancellation of a write already sent to GitHub.
+        mutableStatusEditor.value = if (editor.submitting) editor.copy(visible = false) else null
     }
 
     fun setStatusEmoji(emoji: String) {
@@ -157,7 +166,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     private fun submitStatus(clear: Boolean) {
         val editor = mutableStatusEditor.value ?: return
-        if (editor.submitting) return
+        if (!editor.visible || editor.submitting) return
         mutableStatusEditor.value = editor.copy(submitting = true, failed = false)
         viewModelScope.launch {
             try {
@@ -176,6 +185,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                 )
                 mutableStatusEditor.value = null
             } catch (cancelled: CancellationException) {
+                mutableStatusEditor.value = null
                 throw cancelled
             } catch (_: Exception) {
                 mutableStatusEditor.update { it?.copy(submitting = false, failed = true) }
