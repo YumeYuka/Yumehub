@@ -6,7 +6,6 @@ plugins { id("github.android.compose") }
 configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "moe.yumeyuka.yumehub.ui"
     sourceSets.getByName("main") { resources.directories += "resources" }
-    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {
@@ -27,15 +26,6 @@ configure<com.android.build.api.variant.LibraryAndroidComponentsExtension> {
             }
         variant.sources.assets?.addGeneratedSourceDirectory(pack, PackTextAssets::output)
     }
-}
-
-// convention 应用时已捕获默认测试目录，显式接入模块根的测试源码。
-tasks.named<org.gradle.api.tasks.SourceTask>("ktfmtFormatTest") {
-    setSource(fileTree("test") { include("**/*.kt") })
-}
-
-tasks.named<org.gradle.api.tasks.SourceTask>("ktfmtCheckTest") {
-    setSource(fileTree("test") { include("**/*.kt") })
 }
 
 dependencies {
@@ -67,5 +57,4 @@ dependencies {
     api(libs.androidx.navigationevent.compose)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
-    testImplementation(libs.junit)
 }

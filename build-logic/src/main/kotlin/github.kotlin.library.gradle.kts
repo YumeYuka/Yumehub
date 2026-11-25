@@ -8,7 +8,6 @@ java {
 kotlin {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     sourceSets.getByName("main").kotlin.setSrcDirs(listOf("src"))
-    sourceSets.getByName("test").kotlin.setSrcDirs(listOf("test"))
 }
 
 apply(from = rootProject.file("gradle/ktfmt.gradle.kts"))

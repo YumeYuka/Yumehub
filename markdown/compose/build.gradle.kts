@@ -8,5 +8,4 @@ dependencies {
     api(project(":markdown:core"))
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jsoup)
-    testImplementation(libs.junit)
 }

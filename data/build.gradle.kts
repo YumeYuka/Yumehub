@@ -5,11 +5,9 @@ plugins {
 
 configure<com.android.build.api.dsl.LibraryExtension> {
     namespace = "moe.yumeyuka.yumehub.data"
-    sourceSets.getByName("test") { kotlin.directories += "test" }
 }
 
 dependencies {
-    testImplementation(libs.junit)
     implementation(project(":core:common"))
     implementation(project(":core:model"))
 
@@ -26,10 +24,4 @@ dependencies {
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
     implementation(libs.jsoup)
-}
-
-val ktfmtSources = extensions.getByName<NamedDomainObjectContainer<SourceDirectorySet>>("ktfmtSources")
-ktfmtSources.create("tests") {
-    srcDir("test")
-    include("**/*.kt")
 }
