@@ -61,8 +61,8 @@ val dataModule = module {
     mmkv(SETTINGS_MMKV_ID)
     single { DownloadStore(androidContext(), get(), get(), get(), get(), get()) }
 
-    single { TokenStore(get(named(AUTH_MMKV_ID))) }
-    single { SettingsStore(get(named(SETTINGS_MMKV_ID))) }
+    single { TokenStore(get<MMKV>(named(AUTH_MMKV_ID))) }
+    single { SettingsStore(get<MMKV>(named(SETTINGS_MMKV_ID))) }
     single {
         val context = androidContext()
         AuthorizationService(context, defaultAuthBrowserConfiguration(context))
@@ -78,7 +78,10 @@ val dataModule = module {
     single { ReleasePreviewImages() }
     single { HomeFavoritesStore(get(), get()) }
     single { PagingSnapshotStore(get(), get()) }
-    single { CachedDataRepository(get(), get(), get()) }
+    single {
+        val snapshots: PagingSnapshotStore = get()
+        CachedDataRepository(get(), get(), get()) { snapshots.sync() }
+    }
     single { PagingRepository(get(), get()) }
     single { MyRepositoriesRepository(get(), get(), get()) }
     single { DashboardFeedRepository(get(), get(), get()) }
@@ -88,26 +91,29 @@ val dataModule = module {
     single { CommitRepository(get(), get(), get(), get(), get()) }
     single { DiscussionRepository(get(), get(), get()) }
     single { ReleaseRepository(get(), get(), get(), get()) }
-    single { RepositoryActivityRepository(get(), get(), get()) }
-    single { WorkflowRepository(get(), get(), get(), get()) }
+    single { RepositoryActivityRepository(get(), get(), get(), get()) }
+    single { WorkflowRepository(get(), get(), get(), get(), get()) }
     single { NetworkModule.provideRetrofit(get(), get(), get()) }
     single { NetworkModule.provideGitHubApi(get()) }
     single { NetworkModule.provideGitHubGraphQlApi(get()) }
     single { GithubMarkdownRepository(get(), get(), get()) }
     single { RepositoryContentRepository(get(), get(), get(), get()) }
-    single { WorkspacesRepository(get(), get()) }
+    single { WorkspacesRepository(get(), get(), get()) }
     single { RepositoryOverviewRepository(get(), get(), get(), get(), get(), get()) }
     single { RepositoryForkRepository(get(), get(), get(), get(), get()) }
     single { GithubDiffRepository(get(), get()) }
     single { WorkDetailRepository(get(), get(), get(), get(), get()) }
     single { WorkItemSubscriptionRepository(get(), get(), get()) }
     single { ProfileRepository(get(), get(), get(), get()) }
-    single { ProfileCollectionsRepository(get(), get(), get()) }
+    single { ProfileCollectionsRepository(get(), get(), get(), get()) }
     single { NotificationsRepository(get(), get(), get()) }
     single { HomeFavoritesRepository(get(), get(), get()) }
     single { DeviceKeyManager(androidContext(), get()) }
+    single<moe.yumeyuka.yumehub.data.twofactor.TwoFactorDeviceKeyStore> {
+        get<DeviceKeyManager>()
+    }
     single<AuthRepository> { GitHubAuthRepository(get(), get(), get(), get(), get(), get()) }
-    single<TwoFactorRepository> { GitHubTwoFactorRepository(get(), get(), get(), get()) }
+    single<TwoFactorRepository> { GitHubTwoFactorRepository(get(), get(), get(), get(), get()) }
 }
 
 private const val AUTH_MMKV_ID = "auth"

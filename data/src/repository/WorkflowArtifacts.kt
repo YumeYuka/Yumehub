@@ -1,6 +1,8 @@
 package moe.yumeyuka.yumehub.data.repository
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import moe.yumeyuka.yumehub.data.network.useResponse
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import okhttp3.HttpUrl
@@ -9,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 
+@Serializable
 data class WorkflowArtifact(
     val id: Long,
     val name: String,
@@ -17,6 +20,7 @@ data class WorkflowArtifact(
     val expired: Boolean,
 )
 
+@Serializable
 data class WorkflowArtifacts(val files: List<WorkflowArtifact>, val total: Int, val next: Int?)
 
 private fun artifactApi(owner: String, name: String) =
@@ -32,6 +36,7 @@ private suspend fun <T> OkHttpClient.artifactRequest(
     tokens: TokenStore,
     account: String,
     url: HttpUrl,
+    validator: String? = null,
     read: (Response) -> T,
 ): T {
     val generation =
@@ -41,7 +46,11 @@ private suspend fun <T> OkHttpClient.artifactRequest(
         Request.Builder()
             .url(url)
             .header("Accept", "application/vnd.github+json")
-            .apply { headers.forEach { (key, value) -> header(key, value) } }
+            .apply {
+                headers.forEach { (key, value) -> header(key, value) }
+                // ETag 只与同一 URL 的缓存正文配对；服务端未变时返回 304。
+                validator?.let { header("If-None-Match", it) }
+            }
             .build()
     return newCall(request).useResponse(read).also { tokens.requireSession(account, generation) }
 }
@@ -54,7 +63,8 @@ internal suspend fun listWorkflowArtifacts(
     name: String,
     run: Long,
     page: Int,
-): WorkflowArtifacts {
+    validator: String? = null,
+): RemoteFetch<WorkflowArtifacts> {
     require(run > 0 && page > 0)
     val url =
         artifactApi(owner, name)
@@ -62,7 +72,8 @@ internal suspend fun listWorkflowArtifacts(
             .addQueryParameter("page", page.toString())
             .addQueryParameter("per_page", "100")
             .build()
-    return client.artifactRequest(tokens, account, url) { response ->
+    return client.artifactRequest(tokens, account, url, validator) { response ->
+        if (response.code == 304) return@artifactRequest RemoteFetch.NotModified
         if (!response.isSuccessful) throw GithubPageException()
         val data = Json.parseToJsonElement(response.body.string()).jsonObject
         val files =
@@ -76,10 +87,13 @@ internal suspend fun listWorkflowArtifacts(
                     file.getValue("expired").jsonPrimitive.boolean,
                 )
             }
-        WorkflowArtifacts(
-            files,
-            data.getValue("total_count").jsonPrimitive.int,
-            (page + 1).takeIf { response.header("Link").orEmpty().contains("rel=\"next\"") },
+        RemoteFetch.Fresh(
+            WorkflowArtifacts(
+                files,
+                data.getValue("total_count").jsonPrimitive.int,
+                (page + 1).takeIf { response.header("Link").orEmpty().contains("rel=\"next\"") },
+            ),
+            validator = response.header("ETag"),
         )
     }
 }

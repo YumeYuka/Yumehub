@@ -11,6 +11,7 @@ import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -40,7 +41,13 @@ object NetworkModule {
                         .header("User-Agent", userAgent)
                         .apply {
                             if (request.tag(SingleSubmission::class.java) != null) {
-                                request.body?.let { method(request.method, SingleUseBody(it)) }
+                                // 服务端可能已执行：一次性正文，并阻止无 body 写被 OkHttp 自动重放。
+                                val body =
+                                    request.body
+                                        ?: if (request.method in BodylessWriteMethods) {
+                                            ByteArray(0).toRequestBody(null)
+                                        } else null
+                                if (body != null) method(request.method, SingleUseBody(body))
                             }
                         }
                         .build()
@@ -61,6 +68,7 @@ object NetworkModule {
 
     fun provideRetrofit(okHttpClient: OkHttpClient, json: Json, tokens: TokenStore): Retrofit {
         // 业务 API 与其他有限请求共用客户端的总时限。
+        val singleSubmission = singleSubmissionClient(okHttpClient)
         return Retrofit.Builder()
             .baseUrl(BASE_URL)
             // 在调用方创建请求时绑定账号，不在 OkHttp 队列出队后读取新账号的令牌。
@@ -75,11 +83,26 @@ object NetworkModule {
                     )
                         request.newBuilder().header("Authorization", "Bearer $token").build()
                     else request
-                okHttpClient.newCall(bound)
+                val client =
+                    if (request.tag(SingleSubmission::class.java) != null) singleSubmission
+                    else okHttpClient
+                client.newCall(bound)
             }
             .addConverterFactory(json.asConverterFactory(JSON_MEDIA_TYPE))
             .build()
     }
+
+    /**
+     * 用户提交的写请求使用不重试、不跟随重定向的派生客户端；连接池和 dispatcher 与共享客户端相同。
+     * 测试与直接撤销请求也必须使用这个生产工厂。
+     */
+    fun singleSubmissionClient(base: OkHttpClient): OkHttpClient =
+        base.newBuilder()
+            .retryOnConnectionFailure(false)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .authenticator(okhttp3.Authenticator.NONE)
+            .build()
 
     fun provideGitHubApi(retrofit: Retrofit): GitHubApi = retrofit.create(GitHubApi::class.java)
 
@@ -92,6 +115,7 @@ object NetworkModule {
     private const val BASE_URL = "https://api.github.com/"
     private const val API_HOST = "api.github.com"
     private const val BearerPrefixLength = 7
+    private val BodylessWriteMethods = setOf("PUT", "DELETE", "POST", "PATCH")
     private val JSON_MEDIA_TYPE = "application/json".toMediaType()
 }
 

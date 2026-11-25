@@ -13,6 +13,11 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionListItemDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 @Serializable
@@ -38,8 +43,31 @@ class RepositoryActivityRepository(
     private val api: GitHubGraphQlApi,
     private val tokens: TokenStore,
     private val paging: PagingRepository,
+    private val cache: CachedDataRepository,
 ) {
     private val filterOptionsCache = FilterOptionsCache()
+
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
+    fun itemsKey(
+        owner: String,
+        name: String,
+        kind: RepositoryActivityKind,
+        nodeId: String? = null,
+        projectNumber: Int? = null,
+        organization: Boolean = false,
+    ): String = "repository-activity.v1:$owner/$name:$kind:$nodeId:$projectNumber:$organization"
+
+    fun discussionItemsKey(
+        owner: String,
+        name: String,
+        personal: Boolean,
+        filter: CollaborationListFilter,
+    ): String = "discussion-search.v4:$owner/$name:$personal:$filter"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
 
     fun items(
         account: String,
@@ -52,10 +80,11 @@ class RepositoryActivityRepository(
     ) =
         githubGraphQlPager(
             account,
-            "repository-activity.v1:$owner/$name:$kind:$nodeId:$projectNumber:$organization",
+            itemsKey(owner, name, kind, nodeId, projectNumber, organization),
             paging,
             RepositoryActivityEntry::id,
             serializer = RepositoryActivityEntry.serializer(),
+            tags = setOf(repositoryCacheTag(owner, name)),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<RepositoryActivityEntry> = { after ->
@@ -199,10 +228,11 @@ class RepositoryActivityRepository(
     ) =
         githubGraphQlPager(
             account,
-            "discussion-search.v4:$owner/$name:$personal:$filter",
+            discussionItemsKey(owner, name, personal, filter),
             paging,
             { it.nodeId ?: "${it.repository}#${it.number}" },
             serializer = DiscussionListItemDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Work, null)),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val query = discussionSearchQuery(account, owner, name, personal, filter)
@@ -306,8 +336,10 @@ class RepositoryActivityRepository(
                 )
                 .graphObject("createDiscussion")
                 .graphObject("discussion")
-        return created["number"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }
-            ?: throw GithubPageException()
+        return created["number"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }?.also {
+            cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
+            cache.changes(account).publish(DataDomain.Work)
+        } ?: throw GithubPageException()
     }
 
     private fun field(kind: RepositoryActivityKind): String =

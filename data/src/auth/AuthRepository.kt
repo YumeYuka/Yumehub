@@ -20,6 +20,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
+import moe.yumeyuka.yumehub.data.network.NetworkModule
+import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.network.useResponse
 import moe.yumeyuka.yumehub.data.storage.mmkv.HomeFavoritesStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.MaxSavedAccounts
@@ -321,13 +323,14 @@ class GitHubAuthRepository(
             Request.Builder()
                 .url(GitHubAuthConfig.revocationEndpoint)
                 .delete(requestBody)
+                .tag(SingleSubmission::class.java, SingleSubmission)
                 .header(
                     "Authorization",
                     Credentials.basic(GitHubAuthConfig.CLIENT_ID, GitHubAuthConfig.CLIENT_SECRET),
                 )
                 .header("Accept", "application/vnd.github+json")
                 .build()
-        okHttpClient.newCall(request).useResponse { response ->
+        NetworkModule.singleSubmissionClient(okHttpClient).newCall(request).useResponse { response ->
             if (!response.isSuccessful) throw AuthException("Failed to revoke the access token")
         }
     }

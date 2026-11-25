@@ -24,6 +24,8 @@ import moe.yumeyuka.yumehub.core.model.resolveGithubGitObject
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlResponse
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 /** 当前目录最新提交；字段与官方 APK 的 FileHistory 查询保持一致。 */
@@ -80,7 +82,9 @@ class WorkspacesFileNotFound : Exception()
 class WorkspacesRepository(
     private val api: GitHubGraphQlApi,
     private val tokens: TokenStore,
+    private val cache: CachedDataRepository,
 ) {
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
     /** 在同一个目标提交上检查原始 blob，再通过 expectedHeadOid 拒绝并发推送。 */
     suspend fun commitFile(
         account: String,

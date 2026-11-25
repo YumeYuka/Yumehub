@@ -33,10 +33,12 @@ class RepositoryPagingSource(
                 else null
             if (initial != null) {
                 recordCursor(initial)
-                snapshot?.context?.revalidate(this) {
-                    val updated = requestPage(1, force = true, record = false)
-                    snapshot.save(updated)
-                    usesLocalSort || initial != updated.copy(updatedAt = initial.updatedAt)
+                if (!initial.isFresh()) {
+                    snapshot?.context?.revalidate(this) {
+                        val updated = requestPage(1, force = true, record = false)
+                        snapshot.save(updated)
+                        usesLocalSort || initial != updated.copy(updatedAt = initial.updatedAt)
+                    }
                 }
             }
             val result =

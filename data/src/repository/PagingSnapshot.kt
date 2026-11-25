@@ -7,6 +7,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.diskValue
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotStore
 
@@ -21,27 +23,33 @@ class PagingSnapshot<T : Any>(
     val key: String,
     val serializer: KSerializer<T>,
     internal val context: PagingContext? = null,
+    val tags: Set<CacheTag> = emptySet(),
 ) {
     private val initial = AtomicBoolean(true)
 
     internal fun bind(context: PagingContext): PagingSnapshot<T> =
-        PagingSnapshot(store, account, key, serializer, context)
+        PagingSnapshot(store, account, key, serializer, context, tags)
 
-    suspend fun initialPage(
-        pageSize: Int,
-        includeRevalidated: Boolean = false,
-    ): PagingSnapshotPage<T>? {
+    suspend fun initialPage(pageSize: Int): PagingSnapshotPage<T>? {
         // 无会话上下文的旧调用不能恢复账号级私有快照。
         val bound = context ?: return null
-        if (!bound.initialSnapshot && !(includeRevalidated && !bound.forceRefresh)) return null
+        // Background revalidation already fetched the next generation's first page.
+        if (!bound.initialSnapshot && bound.forceRefresh) return null
         if (!initial.compareAndSet(true, false)) return null
         bound.ensureCurrent()
+        if (!bound.persistenceEnabled()) return null
         val diskKey = bound.snapshotKey(key)
         val page =
             try {
                 withContext(Dispatchers.IO) {
                     currentCoroutineContext().ensureActive()
-                    store.loadPageNow(account, diskKey, serializer, bound::ensureCurrent)
+                    store.loadPageNow(
+                        account,
+                        diskKey,
+                        serializer,
+                        bound::ensureCurrent,
+                        bound::tagsStale,
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -59,12 +67,19 @@ class PagingSnapshot<T : Any>(
 
     suspend fun save(page: PagingSnapshotPage<T>) {
         val bound = context ?: return
+        if (!bound.persistenceEnabled()) return
         val diskKey = bound.snapshotKey(key)
         try {
             withContext(Dispatchers.IO) {
                 val coroutine = currentCoroutineContext()
                 coroutine.ensureActive()
-                store.savePageNow(account, diskKey, serializer, page) { write ->
+                store.savePageNow(
+                    account,
+                    diskKey,
+                    serializer,
+                    page,
+                    tags.map { it.diskValue() },
+                ) { write ->
                     coroutine.ensureActive()
                     bound.commit(write)
                 }

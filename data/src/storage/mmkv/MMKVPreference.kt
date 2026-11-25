@@ -8,13 +8,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 
-abstract class MMKVPreference(
-    mmkvID: String? = null,
-    externalMmkv: MMKV? = null,
+abstract class MMKVPreference internal constructor(
+    @PublishedApi internal val mmkv: KeyValueStorage,
 ) {
-    @PublishedApi
-    internal val mmkv: MMKV =
-        externalMmkv ?: mmkvID?.let { MMKV.mmkvWithID(it) } ?: MMKV.defaultMMKV()
+    constructor(
+        mmkvID: String? = null,
+        externalMmkv: MMKV? = null,
+    ) : this(
+        RealMMKVStorage(
+            externalMmkv ?: mmkvID?.let { MMKV.mmkvWithID(it) } ?: MMKV.defaultMMKV(),
+        ),
+    )
 
     private val json = Json {
         ignoreUnknownKeys = true

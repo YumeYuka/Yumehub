@@ -691,7 +691,7 @@ internal class WorkDetailGraphQl(
                 mutation WorkReviewThread(${'$'}id: ID!, ${'$'}body: String!, ${'$'}path: String!, ${'$'}line: Int!, ${'$'}side: DiffSide!) {
                     addPullRequestReviewThread(input: {pullRequestId: ${'$'}id, body: ${'$'}body, path: ${'$'}path, line: ${'$'}line, side: ${'$'}side}) {
                         thread { comments(last: 1) { nodes {
-                            id databaseId body bodyHTML(unfurlReferences: true) path line diffSide url
+                            id databaseId body bodyHTML(unfurlReferences: true) path line url
                             commit { oid } author { login avatarUrl __typename }
                         } } }
                     }
@@ -714,20 +714,26 @@ internal class WorkDetailGraphQl(
                 .graphObject("comments")
                 .graphNodes()
                 .singleOrNull() ?: throw GithubPageException()
-        return PullRequestReviewCommentDto(
-            id = node.databaseId(),
-            nodeId = node.graphRequiredText("id"),
-            body = node.graphText("body"),
-            bodyHtml = node.graphText("bodyHTML"),
-            path = node.graphRequiredText("path"),
-            line = node.requiredInt("line"),
-            side = node.graphText("diffSide"),
-            htmlUrl = node.graphText("url"),
-            commitId = node.graphObject("commit").graphRequiredText("oid"),
-            user = node.actor(),
-        )
+        return pullRequestReviewComment(node, side)
     }
 }
+
+internal fun pullRequestReviewComment(
+    node: JsonObject,
+    side: String,
+): PullRequestReviewCommentDto =
+    PullRequestReviewCommentDto(
+        id = node.databaseId(),
+        nodeId = node.graphRequiredText("id"),
+        body = node.graphText("body"),
+        bodyHtml = node.graphText("bodyHTML"),
+        path = node.graphRequiredText("path"),
+        line = node.requiredInt("line"),
+        side = side,
+        htmlUrl = node.graphText("url"),
+        commitId = node.graphObject("commit").graphRequiredText("oid"),
+        user = node.actor(),
+    )
 
 private fun JsonObject.databaseId(): Long =
     (get("databaseId") as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }

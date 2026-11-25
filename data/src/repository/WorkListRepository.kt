@@ -19,7 +19,11 @@ import moe.yumeyuka.yumehub.data.api.dto.IssueTypeOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.MilestoneOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.api.dto.workTarget
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 class WorkListRepository(
@@ -29,6 +33,8 @@ class WorkListRepository(
     private val cache: CachedDataRepository,
 ) {
   private val filterOptionsCache = FilterOptionsCache()
+
+  suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
   suspend fun createIssue(
       account: String,
@@ -81,7 +87,9 @@ class WorkListRepository(
         .get("number")
         ?.jsonPrimitive
         ?.intOrNull
-        ?.takeIf { it > 0 } ?: throw GithubPageException()
+        ?.takeIf { it > 0 }
+        ?.also { invalidateWork(account, owner, repository) }
+        ?: throw GithubPageException()
   }
 
   suspend fun searchAssignableUsers(
@@ -157,7 +165,18 @@ class WorkListRepository(
         .get("number")
         ?.jsonPrimitive
         ?.intOrNull
-        ?.takeIf { it > 0 } ?: throw GithubPageException()
+        ?.takeIf { it > 0 }
+        ?.also { invalidateWork(account, owner, repository) }
+        ?: throw GithubPageException()
+  }
+
+  private suspend fun invalidateWork(account: String, owner: String, repository: String) {
+    filterOptionsCache.invalidate(owner, repository)
+    cache.invalidateAndPersist(
+        account,
+        setOf(CacheTag(DataDomain.Work, null), repositoryCacheTag(owner, repository)),
+    )
+    cache.changes(account).publish(DataDomain.Work)
   }
 
   private suspend fun repositoryId(
@@ -180,6 +199,39 @@ class WorkListRepository(
           )
           .graphObject("repository")
           .graphRequiredText("id")
+
+  fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+  fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
+
+  fun personalItemsKey(
+      account: String,
+      kind: CollaborationKind,
+      filter: CollaborationListFilter,
+  ): String =
+      when {
+        kind == CollaborationKind.Issue &&
+            filter ==
+                CollaborationListFilter(
+                    state = CollaborationStateFilter.All,
+                    scope = CollaborationScopeFilter.AssignedToMe,
+                ) -> "work-viewer-issues-graphql.v1:assignee"
+        kind == CollaborationKind.Issue &&
+            filter ==
+                CollaborationListFilter(
+                    state = CollaborationStateFilter.All,
+                    scope = CollaborationScopeFilter.CreatedByMe,
+                ) -> "work-viewer-issues-graphql.v1:createdBy"
+        else ->
+            "work-search-graphql.v1:${workSearchQuery(account, kind, filter, repository = null)}"
+      }
+
+  fun repositoryItemsKey(
+      owner: String,
+      name: String,
+      kind: CollaborationKind,
+      filter: CollaborationListFilter,
+  ): String = "repository-work-search.v2:$owner/$name:${kind.name}:$filter"
 
   fun personalItems(
       account: String,
@@ -218,6 +270,7 @@ class WorkListRepository(
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
           serializer = CollaborationItemDto.serializer(),
+          tags = setOf(CacheTag(DataDomain.Work, null)),
       ) {
         val session = GithubGraphQlSession(api, tokens, account)
         val query =
@@ -267,6 +320,7 @@ class WorkListRepository(
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
           serializer = CollaborationItemDto.serializer(),
+          tags = setOf(CacheTag(DataDomain.Work, null)),
           mapItem = { item ->
             val merged = item.workTarget()?.let { cache.changes(account).isMerged(it) } == true
             when {
@@ -301,10 +355,11 @@ class WorkListRepository(
   ) =
       githubGraphQlPager(
           account,
-          "repository-work-search.v2:$owner/$name:${kind.name}:$filter",
+          repositoryItemsKey(owner, name, kind, filter),
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
           serializer = CollaborationItemDto.serializer(),
+          tags = setOf(CacheTag(DataDomain.Work, null)),
           mapItem = { item ->
             val merged = cache.changes(account).isMerged(WorkTarget(owner, name, item.number, kind))
             when {

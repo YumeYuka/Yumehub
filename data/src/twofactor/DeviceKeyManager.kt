@@ -25,10 +25,24 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
  * - Signature algorithm: `SHA256withECDSA` (DER output), Base64 `NO_WRAP`.
  * - `publicKey` field uploaded to GitHub is Base64(PEM-wrapped X.509 SubjectPublicKeyInfo).
  */
+interface TwoFactorDeviceKeyStore {
+    fun buildRegistration(login: String): DeviceKeyManager.DeviceKeyRegistration
+
+    fun activateRegistration(login: String, registration: DeviceKeyManager.DeviceKeyRegistration)
+
+    fun discardRegistration(registration: DeviceKeyManager.DeviceKeyRegistration)
+
+    fun signApproval(login: String, payload: String, digits: Int?): String
+
+    fun deleteKey(login: String)
+
+    fun deleteAlias(alias: String)
+}
+
 class DeviceKeyManager(
     private val context: Context,
     private val tokenStore: TokenStore,
-) {
+) : TwoFactorDeviceKeyStore {
     data class DeviceKeyRegistration(
         val alias: String,
         val publicKey: String,
@@ -40,7 +54,7 @@ class DeviceKeyManager(
     )
 
     /** Keeps the current signing key intact until GitHub acknowledges the candidate. */
-    fun buildRegistration(login: String): DeviceKeyRegistration {
+    override fun buildRegistration(login: String): DeviceKeyRegistration {
         val alias = "2fa_${login}_sign_${UUID.randomUUID()}"
         return try {
             ensureKey(alias)
@@ -85,11 +99,11 @@ class DeviceKeyManager(
         }
     }
 
-    fun activateRegistration(login: String, registration: DeviceKeyRegistration) {
+    override fun activateRegistration(login: String, registration: DeviceKeyRegistration) {
         tokenStore.setDeviceKeyAlias(login, registration.alias)
     }
 
-    fun discardRegistration(registration: DeviceKeyRegistration) {
+    override fun discardRegistration(registration: DeviceKeyRegistration) {
         keyStore.deleteEntry(registration.alias)
     }
 
@@ -100,7 +114,7 @@ class DeviceKeyManager(
      * @param digits The 1-5 digit code shown on the other device, or null for no-challenge
      *   requests.
      */
-    fun signApproval(login: String, payload: String, digits: Int?): String {
+    override fun signApproval(login: String, payload: String, digits: Int?): String {
         val alias = signAlias(login)
         val payloadBytes = Base64.decode(payload, Base64.DEFAULT)
         var message = VERSION_PREFIX.toByteArray(Charsets.UTF_8) + payloadBytes
@@ -110,8 +124,12 @@ class DeviceKeyManager(
         return encode(sign(alias, message))
     }
 
-    fun deleteKey(login: String) {
+    override fun deleteKey(login: String) {
         runCatching { keyStore.deleteEntry(signAlias(login)) }
+    }
+
+    override fun deleteAlias(alias: String) {
+        runCatching { keyStore.deleteEntry(alias) }
     }
 
     private fun ensureKey(alias: String) {

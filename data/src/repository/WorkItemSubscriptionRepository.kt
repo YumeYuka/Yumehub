@@ -9,8 +9,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
@@ -31,13 +34,18 @@ class WorkItemSubscriptionRepository(
     private val cache: CachedDataRepository,
     private val tokens: TokenStore,
 ) {
-    private val writes = Mutex()
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     suspend fun load(account: String, id: String, force: Boolean = false): WorkItemSubscription {
         require(id.isNotBlank())
         val session = session(account)
         val resource =
-            cache.resource(account, "work-subscription.v1:$id", WorkItemSubscription.serializer())
+            cache.resource(
+                account,
+                "work-subscription.v1:$id",
+                WorkItemSubscription.serializer(),
+                tags = setOf(CacheTag(DataDomain.Work, null)),
+            )
         return resource.await(force) { read(session, id) }.also { checkSession(session) }
     }
 
@@ -45,12 +53,17 @@ class WorkItemSubscriptionRepository(
         account: String,
         id: String,
         subscribed: Boolean,
-    ): WorkItemSubscription = writes.withLock {
+    ): WorkItemSubscription {
         val session = session(account)
         val resource =
-            cache.resource(account, "work-subscription.v1:$id", WorkItemSubscription.serializer())
+            cache.resource(
+                account,
+                "work-subscription.v1:$id",
+                WorkItemSubscription.serializer(),
+                tags = setOf(CacheTag(DataDomain.Work, null)),
+            )
         val current = read(session, id)
-        check(current.canSubscribe)
+        if (!current.canSubscribe) throw MutationRejectedException("Subscription unavailable")
         val next =
             when {
                 subscribed -> "SUBSCRIBED"
@@ -79,7 +92,7 @@ class WorkItemSubscriptionRepository(
             resource.update(confirmed)
             cache.changes(account).publish(DataDomain.Work, DataDomain.Notifications)
         }
-        confirmed
+        return confirmed
     }
 
     private suspend fun read(session: Session, id: String): WorkItemSubscription {

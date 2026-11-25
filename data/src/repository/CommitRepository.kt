@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 @Serializable
@@ -38,6 +39,7 @@ class CommitRepository(
                 "commit-detail.v1:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}:$ref",
                 GithubCommitDetail.serializer(),
                 maxAgeMillis = if (FullCommitOid.matches(ref)) StableCommitAgeMillis else 60_000L,
+                tags = setOf(repositoryCacheTag(owner, name)),
             )
             .await { loadNetwork(account, owner, name, ref) }
 
@@ -79,8 +81,18 @@ class CommitRepository(
         )
     }
 
+    fun filesKey(owner: String, name: String, oid: String): String =
+        "commit-files.v1:$owner/$name:$oid"
+
+    fun linksKey(owner: String, name: String, oid: String, parents: Boolean): String =
+        "commit-links.v3:$owner/$name:$oid:$parents"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
+
     fun files(account: String, owner: String, name: String, oid: String) =
-        paging.pages(account, "commit-files.v1:$owner/$name:$oid") { context ->
+        paging.pages(account, filesKey(owner, name, oid)) { context ->
             val load = diffs.createCommitPageLoader(account, owner, name, oid)
             PullRequestDiffPagingSource(context) { after ->
                 if (!FullCommitOid.matches(oid)) load(after)
@@ -98,7 +110,7 @@ class CommitRepository(
     fun links(account: String, owner: String, name: String, oid: String, parents: Boolean) =
         githubGraphQlPager(
             account,
-            "commit-links.v3:$owner/$name:$oid:$parents",
+            linksKey(owner, name, oid, parents),
             paging,
             RepositoryActivityEntry::id,
             serializer = RepositoryActivityEntry.serializer(),

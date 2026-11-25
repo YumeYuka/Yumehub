@@ -22,7 +22,7 @@ fun <T : Any, R : Any> collaborationPager(
     itemKey: ((T) -> Any?)? = null,
 ): Flow<PagingData<R>> {
     if (repository != null && snapshot != null) {
-        return repository.pages(snapshot.account, snapshot.key) { context ->
+        return repository.pages(snapshot.account, snapshot.key, tags = snapshot.tags) { context ->
             CollaborationPagingSource(requestPage, mapItem, snapshot.bind(context), itemKey)
         }
     }
@@ -46,11 +46,13 @@ private class CollaborationPagingSource<T : Any, R : Any>(
             if (params is LoadParams.Refresh && startPage == 1) {
                 val initial = snapshot?.initialPage(CollaborationPageSize)
                 if (initial != null) {
-                    snapshot.context?.revalidate(this) {
-                        val updated =
-                            loadNetwork(1, backwards = false, force = true, saveFirst = false)
-                        snapshot.save(updated)
-                        initial != updated.copy(updatedAt = initial.updatedAt)
+                    if (!initial.isFresh()) {
+                        snapshot.context?.revalidate(this) {
+                            val updated =
+                                loadNetwork(1, backwards = false, force = true, saveFirst = false)
+                            snapshot.save(updated)
+                            initial != updated.copy(updatedAt = initial.updatedAt)
+                        }
                     }
                     return pageResult(initial)
                 }

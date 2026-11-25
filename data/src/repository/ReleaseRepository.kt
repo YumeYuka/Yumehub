@@ -11,7 +11,11 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 @Serializable
@@ -100,6 +104,10 @@ class ReleaseRepository(
             GithubReleaseResult(node?.releaseDetail())
         }
 
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
+    fun reactionUpdates(account: String): GithubReactionUpdates = cache.reactionUpdates(account)
+
     suspend fun toggleReaction(
         account: String,
         owner: String,
@@ -120,8 +128,11 @@ class ReleaseRepository(
         val updatedVersion = (version.cached?.detail ?: release).copy(reactions = reactions)
         version.update(GithubReleaseResult(updatedVersion))
         listOfNotNull(tagged, latest).forEach { resource ->
-            resource.cached?.detail?.takeIf { it.version.id == id }?.let {
-                resource.update(GithubReleaseResult(it.copy(reactions = reactions)))
+            val current = resource.cached?.detail
+            if (current != null && current.version.id == id) {
+                resource.update(GithubReleaseResult(current.copy(reactions = reactions)))
+            } else {
+                resource.invalidate()
             }
         }
         return reactions
@@ -132,18 +143,34 @@ class ReleaseRepository(
             account,
             "release.v5:${owner.lowercase()}/${name.lowercase()}:${tag.orEmpty()}",
             GithubReleaseResult.serializer(),
+            tags = setOf(repositoryCacheTag(owner, name)),
         )
 
     private fun versionResource(account: String, id: String) =
-        cache.resource(account, "release-node.v5:$id", GithubReleaseResult.serializer())
+        cache.resource(
+            account,
+            "release-node.v5:$id",
+            GithubReleaseResult.serializer(),
+            tags = setOf(CacheTag(DataDomain.Content, null)),
+        )
+
+    fun assetsKey(id: String): String = "release-assets.v1:$id"
+
+    fun versionsKey(owner: String, name: String): String =
+        "release-timeline.v1:${owner.lowercase()}/${name.lowercase()}"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
 
     fun assets(account: String, id: String) =
         githubGraphQlPager(
             account,
-            "release-assets.v1:$id",
+            assetsKey(id),
             paging,
             GithubReleaseAsset::id,
             serializer = GithubReleaseAsset.serializer(),
+            tags = setOf(CacheTag(DataDomain.Content, null)),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<GithubReleaseAsset> = { after ->
@@ -167,10 +194,11 @@ class ReleaseRepository(
     fun versions(account: String, owner: String, name: String) =
         githubGraphQlPager(
             account,
-            "release-timeline.v1:${owner.lowercase()}/${name.lowercase()}",
+            versionsKey(owner, name),
             paging,
             GithubReleaseVersion::id,
             serializer = GithubReleaseVersion.serializer(),
+            tags = setOf(repositoryCacheTag(owner, name)),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
             val load: suspend (String?) -> GithubGraphQlPage<GithubReleaseVersion> = { after ->

@@ -20,7 +20,7 @@ class CommentDraftStore(provider: MMKVProvider) {
         }
     }
 
-    private val storage by lazy { provider.getMMKV("comment-drafts") }
+    private val storage by lazy { provider.getStorage("comment-drafts") }
 
     suspend fun load(account: String, target: String): String = loadOrNull(account, target).orEmpty()
 
@@ -36,6 +36,15 @@ class CommentDraftStore(provider: MMKVProvider) {
     fun save(account: String, target: String, body: String) {
         operations.trySend { access { storage.encode(key(account, target), body) } }
     }
+
+    /** 接受提交时等待同一草稿写入 actor 真正把完整草稿 encode 到磁盘后再返回。 */
+    suspend fun saveConfirmed(account: String, target: String, body: String): Boolean =
+        suspendCancellableCoroutine { result ->
+            operations.trySend {
+                val ok = access { storage.encode(key(account, target), body) } == true
+                if (result.isActive) result.resume(ok)
+            }
+        }
 
     fun remove(account: String, target: String) {
         operations.trySend { access { storage.removeValueForKey(key(account, target)) } }

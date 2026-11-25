@@ -1,10 +1,12 @@
 package moe.yumeyuka.yumehub.data.twofactor
 
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -15,11 +17,19 @@ import kotlinx.serialization.json.put
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlResponse
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.network.SingleSubmission
+import moe.yumeyuka.yumehub.data.storage.mmkv.MarkerPhase
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
+import moe.yumeyuka.yumehub.data.storage.mmkv.TwoFactorRegistrationRecord
 import retrofit2.HttpException
 
 interface TwoFactorRepository {
     suspend fun ensureDeviceKey(login: String, generation: Long, force: Boolean)
+
+    suspend fun hasUncertainRegistration(login: String): Boolean = false
+
+    suspend fun acknowledgeUncertainRegistration(login: String) {}
 
     suspend fun fetchStatus(login: String, generation: Long): MobileAuthStatus
 
@@ -32,17 +42,47 @@ interface TwoFactorRepository {
 
 class GitHubTwoFactorRepository(
     private val graphQlApi: GitHubGraphQlApi,
-    private val deviceKeyManager: DeviceKeyManager,
+    private val deviceKeyManager: TwoFactorDeviceKeyStore,
     private val json: Json,
     private val tokens: TokenStore,
+    private val cache: CachedDataRepository? = null,
 ) : TwoFactorRepository {
     private val registrationMutex = Mutex()
+
+    override suspend fun hasUncertainRegistration(login: String): Boolean =
+        cache?.twoFactorRegistrations?.load(login)?.phase == MarkerPhase.MAY_HAVE_SENT
+
+    override suspend fun acknowledgeUncertainRegistration(login: String) {
+        registrationMutex.withLock {
+            val store = cache?.twoFactorRegistrations ?: return@withLock
+            val existing = store.load(login) ?: return@withLock
+            withContext(Dispatchers.IO) {
+                deviceKeyManager.deleteAlias(existing.candidateAlias)
+            }
+            store.clear(login)
+        }
+    }
 
     override suspend fun ensureDeviceKey(
         login: String,
         generation: Long,
         force: Boolean,
     ) = registrationMutex.withLock {
+        val regStore = cache?.twoFactorRegistrations
+        val existingRecord = regStore?.load(login)
+        if (existingRecord != null) {
+            when (existingRecord.phase) {
+                MarkerPhase.PREPARED -> {
+                    withContext(Dispatchers.IO) {
+                        deviceKeyManager.deleteAlias(existingRecord.candidateAlias)
+                    }
+                    regStore.clear(login)
+                }
+                MarkerPhase.MAY_HAVE_SENT -> {
+                    throw TwoFactorRegistrationUncertainException(existingRecord.candidateAlias)
+                }
+            }
+        }
         val registered = withContext(Dispatchers.IO) {
             synchronized(tokens.responseCacheSession.lock) {
                 tokens.requireSession(login, generation)
@@ -51,9 +91,25 @@ class GitHubTwoFactorRepository(
             }
         }
         if (registered) return@withLock
-        withContext(Dispatchers.IO) {
-            val registration = deviceKeyManager.buildRegistration(login)
-            try {
+        val registration = withContext(Dispatchers.IO) { deviceKeyManager.buildRegistration(login) }
+        regStore?.put(
+            login,
+            TwoFactorRegistrationRecord(
+                candidateAlias = registration.alias,
+                phase = MarkerPhase.PREPARED,
+                startedAt = System.currentTimeMillis(),
+            ),
+        )
+        try {
+            regStore?.put(
+                login,
+                TwoFactorRegistrationRecord(
+                    candidateAlias = registration.alias,
+                    phase = MarkerPhase.MAY_HAVE_SENT,
+                    startedAt = System.currentTimeMillis(),
+                ),
+            )
+            withContext(Dispatchers.IO) {
                 val variables = buildJsonObject {
                     put("publicKey", registration.publicKey)
                     put("type", "AUTH")
@@ -67,24 +123,34 @@ class GitHubTwoFactorRepository(
                 if (
                     (response.data as? JsonObject)?.get("addMobileDevicePublicKey") !is JsonObject
                 ) {
-                    throw TwoFactorException("注册设备密钥失败：GitHub 未确认注册结果")
+                    throw TwoFactorUncertainSubmissionException("注册设备密钥失败：GitHub 未确认注册结果")
                 }
                 synchronized(tokens.responseCacheSession.lock) {
                     tokens.requireSession(login, generation)
                     deviceKeyManager.activateRegistration(login, registration)
+                    tokens.deviceKeyRegistered.set(true)
                 }
-            } catch (error: Exception) {
+            }
+            regStore?.clear(login)
+        } catch (error: Exception) {
+            val definiteRejection =
+                error is TwoFactorException && error.definiteRejection
+            if (definiteRejection || regStore == null) {
                 try {
-                    deviceKeyManager.discardRegistration(registration)
+                    withContext(Dispatchers.IO) {
+                        deviceKeyManager.discardRegistration(registration)
+                    }
                 } catch (cleanupError: Exception) {
                     error.addSuppressed(cleanupError)
                 }
+                regStore?.clear(login)
                 throw error
             }
-            synchronized(tokens.responseCacheSession.lock) {
-                tokens.requireSession(login, generation)
-                tokens.deviceKeyRegistered.set(true)
-            }
+            if (error is TwoFactorRegistrationUncertainException) throw error
+            throw TwoFactorRegistrationUncertainException(
+                candidateAlias = registration.alias,
+                cause = error,
+            )
         }
     }
 
@@ -149,32 +215,48 @@ class GitHubTwoFactorRepository(
         variables: JsonObject = JsonObject(emptyMap()),
     ): GraphQlResponse {
         val registration = query == ADD_PUBLIC_KEY_MUTATION
+        val isMutation =
+            query == ADD_PUBLIC_KEY_MUTATION ||
+                query == APPROVE_MUTATION ||
+                query == REJECT_MUTATION
         val response =
             try {
                 graphQlApi.execute(
                     GraphQlRequest(query = query, variables = variables),
                     headers = tokens.authorization(login, generation),
+                    policy = if (isMutation) SingleSubmission else null,
                 )
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                val http = error as? HttpException
+                val isDefiniteHttp =
+                    http != null && http.code() in setOf(400, 401, 403, 404, 409, 422)
                 if (registration) {
-                    val http = error as? HttpException
                     val requestId =
                         http?.response()?.headers()?.get("X-GitHub-Request-Id")?.takeIf {
                             it.matches(Regex("[A-Za-z0-9:-]{1,128}"))
                         }
-                    throw TwoFactorException(
+                    val message =
                         "注册设备密钥失败：" +
                             if (http != null) {
                                 "HTTP ${http.code()}" + (requestId?.let { "，requestId=$it" } ?: "")
                             } else {
                                 error.message ?: error.javaClass.simpleName
-                            },
+                            }
+                    throw TwoFactorException(message, error, definiteRejection = isDefiniteHttp)
+                }
+                if (isMutation && !isDefiniteHttp) {
+                    throw TwoFactorUncertainSubmissionException(
+                        error.message ?: "提交验证请求状态未知",
                         error,
                     )
                 }
-                throw TwoFactorException(error.message ?: "GraphQL request failed", error)
+                throw TwoFactorException(
+                    error.message ?: "GraphQL request failed",
+                    error,
+                    definiteRejection = isDefiniteHttp,
+                )
             }
         tokens.requireSession(login, generation)
         if (response.errors.isNotEmpty()) {
@@ -189,6 +271,7 @@ class GitHubTwoFactorRepository(
                         "(type=${diagnosticCategory(error.type)}, code=${diagnosticCategory(code)}, " +
                         "classification=${diagnosticCategory(classification)})"
                 } else message,
+                definiteRejection = true,
             )
         }
         return response

@@ -12,11 +12,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
+import moe.yumeyuka.yumehub.data.api.dto.GraphQlError
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
-import moe.yumeyuka.yumehub.data.cache.DataFreshness
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
+import retrofit2.HttpException
+
+enum class GraphQlRequestStage { PREPARE, SEND, RESPONSE }
 
 data class GithubGraphQlPage<T>(val items: List<T>, val nextCursor: String?)
 
@@ -53,13 +57,28 @@ internal class GithubGraphQlSession(
         currentCoroutineContext().ensureActive()
         ensureCurrent()
         val response =
-            api.execute(
-                GraphQlRequest(query, variables),
-                headers =
-                    tokens.authorization(account, generation) +
-                        (features?.let { mapOf("GraphQL-Features" to it) } ?: emptyMap()),
-                policy = if (write) SingleSubmission else null,
-            )
+            try {
+                api.execute(
+                    GraphQlRequest(query, variables),
+                    headers =
+                        tokens.authorization(account, generation) +
+                            (features?.let { mapOf("GraphQL-Features" to it) } ?: emptyMap()),
+                    policy = if (write) SingleSubmission else null,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: HttpException) {
+                if (write) {
+                    val definite = error.code() in DefiniteHttpRejectionCodes
+                    throw GithubPageException(
+                        message = error.message(),
+                        stage = GraphQlRequestStage.SEND,
+                        definiteRejection = definite,
+                        cause = error,
+                    )
+                }
+                throw error
+            }
         currentCoroutineContext().ensureActive()
         ensureCurrent()
         if (response.errors.isNotEmpty()) {
@@ -69,9 +88,47 @@ internal class GithubGraphQlSession(
                     .distinct()
                     .joinToString("; ")
                     .takeIf(String::isNotBlank)
-            throw GithubPageException(message)
+            val dataObj = response.data as? JsonObject
+            val noExecutedPayload =
+                response.data == null ||
+                    response.data == JsonNull ||
+                    (dataObj != null && dataObj.values.all { it == JsonNull })
+            val definite =
+                write &&
+                    noExecutedPayload &&
+                    response.errors.all { error ->
+                        val type =
+                            error.type
+                                ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
+                                ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
+                        type in DefiniteGraphQlRejectionTypes
+                    }
+            throw GithubPageException(
+                message = message,
+                stage = GraphQlRequestStage.RESPONSE,
+                errors = response.errors,
+                definiteRejection = definite,
+            )
         }
-        return response.data as? JsonObject ?: throw GithubPageException()
+        return response.data as? JsonObject
+            ?: throw GithubPageException(stage = GraphQlRequestStage.RESPONSE)
+    }
+
+    private companion object {
+        val DefiniteHttpRejectionCodes = setOf(400, 401, 403, 404, 409, 422)
+        val DefiniteGraphQlRejectionTypes =
+            setOf(
+                "FORBIDDEN",
+                "UNPROCESSABLE",
+                "BAD_USER_INPUT",
+                "NOT_FOUND",
+                "UNAUTHORIZED",
+                "UNAUTHENTICATED",
+                "INSUFFICIENT_SCOPES",
+                "VALIDATION_ERROR",
+                "CONFLICT",
+                "MAX_NODE_LIMIT_EXCEEDED",
+            )
     }
 }
 
@@ -84,13 +141,14 @@ fun <T : Any> githubGraphQlPager(
     config: androidx.paging.PagingConfig = defaultPagingConfig(),
     serializer: KSerializer<T>? = null,
     mapItem: (T) -> T? = { it },
+    tags: Set<CacheTag> = emptySet(),
     loader: () -> suspend (String?) -> GithubGraphQlPage<T>,
 ): Flow<PagingData<T>> =
-    paging.pages(account, key, config) { context ->
+    paging.pages(account, key, config, tags) { context ->
         val firstPageCache = serializer?.let {
-            val snapshot = paging.snapshot(account, key, it, context)
+            val snapshot = paging.snapshot(account, key, it, context, tags)
             GithubGraphQlFirstPageCache(
-                restore = { snapshot.initialPage(config.pageSize, includeRevalidated = true) },
+                restore = { snapshot.initialPage(config.pageSize) },
                 save = snapshot::saveInBackground,
                 revalidate = { source, refresh ->
                     context.revalidate(source) {
@@ -165,14 +223,11 @@ internal class GithubGraphQlPagingSource<T : Any>(
                     }
                 if (next != null) cursors[page + 1] = next
                 if (cached == null && page == 1) firstPageCache?.save?.invoke(firstPage(result))
-                if (cached != null && firstPageCache != null) {
-                    val age = System.currentTimeMillis() - cached.updatedAt
-                    if (age !in 0 until DataFreshness.ActiveMillis) {
-                        firstPageCache.revalidate(this) {
-                            // 只与首屏比较。后台校验不能修改旧 Source 正在使用的游标。
-                            val updated = mutex.withLock { requestPage(null) }
-                            firstPage(updated) to (updated != result)
-                        }
+                if (cached != null && firstPageCache != null && !cached.isFresh()) {
+                    firstPageCache.revalidate(this) {
+                        // 只与首屏比较。后台校验不能修改旧 Source 正在使用的游标。
+                        val updated = mutex.withLock { requestPage(null) }
+                        firstPage(updated) to (updated != result)
                     }
                 }
                 LoadResult.Page(
@@ -214,7 +269,13 @@ internal class GithubGraphQlPagingSource<T : Any>(
     override fun getRefreshKey(state: PagingState<Int, T>): Int? = null
 }
 
-class GithubPageException(message: String? = null) : Exception(message)
+class GithubPageException(
+    message: String? = null,
+    val stage: GraphQlRequestStage = GraphQlRequestStage.RESPONSE,
+    val errors: List<GraphQlError> = emptyList(),
+    val definiteRejection: Boolean = false,
+    cause: Throwable? = null,
+) : Exception(message, cause)
 
 internal fun JsonObject.graphObject(key: String): JsonObject =
     get(key) as? JsonObject ?: throw GithubPageException()

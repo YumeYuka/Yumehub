@@ -57,7 +57,19 @@ data class MobileAuthStatus(
     val activeRequest: MobileAuthRequest?,
 )
 
-class TwoFactorException(
+open class TwoFactorException(
     message: String,
     cause: Throwable? = null,
+    val definiteRejection: Boolean = false,
 ) : Exception(message, cause)
+
+class TwoFactorUncertainSubmissionException(
+    message: String,
+    cause: Throwable? = null,
+) : TwoFactorException(message, cause, definiteRejection = false)
+
+class TwoFactorRegistrationUncertainException(
+    val candidateAlias: String,
+    message: String = "设备密钥注册结果未确认，请先在 GitHub 核对后重试",
+    cause: Throwable? = null,
+) : TwoFactorException(message, cause, definiteRejection = false)

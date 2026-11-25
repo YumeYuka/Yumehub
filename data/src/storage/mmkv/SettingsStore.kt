@@ -22,7 +22,13 @@ const val DefaultPredictiveBackProgress: Float = 50f
 const val MinPredictiveBackProgress: Float = 1f
 const val MaxPredictiveBackProgress: Float = 100f
 
-class SettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = externalMmkv) {
+class SettingsStore internal constructor(storage: KeyValueStorage) :
+    MMKVPreference(mmkv = storage) {
+    constructor(externalMmkv: MMKV) : this(RealMMKVStorage(externalMmkv))
+
+    companion object {
+        fun forTesting(storage: KeyValueStorage): SettingsStore = SettingsStore(storage)
+    }
     private val pendingWrites = mutableMapOf<String, () -> Unit>()
     private val writeSignal = Channel<Unit>(Channel.CONFLATED)
 
@@ -90,6 +96,8 @@ class SettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = external
         keepBottomBarExpanded
         glassHdrEnabled
         fpsCounter
+        homeWorkItems
+        homeWorkLayout
     }
 
     private fun normalizedFloatFlow(default: Float, normalize: (Float) -> Float) =

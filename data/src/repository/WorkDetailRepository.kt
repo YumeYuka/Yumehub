@@ -1,9 +1,7 @@
 package moe.yumeyuka.yumehub.data.repository
 
 import androidx.paging.PagingData
-import java.io.IOException
 import java.util.Locale
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -11,7 +9,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
@@ -30,6 +27,9 @@ import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
+import moe.yumeyuka.yumehub.data.cache.workCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 data class WorkMergeMessage(val headline: String, val body: String)
@@ -55,6 +55,7 @@ class WorkDetailRepository(
         key = "work-detail-graphql.v1:${kind.name}:$target",
         serializer = CollaborationItemDto.serializer(),
         maxAgeMillis = DetailMaxAgeMillis,
+        tags = setOf(workCacheTag(kind.name, owner, repository, number)),
     )
   }
 
@@ -65,6 +66,8 @@ class WorkDetailRepository(
       kind: CollaborationKind,
       number: Int,
   ): Detail = Detail(account, owner, repository, kind, number)
+
+  suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
   inner class Detail
   internal constructor(
@@ -85,12 +88,42 @@ class WorkDetailRepository(
     }
     private val target =
         "${owner.lowercase(Locale.ROOT)}/${repository.lowercase(Locale.ROOT)}/$number"
+    val workTarget: String = "${kind.name.lowercase(Locale.ROOT)}:$target"
+    val mutationTags =
+        setOf(
+            workCacheTag(kind.name, owner, repository, number),
+            repositoryCacheTag(owner, repository),
+            moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Work, null),
+            moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Notifications, null),
+            moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Repositories, null),
+        )
+    private val workTag = workCacheTag(kind.name, owner, repository, number)
     private val resource: CachedResource<CollaborationItemDto> =
         this@WorkDetailRepository.resource(account, owner, repository, kind, number)
     val state = resource.state
     private val commentsKey = "comments-graphql.v1:${kind.name}:$target"
     private val reviewsKey = "reviews-graphql.v1:${kind.name}:$target"
     private val timelineKey = "work-timeline-graphql.v1:${kind.name}:$target"
+
+    suspend fun mutations(): MutationCoordinator = this@WorkDetailRepository.cache.mutations(account)
+
+    suspend fun readDetail(): CollaborationItemDto = load()
+
+    suspend fun readComment(commentNodeId: String): CollaborationCommentDto =
+        graph.readComment(commentNodeId)
+
+    val reviewsPagingKey: String
+        get() = reviewsKey
+
+    fun commitsPagingKey(head: String): String = "work-commits.v1:$target:$head"
+
+    fun filesPagingKey(head: String): String = filesKey(head)
+
+    fun checksPagingKey(head: String): String = checksKey(head)
+
+    fun revalidation(key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(key: String) = paging.retryRevalidation(account, key)
 
     private fun filesKey(head: String): String = "files-graphql.v1:${kind.name}:$target:$head"
 
@@ -138,13 +171,12 @@ class WorkDetailRepository(
               !latest.viewerCanEdit ||
               latest.updatedAt != snapshot.updatedAt ||
               (field == "baseRefName" && (!latest.viewerCanChangeBase || latest.state != "open"))
-      )
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.editPullRequest(requireNotNull(latest.nodeId), field, value)
-      } finally {
+      ) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.editPullRequest(requireNotNull(latest.nodeId), field, value)
+      changed()
     }
 
     suspend fun editBody(snapshot: CollaborationItemDto, body: String) {
@@ -153,13 +185,12 @@ class WorkDetailRepository(
           latest.nodeId != snapshot.nodeId ||
               !latest.viewerCanEdit ||
               latest.updatedAt != snapshot.updatedAt
-      )
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.editBody(requireNotNull(latest.nodeId), body)
-      } finally {
+      ) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.editBody(requireNotNull(latest.nodeId), body)
+      changed()
     }
 
     suspend fun editTitle(snapshot: CollaborationItemDto, title: String) {
@@ -168,24 +199,22 @@ class WorkDetailRepository(
           latest.nodeId != snapshot.nodeId ||
               !latest.viewerCanEdit ||
               latest.updatedAt != snapshot.updatedAt
-      )
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.editTitle(requireNotNull(latest.nodeId), title)
-      } finally {
+      ) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.editTitle(requireNotNull(latest.nodeId), title)
+      changed()
     }
 
     suspend fun setLocked(snapshot: CollaborationItemDto) {
       val latest = load()
-      if (!latest.viewerCanModerate || latest.locked != snapshot.locked)
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.setLocked(requireNotNull(latest.nodeId), !latest.locked)
-      } finally {
+      if (!latest.viewerCanModerate || latest.locked != snapshot.locked) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.setLocked(requireNotNull(latest.nodeId), !latest.locked)
+      changed()
     }
 
     suspend fun closePullRequest(snapshot: CollaborationItemDto) {
@@ -196,13 +225,12 @@ class WorkDetailRepository(
               latest.state != "open" ||
               latest.head?.sha != snapshot.head?.sha ||
               latest.merged
-      )
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.closePullRequest(requireNotNull(latest.nodeId))
-      } finally {
+      ) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.closePullRequest(requireNotNull(latest.nodeId))
+      changed()
     }
 
     suspend fun closeIssue(snapshot: CollaborationItemDto) {
@@ -212,13 +240,12 @@ class WorkDetailRepository(
               !latest.viewerCanClose ||
               latest.state != "open" ||
               latest.updatedAt != snapshot.updatedAt
-      )
-          throw WorkDetailReviewChangedException()
-      try {
-        graph.closeIssue(requireNotNull(latest.nodeId))
-      } finally {
+      ) {
         changed()
+        throw WorkDetailReviewChangedException()
       }
+      graph.closeIssue(requireNotNull(latest.nodeId))
+      changed()
     }
 
     suspend fun properties() = graph.properties()
@@ -260,39 +287,17 @@ class WorkDetailRepository(
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
     ) {
-      try {
-        graph.saveProperty(WorkProperty.Reviewers, original, selected)
-      } finally {
-        changed()
-      }
-    }
-
-    suspend fun saveMilestone(
-        original: List<WorkPropertyOption>,
-        selected: List<WorkPropertyOption>,
-    ) {
-      graph.saveProperty(WorkProperty.Milestone, original, selected)
+      graph.saveProperty(WorkProperty.Reviewers, original, selected)
       changed()
     }
 
-    /** 页面退出后仍继续提交；失败不阻塞导航，下一次刷新会回到服务端实际值。 */
-    fun savePropertiesInBackground(
-        changes: Map<WorkProperty, List<WorkPropertyOption>>,
-        originals: Map<WorkProperty, List<WorkPropertyOption>>,
+    suspend fun saveProperty(
+        property: WorkProperty,
+        original: List<WorkPropertyOption>,
+        selected: List<WorkPropertyOption>,
     ) {
-      cache.scope.launch {
-        try {
-          changes.forEach { (property, selected) ->
-            graph.saveProperty(property, originals[property].orEmpty(), selected)
-          }
-        } catch (error: CancellationException) {
-          throw error
-        } catch (_: Exception) {
-          // 后台保存不持有页面；失败由后续刷新呈现，不在退出时等待回调。
-        } finally {
-          changed()
-        }
-      }
+      graph.saveProperty(property, original, selected)
+      changed()
     }
 
     fun reactionUpdates(): GithubReactionUpdates =
@@ -313,8 +318,6 @@ class WorkDetailRepository(
             .also { window ->
               paging
                   .revisions(account, timelineKey)
-                  .map { it.data }
-                  .distinctUntilChanged()
                   .onEach { window.load(ThreadDirection.Latest) }
                   .launchIn(scope)
             }
@@ -326,6 +329,7 @@ class WorkDetailRepository(
             paging,
             { requireNotNull(it.nodeId) },
             serializer = CollaborationCommentDto.serializer(),
+            tags = setOf(workTag),
         ) {
           graph::comments
         }
@@ -337,6 +341,7 @@ class WorkDetailRepository(
             paging,
             { requireNotNull(it.nodeId) },
             serializer = PullRequestReviewDto.serializer(),
+            tags = setOf(workTag),
         ) {
           graph::reviews
         }
@@ -348,12 +353,13 @@ class WorkDetailRepository(
             paging,
             RepositoryActivityEntry::id,
             serializer = RepositoryActivityEntry.serializer(),
+            tags = setOf(workTag),
         ) {
           { after -> graph.commits(head, after) }
         }
 
     fun files(head: String): Flow<PagingData<PullRequestFileDto>> =
-        paging.pages(account, filesKey(head)) { context ->
+        paging.pages(account, filesKey(head), tags = setOf(workTag)) { context ->
           PullRequestDiffPagingSource(
               context,
               diffs.createPullRequestPageLoader(account, owner, repository, number, head),
@@ -367,6 +373,7 @@ class WorkDetailRepository(
             paging,
             { it.id },
             serializer = PullRequestCheckRunDto.serializer(),
+            tags = setOf(workTag),
         ) {
           { after -> graph.checks(head, after) }
         }
@@ -413,11 +420,11 @@ class WorkDetailRepository(
               !allowed
       )
           throw WorkDetailReviewChangedException()
-      try {
-        graph.merge(requireNotNull(latest.nodeId), head, method, message)
-      } catch (error: GithubPageException) {
-        throw IOException("Unable to confirm merge result", error)
-      }
+      graph.merge(requireNotNull(latest.nodeId), head, method, message)
+      confirmMergedLocal()
+    }
+
+    fun confirmMergedLocal() {
       resource.cached?.let { resource.update(it.copy(merged = true, state = "closed")) }
       cache.changes(account).confirmMerged(WorkTarget(owner, repository, number, kind))
       changed()
@@ -497,9 +504,10 @@ class WorkDetailRepository(
       refresh(force = true)
       paging.invalidate(account, timelineKey)
       keys.forEach { paging.invalidate(account, it) }
-      cache.invalidateMatching(account) {
-        it.startsWith("notification-previews.") || it.startsWith("repository-home-")
-      }
+      cache.invalidateAndPersist(
+          account,
+          setOf(repositoryCacheTag(owner, repository)),
+      )
       cache
           .changes(account)
           .publish(DataDomain.Work, DataDomain.Notifications, DataDomain.Repositories)

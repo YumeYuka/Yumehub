@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 enum class TrendingPeriod { DAILY, WEEKLY, MONTHLY }
@@ -26,10 +28,19 @@ class DiscoveryRepository(
     private val paging: PagingRepository,
     private val cache: CachedDataRepository,
 ) {
+    fun trendingKey(filter: TrendingFilter): String = "explore:trending:$filter"
+
+    fun featuredKey(query: String, language: String?, recentlyUpdated: Boolean): String =
+        "explore:awesome:$recentlyUpdated:$language:$query"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
+
     fun trending(account: String, filter: TrendingFilter): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
             account,
-            "explore:trending:$filter",
+            trendingKey(filter),
             paging,
             { it.nodeId.orEmpty() },
             serializer = RepositoryDto.serializer(),
@@ -48,7 +59,7 @@ class DiscoveryRepository(
         recentlyUpdated: Boolean,
     ): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
-            account, "explore:awesome:$recentlyUpdated:$language:$query", paging, { it.nodeId.orEmpty() },
+            account, featuredKey(query, language, recentlyUpdated), paging, { it.nodeId.orEmpty() },
             serializer = RepositoryDto.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
@@ -79,6 +90,7 @@ class DiscoveryRepository(
             "discovery.languages.v1:$includeSpoken",
             DiscoveryLanguages.serializer(),
             maxAgeMillis = 24 * 60 * 60_000L,
+            tags = setOf(CacheTag(DataDomain.Content, null)),
         ).await { loadLanguages(account, includeSpoken) }
 
     private suspend fun loadLanguages(account: String, includeSpoken: Boolean): DiscoveryLanguages {

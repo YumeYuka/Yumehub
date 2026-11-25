@@ -11,7 +11,9 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 const val MyRepositoriesPageSize = 100
@@ -42,6 +44,7 @@ class MyRepositoriesRepository(
                 account,
                 "my-repositories:raw:v2:type=$type:after=${after.orEmpty()}",
                 MyRepositoriesPage.serializer(),
+                tags = setOf(CacheTag(DataDomain.Repositories, "my-repositories")),
             )
         return resource
             .await(force) {
@@ -108,6 +111,7 @@ class MyRepositoriesRepository(
                 account,
                 "my-repositories:all:v2:type=$type",
                 ListSerializer(RepositoryDto.serializer()),
+                tags = setOf(CacheTag(DataDomain.Repositories, "my-repositories")),
             )
             .await(force) {
                 buildList {

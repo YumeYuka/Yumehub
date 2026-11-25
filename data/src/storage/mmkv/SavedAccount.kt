@@ -14,6 +14,8 @@ internal data class SavedAccount(
     val refreshToken: String = "",
     val scope: String = "",
     val deviceKeyRegistered: Boolean = false,
+    /** 账号的持久缓存会话 ID；随授权、切号和退出后重新登录更换。 */
+    val cacheSessionId: String = "",
 ) {
     override fun toString(): String = "SavedAccount(login=$login)"
 }

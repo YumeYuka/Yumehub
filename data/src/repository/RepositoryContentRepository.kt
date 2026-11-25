@@ -28,6 +28,7 @@ import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.network.useStreamingBody
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import okhttp3.HttpUrl
@@ -265,7 +266,12 @@ class RepositoryContentRepository(
                     path,
                 ),
             )
-        return cache.resource(account = account, key = key, serializer = serializer)
+        return cache.resource(
+            account = account,
+            key = key,
+            serializer = serializer,
+            tags = setOf(repositoryCacheTag(owner, name)),
+        )
     }
 
     private suspend fun RepositoryContentDto.textPreview(

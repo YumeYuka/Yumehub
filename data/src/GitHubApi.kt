@@ -46,22 +46,30 @@ interface GitHubApi {
     suspend fun starRepository(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
+        @Tag policy: SingleSubmission = SingleSubmission,
     ): Response<Unit>
 
     @DELETE("user/starred/{owner}/{repo}")
     suspend fun unstarRepository(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
+        @Tag policy: SingleSubmission = SingleSubmission,
     ): Response<Unit>
 
     @GET("user/following/{username}")
     suspend fun isFollowing(@Path("username") username: String): Response<Unit>
 
     @PUT("user/following/{username}")
-    suspend fun followUser(@Path("username") username: String): Response<Unit>
+    suspend fun followUser(
+        @Path("username") username: String,
+        @Tag policy: SingleSubmission = SingleSubmission,
+    ): Response<Unit>
 
     @DELETE("user/following/{username}")
-    suspend fun unfollowUser(@Path("username") username: String): Response<Unit>
+    suspend fun unfollowUser(
+        @Path("username") username: String,
+        @Tag policy: SingleSubmission = SingleSubmission,
+    ): Response<Unit>
 
     @GET("user/starred")
     suspend fun listStarredRepositories(

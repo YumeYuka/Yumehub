@@ -10,7 +10,9 @@ import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.auth.AuthSession
 import moe.yumeyuka.yumehub.data.cache.CacheSession
 
-class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv = externalMmkv) {
+class TokenStore internal constructor(private val externalStorage: KeyValueStorage) :
+    MMKVPreference(mmkv = externalStorage) {
+    constructor(externalMmkv: MMKV) : this(RealMMKVStorage(externalMmkv))
     internal val responseCacheSession = CacheSession()
     private val mutableSessionGeneration = MutableStateFlow(0L)
     val sessionGeneration = mutableSessionGeneration.asStateFlow()
@@ -44,31 +46,45 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
         val key = "savedAccounts.v1"
         val oldKeys =
             arrayOf("accountLogin", "accessToken", "refreshToken", "scope", "deviceKeyRegistered")
-        val stored = externalMmkv.decodeString(key)
+        val stored = externalStorage.decodeString(key)
         val list =
             if (stored != null) Json.decodeFromString<List<SavedAccount>>(stored)
             else {
-                val login = externalMmkv.decodeString("accountLogin").orEmpty()
-                val token = externalMmkv.decodeString("accessToken").orEmpty()
+                val login = externalStorage.decodeString("accountLogin").orEmpty()
+                val token = externalStorage.decodeString("accessToken").orEmpty()
                 if (login.isBlank() || token.isBlank()) emptyList()
                 else
                     listOf(
                         SavedAccount(
                             login = login,
                             accessToken = token,
-                            refreshToken = externalMmkv.decodeString("refreshToken").orEmpty(),
-                            scope = externalMmkv.decodeString("scope").orEmpty(),
-                            deviceKeyRegistered = externalMmkv.decodeBool("deviceKeyRegistered"),
+                            refreshToken = externalStorage.decodeString("refreshToken").orEmpty(),
+                            scope = externalStorage.decodeString("scope").orEmpty(),
+                            deviceKeyRegistered = externalStorage.decodeBool("deviceKeyRegistered"),
                         ),
                     )
             }
-        if (stored == null) persist(list)
-        externalMmkv.removeValuesForKeys(oldKeys)
-        return list
+        // 旧记录缺会话 ID 时生成并原子保存；保存失败保留认证，但本会话禁用持久缓存。
+        val migrated =
+            list.map { account ->
+                if (account.cacheSessionId.isBlank())
+                    account.copy(cacheSessionId = newSessionId())
+                else account
+            }
+        if (stored == null || migrated != list) {
+            try {
+                persist(migrated)
+            } catch (_: Exception) {
+                responseCacheSession.persistenceEnabled = false
+            }
+        }
+        if (migrated.isNotEmpty()) externalStorage.removeValueForKey("responseCacheSessionId")
+        externalStorage.removeValuesForKeys(oldKeys)
+        return migrated
     }
 
     private fun persist(accounts: List<SavedAccount>) {
-        check(externalMmkv.encode("savedAccounts.v1", Json.encodeToString(accounts)))
+        check(externalStorage.encode("savedAccounts.v1", Json.encodeToString(accounts)))
     }
 
     private fun avatars(list: List<SavedAccount>) = list.map {
@@ -92,17 +108,18 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
         )
     }
 
-    // 凭据与当前身份只写一个 MMKV 值；缓存失效和旧 Preference 观察者共用同一把锁。
+    // 凭据、当前身份与会话 ID 只写一个 MMKV 值；发布前完成磁盘提交。
     private fun replace(next: List<SavedAccount>, renewSession: Boolean = false) {
         val previousLogin = current.login
-        prepareResponseCacheSession()
         persist(next)
         records.value = next
         observers.forEach { it() }
-        if (renewSession || (next.isEmpty() && previousLogin.isNotEmpty())) {
-            responseCacheSession.clear(newResponseCacheSession())
+        val active = next.firstOrNull()
+        if (next.isEmpty() && previousLogin.isNotEmpty()) {
+            responseCacheSession.clear(newSessionId())
+        } else if (active != null) {
+            responseCacheSession.bind(active.login, { active.cacheSessionId }, renewSession)
         }
-        responseCacheSession.bind(current.login, ::newResponseCacheSession)
         mutableSessionGeneration.value = responseCacheSession.generation
         mutableAccounts.value = avatars(next)
         mutableAuthSession.value = currentAuthSession()
@@ -110,14 +127,22 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
 
     internal fun saveAccount(account: SavedAccount) =
         synchronized(responseCacheSession.lock) {
-            replace(records.value.activate(account), renewSession = true)
+            // 重新授权必须换会话 ID，旧缓存不能跨凭证复用。
+            val rotated = account.copy(cacheSessionId = newSessionId())
+            replace(records.value.activate(rotated), renewSession = true)
             checkNotNull(authSession.value)
         }
 
     internal fun selectAccount(login: String) =
         synchronized(responseCacheSession.lock) {
             val account = records.value.first { it.login.equals(login, ignoreCase = true) }
-            if (account != current) replace(records.value.activate(account))
+            if (!account.login.equals(current.login, ignoreCase = true)) {
+                // 切号同时更换目标账号的会话 ID，旧账号缓存不能恢复。
+                replace(
+                    records.value.activate(account.copy(cacheSessionId = newSessionId())),
+                    renewSession = true,
+                )
+            }
         }
 
     internal fun removeActiveAccount() =
@@ -166,10 +191,10 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
         }
 
     fun deviceKeyAlias(login: String): String? =
-        externalMmkv.decodeString("twoFactorKeyAlias.$login")
+        externalStorage.decodeString("twoFactorKeyAlias.$login")
 
     fun setDeviceKeyAlias(login: String, alias: String) {
-        check(externalMmkv.encode("twoFactorKeyAlias.$login", alias)) {
+        check(externalStorage.encode("twoFactorKeyAlias.$login", alias)) {
             "Unable to persist the registered device key alias"
         }
     }
@@ -177,27 +202,41 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
     internal fun prepareResponseCacheSession() =
         synchronized(responseCacheSession.lock) {
             if (responseCacheSession.id == null) {
-                val storedId =
-                    try {
-                        externalMmkv.decodeString("responseCacheSessionId")
-                    } catch (_: Exception) {
-                        null
-                    }
-                val id = storedId?.takeIf { it.isNotBlank() } ?: newResponseCacheSession()
-                responseCacheSession.restore(accountLogin.state.value, id)
+                val active = records.value.firstOrNull()
+                val id =
+                    active?.cacheSessionId?.takeIf(String::isNotBlank) ?: newSessionId()
+                responseCacheSession.restore(active?.login.orEmpty(), id)
             }
         }
 
-    private fun newResponseCacheSession(): String =
-        UUID.randomUUID().toString().also { id ->
-            try {
-                // 缓存元数据只做尽力持久化；返回 false 或抛异常均不阻止认证和内存会话换代。
-                externalMmkv.encode("responseCacheSessionId", id)
-            } catch (_: Exception) {
-                // 运行时 UUID 仍然有效，不允许回退成旧磁盘 ID。
-            }
-        }
+    private fun newSessionId(): String = UUID.randomUUID().toString()
 
     fun clear() =
         synchronized(responseCacheSession.lock) { replace(emptyList(), renewSession = true) }
+
+    companion object {
+        fun forTesting(
+            storage: KeyValueStorage,
+            vararg accounts: Pair<String, String>,
+        ): TokenStore {
+            if (accounts.isNotEmpty()) {
+                val saved =
+                    accounts.map { (login, token) ->
+                        SavedAccount(
+                            login = login,
+                            accessToken = token,
+                            cacheSessionId = "session-${login.lowercase(Locale.ROOT)}",
+                        )
+                    }
+                storage.encode(
+                    "savedAccounts.v1",
+                    Json.encodeToString(
+                        kotlinx.serialization.builtins.ListSerializer(SavedAccount.serializer()),
+                        saved,
+                    ),
+                )
+            }
+            return TokenStore(storage)
+        }
+    }
 }

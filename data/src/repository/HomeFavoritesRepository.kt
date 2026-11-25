@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.data.repository
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -9,8 +10,12 @@ import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryOwnerDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
+import moe.yumeyuka.yumehub.data.cache.CachedDataState
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 
 /** 官方 GitHub Mobile 1.283.0 的首页收藏，区别于个人资料 pinnedItems 和 starredRepositories */
 class HomeFavoritesRepository(
@@ -23,6 +28,7 @@ class HomeFavoritesRepository(
             account,
             "home.favorites.v1",
             ListSerializer(RepositoryDto.serializer()),
+            tags = setOf(CacheTag(DataDomain.Repositories, "dashboard-pins")),
         )
 
     /** 同步读取内存；磁盘快照由资源在 IO 线程恢复。 */
@@ -30,6 +36,10 @@ class HomeFavoritesRepository(
 
     fun refresh(account: String, force: Boolean = false) =
         resource(account).refresh(force) { loadRemote(account) }
+
+    /** 收集期间持续校验；收集方结束时取消仅由它发起的请求，已被其他调用方加入的请求继续完成。 */
+    fun observe(account: String): Flow<CachedDataState<List<RepositoryDto>>> =
+        resource(account).observe { RemoteFetch.Fresh(loadRemote(account)) }
 
     suspend fun load(account: String, force: Boolean = false): List<RepositoryDto> =
         resource(account).await(force) { loadRemote(account) }

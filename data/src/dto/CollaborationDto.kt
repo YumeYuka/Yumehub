@@ -112,6 +112,7 @@ data class WorkPropertyOption(
 data class WorkProperties(
     val values: Map<WorkProperty, List<WorkPropertyOption>>,
     val editable: Boolean,
+    val labelsEditable: Boolean,
 )
 
 data class WorkReviewRequests(

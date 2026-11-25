@@ -5,4 +5,5 @@ data class CachedDataState<T>(
     val loading: Boolean = false,
     val error: Throwable? = null,
     val updatedAt: Long = 0L,
+    val refreshing: Boolean = false,
 )

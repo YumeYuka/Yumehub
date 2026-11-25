@@ -23,8 +23,12 @@ import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryOwnerDto
 import moe.yumeyuka.yumehub.data.auth.SessionFailures
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import retrofit2.HttpException
@@ -86,6 +90,7 @@ class RepositoryOverviewRepository(
             account,
             "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
             RepositoryOverview.serializer(),
+            tags = setOf(repositoryCacheTag(owner, name)),
         )
 
     suspend fun load(account: String, owner: String, name: String): RepositoryOverview {
@@ -101,6 +106,9 @@ class RepositoryOverviewRepository(
             )
         return parseRepositoryOverview(data.requiredObject("repository"))
     }
+
+    /** 页面绑定时提前取得会话级写协调器；未取得前只暂停依赖它的写控件。 */
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     suspend fun setStarred(
         account: String,
@@ -135,6 +143,12 @@ class RepositoryOverviewRepository(
                 account,
                 "starred-state:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
                 Boolean.serializer(),
+                tags =
+                    setOf(
+                        relationshipCacheTag(
+                            "${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
+                        ),
+                    ),
             )
             .update(selected)
         cache.changes(account).publish(DataDomain.Repositories, DataDomain.Relationships)
@@ -184,7 +198,7 @@ class RepositoryOverviewRepository(
                 subscriptionTypes = confirmedTypes,
             ),
         )
-        cache.invalidateMatching(account) { it.startsWith("work-subscription.") }
+        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
         cache.changes(account).publish(DataDomain.Work, DataDomain.Notifications)
     }
 
@@ -211,14 +225,59 @@ class RepositoryOverviewRepository(
             throw RepositoryOverviewException()
         details.cached?.let { details.update(it.copy(description = description)) }
             ?: details.invalidate()
+        cache.invalidateAndPersist(account, setOf(repositoryCacheTag(owner, name)))
         cache.changes(account).publish(DataDomain.Repositories)
     }
 
     suspend fun isPinned(account: String, id: String): Boolean =
         readPins(session(account)).ids.contains(id)
 
+    suspend fun dashboardFavoriteIds(account: String): List<String> =
+        readPins(session(account)).ids
+
     suspend fun dashboardFavorites(account: String): List<RepositoryDto> =
         readPins(session(account)).repositories
+
+    suspend fun writePinIds(
+        account: String,
+        ids: List<String>,
+        metadata: List<RepositoryDto> = emptyList(),
+    ): List<String> {
+        val session = session(account)
+        val favoritesResource = favorites.resource(account)
+        val confirmed =
+            pinsMutex.withLock {
+                val current = readPins(session)
+                if (ids == current.ids) current
+                else {
+                    require(ids.size <= 25 && ids.distinct().size == ids.size) {
+                        "Invalid dashboard pins"
+                    }
+                    val data =
+                        execute(
+                            session,
+                            "mutation RepositoryPin(${'$'}ids: [ID!]!) { updateUserDashboardPins(input: {itemIds: ${'$'}ids}) { user { login $PinsFields } } }",
+                            buildJsonObject { put("ids", JsonArray(ids.map(::JsonPrimitive))) },
+                            true,
+                        )
+                    parsePins(
+                        data.requiredObject("updateUserDashboardPins").requiredObject("user"),
+                        account,
+                    )
+                }
+            }
+        if (confirmed.ids != ids) throw RepositoryOverviewException()
+        val metadataById = metadata.associateBy { it.nodeId }
+        favoritesResource.update(
+            confirmed.repositories.map { repository ->
+                val extra = metadataById[repository.nodeId]
+                if (extra == null) repository
+                else repository.copy(description = extra.description, language = extra.language)
+            },
+        )
+        cache.changes(account).publish(DataDomain.Repositories)
+        return confirmed.ids
+    }
 
     suspend fun setPinned(
         account: String,
@@ -363,7 +422,7 @@ class RepositoryOverviewRepository(
     }
 }
 
-internal fun mergeDashboardFavorites(
+fun mergeDashboardFavorites(
     current: List<String>,
     original: List<String>,
     selected: List<String>,
@@ -379,7 +438,7 @@ internal fun mergeDashboardFavorites(
     return merged.map { if (it in selected) order.next() else it }
 }
 
-internal fun updatedDashboardPins(
+fun updatedDashboardPins(
     current: List<String>,
     id: String,
     selected: Boolean,

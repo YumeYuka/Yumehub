@@ -11,8 +11,11 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.*
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import org.jsoup.Jsoup
@@ -24,6 +27,8 @@ class DashboardFeedRepository(
     private val cache: CachedDataRepository,
 ) {
     private val pages = DashboardFeedLoader()
+
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     suspend fun page(
         account: String,
@@ -37,7 +42,7 @@ class DashboardFeedRepository(
                 session.generation
             }
         val response =
-            pages.load(generation, after, filterGroups) { request, write ->
+            pages.load(generation, after, filterGroups, cache.mutations(account)) { request, write ->
                 execute(account, generation, request, write)
             }
         // 节点映射与 HTML 文本转换不占用服务器筛选锁，也不在主线程执行。
@@ -219,12 +224,16 @@ class DashboardFeedRepository(
         val key =
             if (user != null) "following-state:${user.login?.lowercase(Locale.ROOT)}"
             else "starred-state:${event.repo?.name?.lowercase(Locale.ROOT)}"
+        val tags =
+            if (user != null) setOf(CacheTag(DataDomain.Profile, null))
+            else setOf(CacheTag(DataDomain.Repositories, null))
+        val stateTag =
+            if (user != null) relationshipCacheTag(user.login.orEmpty())
+            else relationshipCacheTag(event.repo?.name.orEmpty())
         synchronized(tokens.responseCacheSession.lock) {
             tokens.requireSession(account, generation)
-            cache.resource(account, key, Boolean.serializer()).update(selected)
-            cache.invalidateMatching(account) {
-                it.startsWith("repository-home-") || it.startsWith("viewer-profile.")
-            }
+            cache.resource(account, key, Boolean.serializer(), tags = setOf(stateTag)).update(selected)
+            cache.invalidateAndPersist(account, tags)
             cache
                 .changes(account)
                 .publish(DataDomain.Relationships, DataDomain.Repositories, DataDomain.Profile)
@@ -322,8 +331,10 @@ class DashboardFeedRepository(
                     account,
                     "following-state:${login.lowercase(Locale.ROOT)}",
                     Boolean.serializer(),
+                    tags = setOf(relationshipCacheTag(login)),
                 )
                 .update(selected)
+            cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Profile, null)))
             cache.changes(account).publish(DataDomain.Relationships, DataDomain.Profile)
         }
         return selected

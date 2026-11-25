@@ -34,6 +34,7 @@ internal class WorkPropertiesGraphQl(
         includeMilestone: Boolean,
         includeReviewTarget: Boolean = false,
         includeAssignPermission: Boolean = false,
+        includeLabelPermission: Boolean = false,
     ): JsonObject =
         execute(
                 """
@@ -45,6 +46,7 @@ internal class WorkPropertiesGraphQl(
                         id ${if (includeMilestone) "milestone { id title }" else ""}
                         ${if (includeReviewTarget) "state author { login }" else ""}
                         ${if (includeAssignPermission) "viewerCanAssign" else ""}
+                        ${if (includeLabelPermission) "viewerCanLabel" else ""}
                     }
                 }
             }
@@ -97,6 +99,9 @@ internal class WorkPropertiesGraphQl(
     private fun JsonObject.canEdit() =
         graphText("viewerPermission") in setOf("TRIAGE", "WRITE", "MAINTAIN", "ADMIN")
 
+    private fun JsonObject.canLabel() =
+        (get("viewerCanLabel") as? JsonPrimitive)?.booleanOrNull == true
+
     private fun JsonObject.milestone() =
         when (val value = get("milestone")) {
             JsonNull -> emptyList()
@@ -105,7 +110,7 @@ internal class WorkPropertiesGraphQl(
         }
 
     suspend fun load(): WorkProperties = coroutineScope {
-        val repo = node(includeMilestone = true)
+        val repo = node(includeMilestone = true, includeLabelPermission = true)
         val target = repo.target()
         val labels = async { currentValues(target, WorkProperty.Labels) }
         // Projects V2 需要额外权限；只有展示时允许该分组独立失败。
@@ -121,6 +126,7 @@ internal class WorkPropertiesGraphQl(
                 WorkProperty.SubIssues to subIssues.await(),
             ),
             repo.canEdit(),
+            labelsEditable = target.canLabel(),
         )
     }
 
@@ -541,12 +547,15 @@ internal class WorkPropertiesGraphQl(
                 includeMilestone = property == WorkProperty.Milestone,
                 includeReviewTarget = property == WorkProperty.Reviewers,
                 includeAssignPermission = property == WorkProperty.Assignees,
+                includeLabelPermission = property == WorkProperty.Labels,
             )
         val target = repo.target()
-        if (property == WorkProperty.Assignees) {
-            if (target["viewerCanAssign"]?.jsonPrimitive?.booleanOrNull != true)
-                throw GithubPageException()
-        } else if (!repo.canEdit()) throw GithubPageException()
+        val editable = when (property) {
+            WorkProperty.Assignees -> target["viewerCanAssign"]?.jsonPrimitive?.booleanOrNull == true
+            WorkProperty.Labels -> target.canLabel()
+            else -> repo.canEdit()
+        }
+        if (!editable) throw GithubPageException()
         val id = target.graphRequiredText("id")
         if (expectedIssueId != null && id != expectedIssueId) throw WorkDetailReviewChangedException()
         val actual = currentValues(target, property)
@@ -738,7 +747,7 @@ internal class WorkPropertiesGraphQl(
         val inputType =
             if (kind == CollaborationKind.Issue) "UpdateIssueInput" else "UpdatePullRequestInput"
         val payload = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
-        execute(
+        val savedId = execute(
                 """
             mutation SaveWorkProperty(${'$'}input: $inputType!) {
                 $mutation(input: ${'$'}input) { $payload { id } }
@@ -751,6 +760,7 @@ internal class WorkPropertiesGraphQl(
             .graphObject(mutation)
             .graphObject(payload)
             .graphRequiredText("id")
+        if (savedId != id) throw GithubPageException()
     }
 
     private fun option(node: JsonObject, title: String) =

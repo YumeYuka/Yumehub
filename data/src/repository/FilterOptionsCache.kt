@@ -85,4 +85,18 @@ internal class FilterOptionsCache(
             }
         }
     }
+
+    suspend fun invalidate(owner: String, name: String) {
+        val normalizedOwner = owner.lowercase(Locale.ROOT)
+        val normalizedName = name.lowercase(Locale.ROOT)
+        lock.withLock {
+            val iterator = entries.keys.iterator()
+            while (iterator.hasNext()) {
+                val key = iterator.next()
+                if (key.owner == normalizedOwner && key.name == normalizedName) {
+                    iterator.remove()
+                }
+            }
+        }
+    }
 }

@@ -4,21 +4,49 @@ import androidx.paging.PagingData
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 class ProfileCollectionsRepository(
     private val api: GitHubGraphQlApi,
     private val paging: PagingRepository,
     private val tokenStore: TokenStore,
+    private val cache: CachedDataRepository,
 ) {
     val account: String
         get() = tokenStore.accountLogin.value
+
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
+    fun repositoriesKey(login: String, organization: Boolean): String {
+        val type = if (organization) "Organization" else "User"
+        return "profile-repos.v2:${login.lowercase(Locale.ROOT)}:$type"
+    }
+
+    fun starredKey(account: String, login: String, query: String = ""): String =
+        if (account.equals(login, true) && query.isBlank()) StarredRepositoriesPagingKey
+        else
+            "profile-stars.v3:${login.lowercase(Locale.ROOT)}:${query.trim().lowercase(Locale.ROOT)}"
+
+    fun listItemsKey(login: String, slug: String, search: String = ""): String =
+        "user-list.v1:${login.lowercase(Locale.ROOT)}:${slug.lowercase(Locale.ROOT)}:" +
+            search.trim().lowercase(Locale.ROOT)
+
+    fun organizationsKey(login: String): String = "profile-orgs.v2:${login.lowercase(Locale.ROOT)}"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
 
     fun repositories(
         account: String,
@@ -28,7 +56,7 @@ class ProfileCollectionsRepository(
         val type = if (organization) "Organization" else "User"
         return pages(
             account,
-            "profile-repos.v2:${login.lowercase(Locale.ROOT)}:$type",
+            repositoriesKey(login, organization),
             login,
             "RepositoriesQuery",
             "repositoryOwner",
@@ -39,6 +67,7 @@ class ProfileCollectionsRepository(
             { it.nodeId.orEmpty() },
             ::repositoryItem,
             serializer = RepositoryDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Repositories, null)),
         )
     }
 
@@ -49,9 +78,7 @@ class ProfileCollectionsRepository(
     ): Flow<PagingData<RepositoryDto>> =
         pages(
             account,
-            if (account.equals(login, true) && query.isBlank()) StarredRepositoriesPagingKey
-            else
-                "profile-stars.v3:${login.lowercase(Locale.ROOT)}:${query.trim().lowercase(Locale.ROOT)}",
+            starredKey(account, login, query),
             login,
             "StarredRepositories",
             "repositoryOwner",
@@ -64,6 +91,7 @@ class ProfileCollectionsRepository(
             ::repositoryItem,
             query.trim().takeIf(String::isNotEmpty),
             serializer = RepositoryDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Repositories, null)),
         )
 
     suspend fun userLists(account: String, login: String): List<UserRepositoryList> {
@@ -113,6 +141,10 @@ class ProfileCollectionsRepository(
             .graphObject("createUserList")
             .graphObject("list")
             .let(::userRepositoryList)
+            .also {
+                cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Repositories, null)))
+                cache.changes(account).publish(DataDomain.Repositories)
+            }
     }
 
     suspend fun repositoryListIds(account: String, repositoryId: String): Set<String> {
@@ -172,6 +204,8 @@ class ProfileCollectionsRepository(
                 .graphObject("item")
                 .graphRequiredText("id")
         if (itemId != repositoryId) throw GithubPageException()
+        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Repositories, null)))
+        cache.changes(account).publish(DataDomain.Repositories)
     }
 
     fun listItems(
@@ -182,11 +216,11 @@ class ProfileCollectionsRepository(
     ): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
             account,
-            "user-list.v1:${login.lowercase(Locale.ROOT)}:${slug.lowercase(Locale.ROOT)}:" +
-                search.trim().lowercase(Locale.ROOT),
+            listItemsKey(login, slug, search),
             paging,
             { it.nodeId.orEmpty() },
             serializer = RepositoryDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Repositories, null)),
         ) {
             val session = GithubGraphQlSession(api, tokenStore, account)
             val query =
@@ -230,7 +264,7 @@ class ProfileCollectionsRepository(
         val viewer = account.equals(login, true)
         return pages(
             account,
-            "profile-orgs.v2:${login.lowercase(Locale.ROOT)}",
+            organizationsKey(login),
             login,
             if (viewer) "ViewerOrganizationsQuery" else "OrganizationsQuery",
             if (viewer) "viewer" else "user",
@@ -241,6 +275,7 @@ class ProfileCollectionsRepository(
             { it.login.orEmpty() },
             { it.dashboardUser() },
             serializer = UserDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Profile, null)),
         )
     }
 
@@ -258,8 +293,9 @@ class ProfileCollectionsRepository(
         decode: (JsonObject) -> T,
         searchQuery: String? = null,
         serializer: KSerializer<T>,
+        tags: Set<CacheTag> = emptySet(),
     ): Flow<PagingData<T>> =
-        githubGraphQlPager(account, key, paging, identity, serializer = serializer) {
+        githubGraphQlPager(account, key, paging, identity, serializer = serializer, tags = tags) {
             val session = GithubGraphQlSession(api, tokenStore, account)
             val loginVariable = if (root == "viewer") "" else "\u0024login: String!, "
             val loginArgument = if (root == "viewer") "" else "(login: \u0024login)"
@@ -284,6 +320,7 @@ class ProfileCollectionsRepository(
         }
 }
 
+@Serializable
 data class UserRepositoryList(
     val id: String,
     val name: String,

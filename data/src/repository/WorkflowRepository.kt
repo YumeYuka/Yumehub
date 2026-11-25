@@ -2,8 +2,15 @@ package moe.yumeyuka.yumehub.data.repository
 
 import java.time.Instant
 import java.util.PriorityQueue
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CachedDataState
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import okhttp3.OkHttpClient
 
@@ -143,13 +150,41 @@ class WorkflowRepository(
     private val tokens: TokenStore,
     private val paging: PagingRepository,
     private val client: OkHttpClient,
+    private val cache: CachedDataRepository,
 ) {
     private fun session(account: String) = GithubGraphQlSession(api, tokens, account)
 
     private val artifactClient = client.newBuilder().followRedirects(false).build()
 
-    suspend fun artifacts(account: String, owner: String, name: String, run: Long, page: Int) =
-        listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, page)
+    suspend fun artifacts(
+        account: String,
+        owner: String,
+        name: String,
+        run: Long,
+        page: Int,
+    ): WorkflowArtifacts =
+        when (val fetched = listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, page)) {
+            is RemoteFetch.Fresh -> fetched.value
+            RemoteFetch.NotModified -> error("An unconditional artifact request cannot return 304")
+        }
+
+    /** 第一页工件列表：收集时先出缓存，再以 ETag 后台校验；取消收集会取消仅由它发起的请求。 */
+    fun observeFirstArtifactPage(
+        account: String,
+        owner: String,
+        name: String,
+        run: Long,
+    ): Flow<CachedDataState<WorkflowArtifacts>> =
+        cache
+            .resource(
+                account,
+                "workflow.artifacts.v1:$owner/$name/$run",
+                WorkflowArtifacts.serializer(),
+                tags = setOf(CacheTag(DataDomain.Work, null)),
+            )
+            .observe { validator ->
+                listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, 1, validator)
+            }
 
     suspend fun artifactDownload(account: String, owner: String, name: String, id: Long) =
         workflowArtifactDownload(artifactClient, tokens, account, owner, name, id)
@@ -208,11 +243,17 @@ class WorkflowRepository(
         return WorkflowCatalog(options.distinctBy { it.id }, branch, writable)
     }
 
+    fun historyKey(owner: String, name: String): String = "actions:all:$owner/$name"
+
+    fun revalidation(account: String, key: String) = paging.revalidation(account, key)
+
+    fun retryRevalidation(account: String, key: String) = paging.retryRevalidation(account, key)
+
     fun history(account: String, owner: String, name: String) =
         // 本地游标只索引当前 loader 的多路合并检查点，不能脱离该 loader 恢复。
         githubGraphQlPager(
             account,
-            "actions:all:$owner/$name",
+            historyKey(owner, name),
             paging,
             RepositoryActivityEntry::id,
             config =
@@ -221,6 +262,7 @@ class WorkflowRepository(
                     prefetchDistance = 1,
                     enablePlaceholders = false,
                 ),
+            tags = setOf(CacheTag(DataDomain.Work, null)),
         ) {
             val session = session(account)
             val checkpoints = mutableMapOf<String, List<RunStream>>()
@@ -352,7 +394,11 @@ class WorkflowRepository(
                 .graphRequiredText("id") != suiteId
         )
             throw GithubPageException()
+        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
+        cache.changes(account).publish(DataDomain.Work)
     }
+
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     suspend fun inputs(account: String, id: String, branch: String): List<WorkflowInput>? {
         val node =
@@ -401,6 +447,8 @@ class WorkflowRepository(
                     write = true,
                 )
         result.graphObject("dispatchWorkflowRun")
+        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
+        cache.changes(account).publish(DataDomain.Work)
     }
 }
 

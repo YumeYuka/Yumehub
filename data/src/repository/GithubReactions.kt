@@ -86,6 +86,22 @@ fun List<GithubReactionGroup>.withToggledReaction(
     }
 }
 
+suspend fun convergeGithubReactions(
+    initial: List<GithubReactionGroup>,
+    desired: List<GithubReactionGroup>,
+    toggle: suspend (GithubReactionContent, Boolean) -> List<GithubReactionGroup>,
+): List<GithubReactionGroup> {
+    var current = initial
+    for (content in GithubReactionContent.entries) {
+        val currentReacted = current.any { it.content == content && it.viewerReacted }
+        val desiredReacted = desired.any { it.content == content && it.viewerReacted }
+        if (currentReacted != desiredReacted) {
+            current = toggle(content, currentReacted)
+        }
+    }
+    return current
+}
+
 internal const val ReactionFragment =
     "reactionGroups { content viewerHasReacted reactors(first: 1) { totalCount } }"
 

@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub.data.storage.mmkv
 
 import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -9,14 +10,21 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.utf8Size
 
-/** 专用响应存储；所有序列化、MMKV 访问与淘汰都只在 IO 调度器执行。 */
+/** 专用响应存储；每次写新不可变正文，再原子替换索引指针并清理孤儿正文。 */
 internal class ResponseCacheStore(provider: MMKVProvider, private val json: Json) {
-    private val storage by lazy { provider.getMMKV("response-cache-v1") }
+    private val storage by lazy { provider.getStorage("response-cache-v1") }
     private val mutex = Mutex()
     private var indexedSession: String? = null
     private val entries = mutableMapOf<String, Metadata>()
+    private var totalBytes = 0L
 
-    internal data class Response(val payload: String, val updatedAt: Long)
+    internal data class Response(
+        val payload: String,
+        val updatedAt: Long,
+        val etag: String?,
+        val checkedAt: Long,
+        val tags: List<String>?,
+    )
 
     @Serializable
     private data class Entry(
@@ -24,30 +32,55 @@ internal class ResponseCacheStore(provider: MMKVProvider, private val json: Json
         val payload: String,
         val updatedAt: Long,
         val accessedAt: Long,
+        // 与 payload 为同一份服务端表示的校验符；旧快照没有该字段，解码为 null。
+        val etag: String? = null,
+        // 最近一次成功校验的时间；旧快照缺省时以 updatedAt 作为检查锚点。
+        val checkedAt: Long = 0L,
+        // 写入时的失效标签摘要。旧快照为 null，按缓存未命中处理。
+        val tags: List<String>? = null,
     )
 
     @Serializable
-    private data class DiskIndex(val session: String, val accessedAt: Map<String, Long>)
+    private data class DiskIndexEntry(
+        val bodyKey: String,
+        val accessedAt: Long,
+        val bytes: Int = 0,
+    )
 
-    private data class Metadata(val bytes: Int, val accessedAt: Long)
+    @Serializable
+    private data class DiskIndex(
+        val session: String,
+        val accessedAt: Map<String, Long> = emptyMap(),
+        val records: Map<String, DiskIndexEntry> = emptyMap(),
+    )
+
+    private data class Metadata(val bodyKey: String, val bytes: Int, val accessedAt: Long)
 
     suspend fun load(session: String, key: String, valid: () -> Boolean): Response? =
         withContext(Dispatchers.IO) {
             if (!valid()) return@withContext null
-            val entry = storage.decodeString(key)?.let(::decode) ?: return@withContext null
+            val bodyKey =
+                if (mutex.tryLock()) {
+                    try {
+                        if (indexedSession == session) {
+                            entries[key]?.let {
+                                entries[key] = it.copy(accessedAt = System.currentTimeMillis())
+                                it.bodyKey
+                            }
+                        } else null
+                    } finally {
+                        mutex.unlock()
+                    }
+                } else null
+            val resolvedKey =
+                bodyKey
+                    ?: storage.decodeString(IndexKey)?.let(::decodeIndex)?.takeIf {
+                        it.session == session
+                    }?.records?.get(key)?.bodyKey
+                    ?: key
+            val entry = storage.decodeString(resolvedKey)?.let(::decode) ?: return@withContext null
             if (entry.session != session || !valid()) return@withContext null
-            // 命中只更新内存淘汰权重，不等待索引扫描或重写响应体。
-            if (mutex.tryLock()) {
-                try {
-                    if (indexedSession == session)
-                        entries[key]?.let {
-                            entries[key] = it.copy(accessedAt = System.currentTimeMillis())
-                        }
-                } finally {
-                    mutex.unlock()
-                }
-            }
-            Response(entry.payload, entry.updatedAt)
+            Response(entry.payload, entry.updatedAt, entry.etag, entry.checkedAt, entry.tags)
         }
 
     suspend fun save(
@@ -55,72 +88,143 @@ internal class ResponseCacheStore(provider: MMKVProvider, private val json: Json
         key: String,
         payload: String,
         updatedAt: Long,
+        checkedAt: Long,
+        etag: String?,
+        tags: List<String>,
         valid: () -> Boolean,
     ) =
         withContext(Dispatchers.IO) {
             if (!valid()) return@withContext
-            val entry = Entry(session, payload, updatedAt, System.currentTimeMillis())
+            val entry =
+                Entry(
+                    session,
+                    payload,
+                    updatedAt,
+                    System.currentTimeMillis(),
+                    etag,
+                    checkedAt,
+                    tags,
+                )
             val raw =
                 if (payload.length <= MaxEntryBytes) json.encodeToString(Entry.serializer(), entry)
                 else null
             val bytes = raw?.utf8Size() ?: 0L
-            mutex.withLock {
-                if (!valid()) return@withLock
-                prepare(session)
-                if (!valid()) return@withLock
-                // 超限新值也应移除旧快照，避免下次恢复成过时内容。
-                if (raw == null || bytes > MaxEntryBytes) remove(key)
-                else writeRaw(key, entry, raw, bytes.toInt())
-                trim()
-                persistIndex(session)
+            val newBodyKey = if (raw != null && bytes <= MaxEntryBytes) "$key:${UUID.randomUUID()}" else null
+            if (newBodyKey != null && raw != null) {
+                check(storage.encode(newBodyKey, raw)) { "Unable to persist response cache body" }
             }
+            var oldBodyKeyToRemove: String? = null
+            try {
+                mutex.withLock {
+                    if (!valid()) {
+                        newBodyKey?.let(storage::removeValueForKey)
+                        return@withLock
+                    }
+                    prepare(session)
+                    if (!valid()) {
+                        newBodyKey?.let(storage::removeValueForKey)
+                        return@withLock
+                    }
+                    oldBodyKeyToRemove = entries[key]?.bodyKey
+                    if (newBodyKey == null) {
+                        removeMetadata(key)
+                    } else {
+                        putMetadata(key, Metadata(newBodyKey, bytes.toInt(), entry.accessedAt))
+                    }
+                    trim()
+                    persistIndex(session)
+                }
+            } catch (error: Throwable) {
+                newBodyKey?.let { runCatching { storage.removeValueForKey(it) } }
+                throw error
+            }
+            oldBodyKeyToRemove?.takeIf { it != newBodyKey }?.let { storage.removeValueForKey(it) }
         }
 
     suspend fun invalidate(session: String, key: String, valid: () -> Boolean) =
         withContext(Dispatchers.IO) {
+            var oldBodyKey: String? = null
+            var newBodyKey: String? = null
             mutex.withLock {
                 if (!valid()) return@withLock
                 prepare(session)
-                val entry = storage.decodeString(key)?.let(::decode) ?: return@withLock
-                if (entry.session == session) write(key, entry.copy(updatedAt = 0L))
+                val existing = entries[key]
+                val readKey = existing?.bodyKey ?: key
+                val entry = storage.decodeString(readKey)?.let(::decode) ?: return@withLock
+                if (entry.session != session) return@withLock
+                val updated = entry.copy(updatedAt = 0L)
+                val raw = json.encodeToString(Entry.serializer(), updated)
+                val bytes = raw.utf8Size().toInt()
+                val nextKey = "$key:${UUID.randomUUID()}"
+                check(storage.encode(nextKey, raw)) { "Unable to persist invalidated response" }
+                newBodyKey = nextKey
+                oldBodyKey = existing?.bodyKey ?: key.takeIf { it != nextKey }
+                putMetadata(key, Metadata(nextKey, bytes, updated.accessedAt))
+                trim()
+                persistIndex(session)
             }
+            oldBodyKey?.takeIf { it != newBodyKey }?.let { storage.removeValueForKey(it) }
         }
 
     suspend fun clearOtherSessions(session: String, valid: () -> Boolean) =
         withContext(Dispatchers.IO) { mutex.withLock { if (valid()) prepare(session) } }
 
+    fun sync() {
+        storage.sync()
+    }
+
     private fun prepare(session: String) {
         if (indexedSession == session) return
         if (indexedSession == null) {
-            val index =
-                storage.decodeString(IndexKey)?.let { raw ->
-                    try {
-                        json.decodeFromString(DiskIndex.serializer(), raw)
-                    } catch (_: IllegalArgumentException) {
-                        null
+            val index = storage.decodeString(IndexKey)?.let(::decodeIndex)
+            entries.clear()
+            totalBytes = 0L
+            val allKeys = storage.allKeys().orEmpty().toSet()
+            val orphans = mutableListOf<String>()
+            if (index != null && index.session == session && index.records.isNotEmpty()) {
+                val referencedBodies = HashSet<String>(index.records.size * 2)
+                for ((key, record) in index.records) {
+                    if (record.bodyKey in allKeys && record.bytes in 1..MaxEntryBytes) {
+                        putMetadata(key, Metadata(record.bodyKey, record.bytes, record.accessedAt))
+                        referencedBodies.add(record.bodyKey)
                     }
                 }
-            // 磁盘键的摘要包含会话。索引落盘前进程退出时，仅未登记的键需要读正文。
-            for (key in storage.allKeys().orEmpty()) {
-                if (key == IndexKey) continue
-                val bytes = storage.getValueActualSize(key)
-                val known = index?.accessedAt?.get(key)
-                val accessedAt =
-                    when {
-                        bytes !in 1..MaxEntryBytes -> null
-                        known != null -> known.takeIf { index.session == session }
-                        else ->
-                            storage
-                                .decodeString(key)
-                                ?.let(::decode)
-                                ?.takeIf { it.session == session }
-                                ?.accessedAt
+                for (diskKey in allKeys) {
+                    if (diskKey != IndexKey && diskKey !in referencedBodies) {
+                        orphans.add(diskKey)
                     }
-                if (accessedAt == null) remove(key) else entries[key] = Metadata(bytes, accessedAt)
+                }
+            } else {
+                // 旧版索引或无索引：只保留当前 session 的单键记录，清理旧会话及孤儿正文。
+                for (key in allKeys) {
+                    if (key == IndexKey) continue
+                    val bytes = storage.getValueActualSize(key)
+                    val known = index?.accessedAt?.get(key)
+                    val accessedAt =
+                        when {
+                            bytes !in 1..MaxEntryBytes -> null
+                            known != null -> known.takeIf { index?.session == session }
+                            else ->
+                                storage
+                                    .decodeString(key)
+                                    ?.let(::decode)
+                                    ?.takeIf { it.session == session }
+                                    ?.accessedAt
+                        }
+                    if (accessedAt == null) orphans.add(key)
+                    else {
+                        val logicalKey = key.substringBefore(':')
+                        putMetadata(logicalKey, Metadata(key, bytes, accessedAt))
+                    }
+                }
             }
+            if (orphans.isNotEmpty()) storage.removeValuesForKeys(orphans.toTypedArray())
         } else {
-            storage.removeValuesForKeys(entries.keys.toTypedArray())
+            val keysToDelete =
+                (entries.values.map { it.bodyKey } + entries.keys).distinct().toTypedArray()
+            if (keysToDelete.isNotEmpty()) storage.removeValuesForKeys(keysToDelete)
             entries.clear()
+            totalBytes = 0L
         }
         trim()
         persistIndex(session)
@@ -128,9 +232,20 @@ internal class ResponseCacheStore(provider: MMKVProvider, private val json: Json
     }
 
     private fun persistIndex(session: String) {
-        val index = DiskIndex(session, entries.mapValues { it.value.accessedAt })
+        val records =
+            entries.mapValues { (_, meta) ->
+                DiskIndexEntry(meta.bodyKey, meta.accessedAt, meta.bytes)
+            }
+        val index = DiskIndex(session = session, records = records)
         storage.encode(IndexKey, json.encodeToString(DiskIndex.serializer(), index))
     }
+
+    private fun decodeIndex(raw: String): DiskIndex? =
+        try {
+            json.decodeFromString(DiskIndex.serializer(), raw)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 
     private fun decode(raw: String): Entry? =
         try {
@@ -139,30 +254,25 @@ internal class ResponseCacheStore(provider: MMKVProvider, private val json: Json
             null
         }
 
-    private fun write(key: String, entry: Entry) {
-        val raw = json.encodeToString(Entry.serializer(), entry)
-        writeRaw(key, entry, raw, raw.utf8Size().toInt())
+    private fun putMetadata(key: String, meta: Metadata) {
+        val previous = entries.put(key, meta)
+        if (previous != null) totalBytes -= previous.bytes
+        totalBytes += meta.bytes
     }
 
-    private fun writeRaw(key: String, entry: Entry, raw: String, bytes: Int) {
-        check(storage.encode(key, raw)) { "Unable to persist response cache" }
-        entries[key] = Metadata(bytes, entry.accessedAt)
+    private fun removeMetadata(key: String) {
+        val removed = entries.remove(key) ?: return
+        totalBytes -= removed.bytes
+        storage.removeValueForKey(removed.bodyKey)
     }
 
     private fun trim() {
-        var bytes = entries.values.sumOf { it.bytes.toLong() }
-        if (entries.size <= MaxEntries && bytes <= MaxBytes) return
+        if (entries.size <= MaxEntries && totalBytes <= MaxBytes) return
         val oldest = entries.entries.sortedBy { it.value.accessedAt }.iterator()
-        while ((entries.size > MaxEntries || bytes > MaxBytes) && oldest.hasNext()) {
+        while ((entries.size > MaxEntries || totalBytes > MaxBytes) && oldest.hasNext()) {
             val entry = oldest.next()
-            bytes -= entry.value.bytes
-            remove(entry.key)
+            removeMetadata(entry.key)
         }
-    }
-
-    private fun remove(key: String) {
-        storage.removeValueForKey(key)
-        entries.remove(key)
     }
 
     companion object {

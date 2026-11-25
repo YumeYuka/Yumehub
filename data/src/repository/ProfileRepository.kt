@@ -19,9 +19,12 @@ import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
 import moe.yumeyuka.yumehub.data.api.dto.ProfileOrganizationDto
 import moe.yumeyuka.yumehub.data.api.dto.ProfileSocialAccountDto
 import moe.yumeyuka.yumehub.data.api.dto.ProfileStatusDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 /**
@@ -39,12 +42,15 @@ class ProfileRepository(
     val account: String
         get() = tokenStore.accountLogin.value
 
+    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
     fun resource(account: String): CachedResource<ProfileDto> =
         cache.resource(
             account = account,
             key = "viewer-profile.v3",
             serializer = ProfileDto.serializer(),
             maxAgeMillis = 5 * 60_000L,
+            tags = setOf(CacheTag(DataDomain.Profile, null)),
         )
 
     fun refresh(account: String, force: Boolean = false) =
@@ -55,6 +61,7 @@ class ProfileRepository(
             account = account,
             key = "following-state:${login.lowercase(java.util.Locale.ROOT)}",
             serializer = Boolean.serializer(),
+            tags = setOf(relationshipCacheTag(login)),
         )
 
     fun relationshipChanged(account: String) {
@@ -134,6 +141,12 @@ class ProfileRepository(
 
     suspend fun loadUser(login: String, nodeId: String? = null): ProfileDto =
         loadProfile(account, login, nodeId)
+
+    suspend fun loadUserForAccount(
+        expected: String,
+        login: String,
+        nodeId: String? = null,
+    ): ProfileDto = loadProfile(expected, login, nodeId)
 
     private suspend fun load(expected: String): ProfileDto {
         val generation = tokenStore.sessionGeneration.value
@@ -285,7 +298,7 @@ class ProfileException(message: String = "GitHub profile response was not usable
 /** 用户不存在、被停用或当前账号不可访问；不能据此区分封禁与注销。 */
 class ProfileUnavailableException : Exception("GitHub user is unavailable")
 
-private fun ProfileQueryUser.toProfile(): ProfileDto {
+internal fun ProfileQueryUser.toProfile(): ProfileDto {
     val profileReadme = profileReadme?.takeIf { showProfileReadme != false }
     val isOrganization = type == "Organization"
     return ProfileDto(
@@ -297,7 +310,7 @@ private fun ProfileQueryUser.toProfile(): ProfileDto {
         company = company,
         location = location,
         websiteUrl = websiteUrl,
-        email = email,
+        email = if (isOrganization) organizationEmail else userEmail,
         status =
             status?.let {
                 ProfileStatusDto(
@@ -339,7 +352,7 @@ private fun ProfileQueryUser.toProfile(): ProfileDto {
 @Serializable private data class ProfileQueryData(val user: ProfileQueryUser? = null)
 
 @Serializable
-private data class ProfileQueryUser(
+internal data class ProfileQueryUser(
     @SerialName("__typename") val type: String? = null,
     val id: String? = null,
     val login: String? = null,
@@ -350,7 +363,8 @@ private data class ProfileQueryUser(
     val company: String? = null,
     val location: String? = null,
     val websiteUrl: String? = null,
-    val email: String? = null,
+    @SerialName("userEmail") val userEmail: String? = null,
+    @SerialName("organizationEmail") val organizationEmail: String? = null,
     val status: ProfileQueryStatus? = null,
     val socialAccounts: ProfileQuerySocialAccounts? = null,
     val achievements: ProfileQueryAchievements? = null,
@@ -366,7 +380,7 @@ private data class ProfileQueryUser(
 )
 
 @Serializable
-private data class ProfileQueryStatus(
+internal data class ProfileQueryStatus(
     val emoji: String? = null,
     val message: String? = null,
     val indicatesLimitedAvailability: Boolean = false,
@@ -375,7 +389,7 @@ private data class ProfileQueryStatus(
 )
 
 @Serializable
-private data class ProfileQueryOrganization(
+internal data class ProfileQueryOrganization(
     val id: String? = null,
     val login: String? = null,
     val name: String? = null,
@@ -391,28 +405,28 @@ private data class ProfileQueryViewer(val organizations: ProfileQueryOrganizatio
 private data class ProfileQueryOrganizations(val nodes: List<ProfileQueryOrganization>? = null)
 
 @Serializable
-private data class ProfileQuerySocialAccounts(val nodes: List<ProfileQuerySocialAccount>? = null)
+internal data class ProfileQuerySocialAccounts(val nodes: List<ProfileQuerySocialAccount>? = null)
 
-@Serializable private data class ProfileQuerySocialAccount(val url: String? = null)
-
-@Serializable
-private data class ProfileQueryAchievements(val nodes: List<ProfileQueryAchievement>? = null)
+@Serializable internal data class ProfileQuerySocialAccount(val url: String? = null)
 
 @Serializable
-private data class ProfileQueryAchievement(
+internal data class ProfileQueryAchievements(val nodes: List<ProfileQueryAchievement>? = null)
+
+@Serializable
+internal data class ProfileQueryAchievement(
     val achievable: ProfileQueryAchievable? = null,
     val tier: ProfileQueryAchievementTier? = null,
 )
 
 @Serializable
-private data class ProfileQueryAchievable(val name: String? = null, val slug: String? = null)
+internal data class ProfileQueryAchievable(val name: String? = null, val slug: String? = null)
 
-@Serializable private data class ProfileQueryAchievementTier(val badgeImageUrl: String? = null)
+@Serializable internal data class ProfileQueryAchievementTier(val badgeImageUrl: String? = null)
 
-@Serializable private data class ProfileQueryTotalCount(val totalCount: Int? = null)
+@Serializable internal data class ProfileQueryTotalCount(val totalCount: Int? = null)
 
 @Serializable
-private data class ProfileQueryReadme(val contentHTML: String? = null, val path: String? = null)
+internal data class ProfileQueryReadme(val contentHTML: String? = null, val path: String? = null)
 
 private fun ProfileQueryOrganization.toOrganizationOrNull(): ProfileOrganizationDto? =
     id?.takeIf { it.isNotBlank() }
@@ -458,7 +472,7 @@ private fun userProfileQuery(
           company
           location
           websiteUrl
-          email
+          userEmail: email
           status {
             emoji
             message
@@ -489,7 +503,7 @@ private fun userProfileQuery(
           bio: description
           location
           websiteUrl
-          email
+          organizationEmail: email
           repositories { totalCount }
         }
       }

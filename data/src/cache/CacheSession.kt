@@ -18,6 +18,9 @@ internal class CacheSession {
     var accountReady = CompletableDeferred<String>()
         private set
 
+    /** 旧账号列表缺会话 ID 且迁移保存失败时，本进程禁用持久响应/分页缓存。 */
+    var persistenceEnabled = true
+
     private var signedOut = false
     val listeners = mutableSetOf<() -> Unit>()
 
@@ -30,12 +33,12 @@ internal class CacheSession {
         listeners.toList().forEach { it() }
     }
 
-    fun bind(login: String, nextId: () -> String) {
+    fun bind(login: String, nextId: () -> String, renew: Boolean = false) {
         val normalized =
             normalizeAccount(login).ifBlank {
                 return
             }
-        if (account == normalized) return
+        if (account == normalized && !renew) return
         // 空账号首次绑定也换 ID，隔离退出时元数据写入失败留下的旧快照。
         // 不增加 generation，使启动阶段已创建的同账号 placeholder 仍能认领会话。
         id = nextId()

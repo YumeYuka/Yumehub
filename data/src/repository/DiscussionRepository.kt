@@ -8,6 +8,8 @@ import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.workCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 @Serializable
@@ -72,6 +74,7 @@ class DiscussionRepository(
     private val tokens: TokenStore,
     private val cache: CachedDataRepository,
 ) {
+  suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
   suspend fun addComment(account: String, discussionId: String, parentId: String?, body: String) {
     val session = GithubGraphQlSession(api, tokens, account)
     val data =
@@ -91,6 +94,12 @@ class DiscussionRepository(
     session.ensureCurrent()
     cache.changes(account).publish(DataDomain.Work)
   }
+
+  suspend fun setUpvote(
+      account: String,
+      discussionId: String,
+      targetUpvoted: Boolean,
+  ): Pair<Boolean, Int> = toggleUpvote(account, discussionId, !targetUpvoted)
 
   suspend fun toggleUpvote(
       account: String,
@@ -183,6 +192,7 @@ class DiscussionRepository(
               account,
               "discussion-detail.v5:${owner.lowercase()}/${name.lowercase()}:$number:${parentId.orEmpty()}",
               GithubDiscussionDetail.serializer(),
+              tags = setOf(workCacheTag("Discussion", owner, name, number)),
           )
           .await { loadNetwork(account, owner, name, number, parentId) }
 

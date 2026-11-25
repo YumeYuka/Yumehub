@@ -11,9 +11,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import moe.yumeyuka.yumehub.data.storage.mmkv.CacheInvalidationStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.MMKVProvider
+import moe.yumeyuka.yumehub.data.storage.mmkv.PendingMutationStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.ResponseCacheStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
@@ -22,14 +25,22 @@ class CachedDataRepository(
     tokenStore: TokenStore,
     provider: MMKVProvider,
     internal val json: Json,
+    private val syncSecondaryStores: () -> Unit = {},
 ) : AutoCloseable {
     private val session = tokenStore.responseCacheSession
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     internal val store = ResponseCacheStore(provider, json)
+    internal val invalidationStore = CacheInvalidationStore(provider, json)
+    internal val pendingMutations = PendingMutationStore(provider, json)
+    internal val twoFactorRegistrations =
+        moe.yumeyuka.yumehub.data.storage.mmkv.TwoFactorRegistrationStore(provider, json)
+    internal val writeQueue = CacheWriteQueue(scope)
     private val collected = ReferenceQueue<CachedResource<*>>()
     private val resources = mutableMapOf<ResourceKey, ResourceReference>()
-    private val recent = LinkedHashMap<ResourceKey, CachedResource<*>>(16, 0.75f, true)
+    private val recent = LinkedHashMap<ResourceKey, Pair<CachedResource<*>, Long>>(16, 0.75f, true)
+    private var recentBytes = 0L
     private val runtimes = mutableMapOf<ResourceKey, Runtime>()
+    private val invalidationListeners = mutableListOf<(String, Set<CacheTag>) -> Unit>()
     private var closed = false
     private val sessionListener: () -> Unit = ::onSessionChanged
     private val initialized: Deferred<Unit>
@@ -48,6 +59,7 @@ class CachedDataRepository(
         key: String,
         serializer: KSerializer<T>,
         maxAgeMillis: Long = 60_000L,
+        tags: Set<CacheTag> = emptySet(),
     ): CachedResource<T> = locked {
         check(!closed) { "Response cache is closed" }
         require(maxAgeMillis >= 0L) { "Cache age must not be negative" }
@@ -61,6 +73,7 @@ class CachedDataRepository(
                 }
                 // 同一资源收到不同 TTL 时取更严格值，不生成另一个状态源。
                 existing.maxAgeMillis = minOf(existing.maxAgeMillis, maxAgeMillis)
+                existing.mergeTags(tags)
                 @Suppress("UNCHECKED_CAST") (existing as CachedResource<T>)
             } else {
                 CachedResource(
@@ -70,17 +83,44 @@ class CachedDataRepository(
                         serializer,
                         maxAgeMillis,
                         session.generation,
+                        tags,
                     )
                     .also { resources[identity] = ResourceReference(identity, it, collected) }
             }
-        recent[identity] = resource
-        while (recent.size > MaxRecentResources) {
+        rememberRecent(identity, resource)
+        resource
+    }
+
+    private fun rememberRecent(identity: ResourceKey, resource: CachedResource<*>, bytes: Long = 0L) {
+        if (bytes > MaxRecentBytes) {
+            recent.remove(identity)?.let { recentBytes -= it.second }
+            return
+        }
+        val previous = recent.put(identity, resource to bytes)
+        if (previous != null) recentBytes -= previous.second
+        recentBytes += bytes
+        while (recent.size > MaxRecentResources || recentBytes > MaxRecentBytes) {
             // 只释放仓库的强引用。页面、flow 或请求仍持有资源时，弱索引保持其唯一性。
             val oldest = recent.entries.iterator()
-            oldest.next()
+            if (!oldest.hasNext()) break
+            val entry = oldest.next()
+            recentBytes -= entry.value.second
             oldest.remove()
         }
-        resource
+    }
+
+    internal fun recordRecentSize(account: String, key: String, bytes: Long) {
+        locked {
+            if (closed) return@locked
+            val identity = ResourceKey(normalizeAccount(account), key)
+            val existing = recent[identity]?.first ?: resources[identity]?.get() ?: return@locked
+            rememberRecent(identity, existing, bytes)
+        }
+    }
+
+    internal fun syncCacheStores() {
+        store.sync()
+        syncSecondaryStores()
     }
 
     /**
@@ -148,7 +188,7 @@ class CachedDataRepository(
             val resource = reference.get()
             if (resource == null || !isCurrent(key.account, resource.generation)) {
                 resource?.clearSession()
-                recent.remove(key)
+                recent.remove(key)?.let { recentBytes -= it.second }
                 iterator.remove()
             }
         }
@@ -181,13 +221,100 @@ class CachedDataRepository(
     fun changes(account: String): DataChanges =
         sessionResource(account, "data-changes-v1") { DataChanges() }
 
-    /** 保留已显示的数据；使同会话内已创建的相关响应在下一次读取时重新校验。 */
-    fun invalidateMatching(account: String, matches: (String) -> Boolean) {
-        locked {
-            val normalized = normalizeAccount(account)
-            resources.entries.toList().forEach { (key, reference) ->
-                if (key.account == normalized && matches(key.key)) reference.get()?.invalidate()
+    /** 每账号一个会话级写协调器；页面只订阅其状态，不创建第二套队列。 */
+    suspend fun mutations(account: String): MutationCoordinator =
+        withContext(Dispatchers.IO) {
+            val generation = locked {
+                if (!isCurrent(account, session.generation)) throw expiredSession()
+                session.generation
             }
+            sessionResource(account, "mutation-coordinator-v1") { scope ->
+                MutationCoordinator(
+                    normalizeAccount(account),
+                    generation,
+                    this@CachedDataRepository,
+                    pendingMutations,
+                    json,
+                    scope,
+                )
+            }
+        }
+
+    /**
+     * 立即推进相关资源的会话内版本并取消旧读；磁盘正文保留，供过期显示和下次强制校验。
+     * 具体 subject 失效同时影响该 domain 的全域视图；null 失效影响整个 domain。
+     */
+    fun invalidate(account: String, tags: Set<CacheTag>) {
+        invalidate(account, tags, notifyListeners = true)
+    }
+
+    private fun invalidate(account: String, tags: Set<CacheTag>, notifyListeners: Boolean) {
+        if (tags.isEmpty()) return
+        val listeners =
+            locked {
+                val normalized = normalizeAccount(account)
+                resources.entries.toList().forEach { (key, reference) ->
+                    if (key.account != normalized) return@forEach
+                    val resource = reference.get() ?: return@forEach
+                    if (resource.matches(tags)) resource.invalidate()
+                }
+                if (notifyListeners) invalidationListeners.toList() else emptyList()
+            }
+        listeners.forEach { listener ->
+            runCatching { listener(account, tags) }
+        }
+    }
+
+    /** 供分页等会话级视图在 domain 级失效后自行重读；异常不影响缓存失效。 */
+    internal fun addInvalidationListener(listener: (String, Set<CacheTag>) -> Unit) {
+        locked { invalidationListeners.add(listener) }
+    }
+
+    /** 等待失效屏障持久完成后再返回；网络写入必须在发送前等待它。 */
+    suspend fun persistInvalidation(account: String, tags: Set<CacheTag>) {
+        if (tags.isEmpty()) return
+        val at = System.currentTimeMillis().coerceAtLeast(1L)
+        invalidate(account, tags)
+        writeQueue.run { invalidationStore.mark(account, tags, at) }
+    }
+
+    /** 发送前屏障：失效内存读，但列表重读等确认后的失效再触发。 */
+    internal suspend fun prepareInvalidation(account: String, tags: Set<CacheTag>) {
+        if (tags.isEmpty()) return
+        val at = System.currentTimeMillis().coerceAtLeast(1L)
+        invalidate(account, tags, notifyListeners = false)
+        writeQueue.run { invalidationStore.mark(account, tags, at) }
+    }
+
+    /** 已确认操作后的失效：内存立即生效，磁盘屏障由单写队列异步落盘。 */
+    internal fun invalidateAndPersist(account: String, tags: Set<CacheTag>) {
+        if (tags.isEmpty()) return
+        val at = System.currentTimeMillis().coerceAtLeast(1L)
+        invalidate(account, tags)
+        scope.launch { runCatching { writeQueue.run { invalidationStore.mark(account, tags, at) } } }
+    }
+
+    internal suspend fun stale(account: String, diskTags: List<String>, checkedAt: Long): Boolean =
+        invalidationStore.stale(account, diskTags, checkedAt)
+
+    internal fun persistenceEnabled(account: String, generation: Long): Boolean =
+        isCurrent(account, generation) && locked { session.persistenceEnabled }
+
+    internal fun sessionGeneration(): Long = locked { session.generation }
+
+    /** 当前会话的分页/快照读取也使用同一账号校验，不依赖旧的持久 revision。 */
+    internal suspend fun sessionId(account: String): String {
+        initialized.await()
+        val binding = locked {
+            if (!isCurrent(account, session.generation)) throw expiredSession()
+            session.accountReady
+        }
+        val boundAccount = binding.await()
+        return locked {
+            if (!isCurrent(account, session.generation) || boundAccount != account) {
+                throw expiredSession()
+            }
+            checkNotNull(session.id)
         }
     }
 
@@ -206,8 +333,11 @@ class CachedDataRepository(
             resources.values.forEach { it.get()?.clearSession() }
             resources.clear()
             recent.clear()
+            recentBytes = 0L
             runtimes.values.forEach { it.job.cancel() }
             runtimes.clear()
+            invalidationListeners.clear()
+            writeQueue.close()
             scope.cancel()
         }
     }
@@ -231,6 +361,7 @@ class CachedDataRepository(
 
     private companion object {
         const val MaxRecentResources = 64
+        const val MaxRecentBytes = 16L * 1024 * 1024
     }
 }
 
