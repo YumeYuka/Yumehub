@@ -74,7 +74,12 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         searchVisible, searchInput, { searchInput = it }, viewModel::search,
         dismissSearch, strings.Profile.SearchStarred,
     ) {
-        GithubPagingContent(viewModel.repositories, contentKey = Triple(login, selectedList?.id, search)) { paging ->
+        GithubPagingContent(
+            viewModel.repositories,
+            contentKey = Triple(login, selectedList?.id, search),
+            revalidation = viewModel.revalidation,
+            onRetryRevalidation = viewModel::retryRevalidation,
+        ) { paging ->
             val repositories = paging.items
             val slots =
                 rememberGithubPagingSlots(repositories, "starred", paging.initialLoading) {
@@ -144,11 +149,13 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
             createVisible = true
         },
     )
+    val createUncertain by viewModel.createUncertain.collectAsStateWithLifecycle()
     StarredListCreateSheet(
         visible = createVisible,
         name = listName,
         creating = creating,
         failed = createFailed,
+        uncertain = createUncertain,
         onNameChange = { listName = it },
         onDismiss = { createVisible = false },
         onCreate = {
@@ -160,5 +167,6 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                 }
             }
         },
+        onAcknowledgeUncertain = viewModel::acknowledgeCreateUncertain,
     )
 }

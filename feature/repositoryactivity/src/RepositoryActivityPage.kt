@@ -68,6 +68,8 @@ fun RepositoryActivityPage(
     GithubActivityListPage(
         title = title,
         source = viewModel.items,
+        revalidation = viewModel.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
         icon =
             when (route.kind) {
                 RepositoryActivityKind.PersonalProjects,
@@ -86,10 +88,25 @@ fun RepositoryActivityPage(
 }
 
 internal class RepositoryActivityViewModel(
-    source: RepositoryActivityRepository,
-    route: RepositoryActivityRoute,
-    account: String,
+    private val source: RepositoryActivityRepository,
+    private val route: RepositoryActivityRoute,
+    private val account: String,
 ) : ViewModel() {
+    private val pagingKey =
+        source.itemsKey(
+            route.owner,
+            route.name,
+            route.kind,
+            route.nodeId,
+            route.projectNumber,
+            route.organization,
+        )
+    val revalidation = source.revalidation(account, pagingKey)
+
+    fun retryRevalidation() {
+        source.retryRevalidation(account, pagingKey)
+    }
+
     val items =
         source
             .items(
@@ -109,6 +126,6 @@ val repositoryActivityFeatureModule = module {
         RepositoryActivityViewModel(get(), route, account)
     }
     viewModel { (route: RepositoryActivityRoute, account: String) ->
-        DiscussionListViewModel(get(), route, account)
+        DiscussionListViewModel(get(), route, account, get())
     }
 }

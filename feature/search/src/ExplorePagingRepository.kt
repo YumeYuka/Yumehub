@@ -19,8 +19,10 @@ import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.api.dto.workTarget
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.repository.GraphQlSearchRepository
-import moe.yumeyuka.yumehub.data.repository.PagingContext
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
+import moe.yumeyuka.yumehub.data.repository.PagingContext
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.PagingSnapshot
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
 import moe.yumeyuka.yumehub.data.repository.SearchSlice
@@ -35,6 +37,12 @@ internal class ExplorePagingRepository(
         paging.invalidate(account, key(query, category))
     }
 
+    fun revalidation(account: String, query: String, category: ExploreCategory) =
+        paging.revalidation(account, key(query, category))
+
+    fun retryRevalidation(account: String, query: String, category: ExploreCategory) =
+        paging.retryRevalidation(account, key(query, category))
+
     fun search(account: String, query: String, category: ExploreCategory): ExploreSearch {
         val queryKey = key(query, category)
         val summary =
@@ -45,10 +53,20 @@ internal class ExplorePagingRepository(
             map: (T) -> ExploreResult?,
             fetch: suspend (String?) -> SearchSlice<T>,
         ) =
-            paging.pages(account, queryKey) { context ->
+            paging.pages(
+                account,
+                queryKey,
+                tags = setOf(CacheTag(DataDomain.Repositories, null)),
+            ) { context ->
                 SearchPagingSource(
                     context,
-                    paging.snapshot(account, queryKey, serializer, context),
+                    paging.snapshot(
+                        account,
+                        queryKey,
+                        serializer,
+                        context,
+                        tags = setOf(CacheTag(DataDomain.Repositories, null)),
+                    ),
                     summary,
                     key,
                     map,
@@ -166,10 +184,12 @@ private class SearchPagingSource<T : Any>(
                 if (initial == null) {
                     network(params.key ?: 1, params !is LoadParams.Refresh || context.forceRefresh)
                 } else {
-                    context.revalidate(this) {
-                        val updated = network(1, force = true, cursors = mutableMapOf(1 to null))
-                        snapshot.save(updated)
-                        initial != updated.copy(updatedAt = initial.updatedAt)
+                    if (!initial.isFresh()) {
+                        context.revalidate(this) {
+                            val updated = network(1, force = true, cursors = mutableMapOf(1 to null))
+                            snapshot.save(updated)
+                            initial != updated.copy(updatedAt = initial.updatedAt)
+                        }
                     }
                     initial
                 }

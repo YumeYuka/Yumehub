@@ -24,6 +24,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.serializer
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentTimeoutException
 import moe.yumeyuka.yumehub.data.repository.RepositoryTextContent
@@ -34,6 +41,7 @@ import moe.yumeyuka.yumehub.data.repository.WorkspacesGraphQlException
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesTimeoutException
 import moe.yumeyuka.yumehub.data.repository.isRepositoryContentPath
+import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
 import moe.yumeyuka.yumehub.locale.GithubTxt
@@ -87,6 +95,7 @@ internal class WorkspacesViewModel(
     private val contentRepository: RepositoryContentRepository,
     private val tokenStore: TokenStore,
     private val route: WorkspacesRoute,
+    private val draftStore: CommentDraftStore? = null,
 ) : ViewModel() {
     private val strings: GithubStrings_Workspaces
         get() = GithubTxt.current.Workspaces
@@ -618,6 +627,7 @@ internal class WorkspacesViewModel(
                 onSourceChange = { source ->
                     if (current() && activeSha != null && !saving) {
                         draft = source
+                        draftStore?.save(account, fileDraftKey(ref, editorPath), source)
                         activeSession?.update(submitEnabled = source != originalSource)
                     }
                 },
@@ -676,12 +686,13 @@ internal class WorkspacesViewModel(
                                         } else {
                                             activeSha = raw.sha
                                             originalSource = text
-                                            draft = text
+                                            val restored = draftStore?.loadOrNull(account, fileDraftKey(ref, targetPath))
+                                            draft = restored ?: text
                                             session.readHtml = null
                                             session.update(
-                                                source = text,
+                                                source = draft,
                                                 editable = true,
-                                                submitEnabled = false,
+                                                submitEnabled = draft != text,
                                             )
                                         }
                                     } catch (error: CancellationException) {
@@ -810,6 +821,16 @@ internal class WorkspacesViewModel(
         return true
     }
 
+    private fun fileDraftKey(ref: String, path: String): String =
+        "workspace-file/${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}/$ref/$path"
+
+    private fun saveFileKey(ref: String, path: String) =
+        MutationKey(
+            MutationKind.FILE_COMMIT,
+            "${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}:$ref:$path",
+            String.serializer(),
+        )
+
     private fun saveFile(ref: String, headline: String, body: String) {
         val path = activePath ?: return
         val sha = activeSha ?: return
@@ -828,82 +849,145 @@ internal class WorkspacesViewModel(
         val generation = accountGeneration
         val token = tokenStore.accessToken.value
         val submittedText = draft
+        val draftKey = fileDraftKey(ref, path)
+        val commitKey = saveFileKey(ref, path)
+        val tags =
+            setOf(
+                CacheTag(DataDomain.Repositories, null),
+                repositoryCacheTag(route.owner, route.name),
+            )
         saving = true
         session.update(submitting = true, submitEnabled = false, error = null)
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
-            try {
-                val blob =
-                    withTimeout(RequestTimeoutMillis) {
-                        workspacesRepository.commitFile(
-                            account,
-                            route.owner,
-                            route.name,
-                            ref,
-                            path,
-                            sha,
-                            submittedText,
-                            headline.trim(),
-                            body,
-                        )
-                    }
-                ensureActive()
-                if (
-                    !isCurrentAccount(account) ||
-                        generation != accountGeneration ||
-                        token != tokenStore.accessToken.value
-                ) {
-                    throw CancellationException("Workspaces account changed")
-                }
-                val saved =
-                    RepositoryTextContent(
-                        text = submittedText,
-                        htmlUrl = fileHtmlUrl(ref.removePrefix("refs/heads/"), path),
-                        sha = blob,
-                        path = path,
+            val savedDraft = draftStore?.saveConfirmed(account, draftKey, submittedText) ?: true
+            if (!savedDraft) {
+                saving = false
+                if (isCurrentAccount(account) && generation == accountGeneration) {
+                    session.update(
+                        submitting = false,
+                        submitEnabled = true,
+                        error = GithubTxt.current.Common.MutationNotSubmitted,
                     )
-                contentRepository.fileSaved(
-                    account = account,
-                    owner = route.owner,
-                    name = route.name,
-                    ref = ref,
-                    path = path,
-                    content = saved,
-                )
-                originalSource = submittedText
-                saving = false
-                session.update(
-                    source = submittedText,
-                    editable = false,
-                    submitting = false,
-                    submitEnabled = false,
-                    error = null,
-                )
-                session.complete()
-                mutableEvents.tryEmit(WorkspacesEvent.Saved)
-                if (mutableUiState.value.ref == ref) {
-                    directoryCache.remove(mutableUiState.value.path)
-                    loadDirectory(mutableUiState.value.path, ref, force = true)
                 }
-            } catch (_: TimeoutCancellationException) {
-                saving = false
-                if (!isCurrentAccount(account) || generation != accountGeneration) return@launch
-                session.update(
-                    submitting = false,
-                    submitEnabled = true,
-                    error = GithubTxt.current.Repository.RequestTimeout,
+                return@launch
+            }
+            val coord = workspacesRepository.mutations(account)
+            var capturedError: Exception? = null
+            val accepted =
+                coord.submitCommand(
+                    key = commitKey,
+                    tags = tags,
+                    send = {
+                        try {
+                            withTimeout(RequestTimeoutMillis) {
+                                workspacesRepository.commitFile(
+                                    account,
+                                    route.owner,
+                                    route.name,
+                                    ref,
+                                    path,
+                                    sha,
+                                    submittedText,
+                                    headline.trim(),
+                                    body,
+                                )
+                            }
+                        } catch (_: TimeoutCancellationException) {
+                            val timeout = WorkspacesTimeoutException()
+                            capturedError = timeout
+                            throw timeout
+                        } catch (error: Exception) {
+                            capturedError = error
+                            throw error
+                        }
+                    },
+                    readBack = { null },
                 )
-            } catch (error: CancellationException) {
+            if (!accepted) {
                 saving = false
-                throw error
-            } catch (error: Exception) {
-                saving = false
-                if (!isCurrentAccount(account) || generation != accountGeneration) return@launch
-                session.update(
-                    submitting = false,
-                    submitEnabled = true,
-                    error = error.writeErrorMessage(),
-                )
+                if (isCurrentAccount(account) && generation == accountGeneration) {
+                    session.update(
+                        submitting = false,
+                        submitEnabled = false,
+                        error = GithubTxt.current.Common.MutationUncertain,
+                    )
+                }
+                return@launch
+            }
+            coord.observeCommand(commitKey).collect { cmd ->
+                when (cmd.phase) {
+                    WritePhase.PENDING -> Unit
+                    WritePhase.IDLE -> {
+                        val blob = cmd.result ?: return@collect
+                        saving = false
+                        draftStore?.remove(account, draftKey)
+                        if (
+                            !isCurrentAccount(account) ||
+                                generation != accountGeneration ||
+                                token != tokenStore.accessToken.value
+                        ) {
+                            return@collect
+                        }
+                        val saved =
+                            RepositoryTextContent(
+                                text = submittedText,
+                                htmlUrl = fileHtmlUrl(ref.removePrefix("refs/heads/"), path),
+                                sha = blob,
+                                path = path,
+                            )
+                        contentRepository.fileSaved(
+                            account = account,
+                            owner = route.owner,
+                            name = route.name,
+                            ref = ref,
+                            path = path,
+                            content = saved,
+                        )
+                        originalSource = submittedText
+                        session.update(
+                            source = submittedText,
+                            editable = false,
+                            submitting = false,
+                            submitEnabled = false,
+                            error = null,
+                        )
+                        session.complete()
+                        mutableEvents.tryEmit(WorkspacesEvent.Saved)
+                        if (mutableUiState.value.ref == ref) {
+                            directoryCache.remove(mutableUiState.value.path)
+                            loadDirectory(mutableUiState.value.path, ref, force = true)
+                        }
+                        return@collect
+                    }
+                    WritePhase.REJECTED -> {
+                        saving = false
+                        val error = capturedError
+                        val errorMessage =
+                            error?.writeErrorMessage()
+                                ?: cmd.message
+                                ?: GithubTxt.current.Common.MutationNotSubmitted
+                        if (isCurrentAccount(account) && generation == accountGeneration) {
+                            session.update(
+                                submitting = false,
+                                submitEnabled = true,
+                                error = errorMessage,
+                            )
+                        }
+                        return@collect
+                    }
+                    WritePhase.UNCERTAIN -> {
+                        saving = false
+                        if (isCurrentAccount(account) && generation == accountGeneration) {
+                            session.update(
+                                submitting = false,
+                                submitEnabled = false,
+                                error = GithubTxt.current.Common.MutationUncertain,
+                            )
+                        }
+                        return@collect
+                    }
+                }
             }
         }
     }

@@ -6,16 +6,25 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.LazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
+import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.ThreadWindowState
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEntry
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -64,23 +73,49 @@ internal fun LazyListScope.CollaborationDetailScreen(
   }
   if (state.submissionUncertain) {
     item(key = "collaboration-submission-recovery") {
-      GithubSection(LocalGithubStrings.current.WorkDetail.RecoveryTitle) {
+      val strings = LocalGithubStrings.current
+      var acknowledgeVisible by remember { mutableStateOf(false) }
+      GithubSection(strings.WorkDetail.RecoveryTitle) {
         GlasmioListRow(
-            title = LocalGithubStrings.current.WorkDetail.SubmissionUncertain,
-            subtitle = LocalGithubStrings.current.WorkDetail.RecoveryMessage,
+            title = strings.WorkDetail.SubmissionUncertain,
+            subtitle = strings.WorkDetail.RecoveryMessage,
             systemName = null,
         )
         GlasmioListRow(
-            title = LocalGithubStrings.current.Repository.Refresh,
+            title = strings.Common.MutationReconcile,
             systemName = null,
             onClick = viewModel::refresh,
         )
         GlasmioButton(
-            onClick = viewModel::acknowledgeSubmissionResult,
+            onClick = { acknowledgeVisible = true },
             enabled = !state.loading,
         ) {
-          Text(LocalGithubStrings.current.WorkDetail.Acknowledged)
+          Text(strings.Common.MutationAcknowledged)
         }
+      }
+      if (acknowledgeVisible) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = strings.Common.MutationUncertain,
+            message = strings.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        strings.Common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        strings.Common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            viewModel.acknowledgeSubmissionResult()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
       }
     }
   }
@@ -143,6 +178,24 @@ internal fun LazyListScope.CollaborationDetailScreen(
   }
 
   if (entrySlots == null || entries == null) return
+  val revalidationFlow =
+      viewModel.entriesRevalidation(state.section, state.item?.head?.sha)
+  if (revalidationFlow != null) {
+    item(key = "work-section-sync-failed:${state.section.name}") {
+      val syncState by revalidationFlow.collectAsStateWithLifecycle()
+      if (syncState is RevalidationState.Failed) {
+        val common = LocalGithubStrings.current.Common
+        GlasmioGroupedList {
+          GlasmioListRow(
+              title = common.CacheSyncFailed,
+              detail = common.Retry,
+              showDisclosure = false,
+              onClick = { viewModel.retryEntriesRevalidation(state.section, state.item?.head?.sha) },
+          )
+        }
+      }
+    }
+  }
   githubPagingItems(
       entrySlots,
       contentType = "work-${state.section}",

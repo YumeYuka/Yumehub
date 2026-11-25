@@ -1,5 +1,8 @@
 package moe.yumeyuka.yumehub.feature.actions
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -8,69 +11,41 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RotateCcw
 import io.github.yumeyucca.lucide.X
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-import moe.yumeyuka.yumehub.data.repository.WorkflowRepository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 
 @Composable
 internal fun WorkflowRerunSheet(
-    repo: WorkflowRepository,
-    account: String,
-    suite: String,
-    onBusy: (Boolean) -> Unit,
+    busy: Boolean,
+    uncertain: Boolean,
     onClose: () -> Unit,
-    onResult: (Boolean) -> Unit,
+    onRerun: (debug: Boolean) -> Unit,
+    onAcknowledgeUncertain: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current
     val activity = strings.Activity
-    val scope = rememberCoroutineScope()
     var debug by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
-    val sheet =
-        rememberGlasmioSheetState(skipPartiallyExpanded = true) {
-            it != GlasmioSheetValue.Hidden || !busy
-        }
+    var acknowledgeVisible by remember { mutableStateOf(false) }
+    val sheet = rememberGlasmioSheetState(skipPartiallyExpanded = true)
     GlasmioBottomSheet(
-        onDismissRequest = { if (!busy) onClose() },
+        onDismissRequest = onClose,
         sheetState = sheet,
         fitContent = true,
-        dismissOnBackPress = !busy,
-        dismissOnClickOutside = !busy,
+        dismissOnBackPress = true,
+        dismissOnClickOutside = true,
         title = activity.RerunFailed,
         topBar = {
             GlasmioTopBar(
                 title = activity.RerunFailed,
                 navigation = {
-                    GlasmioIconButton(enabled = !busy, onClick = onClose) {
+                    GlasmioIconButton(onClick = onClose) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
                     GlasmioIconButton(
-                        enabled = !busy,
-                        onClick = {
-                            if (!busy) {
-                                busy = true
-                                onBusy(true)
-                                scope.launch {
-                                    val confirmed =
-                                        try {
-                                            repo.rerunFailed(account, suite, debug)
-                                            true
-                                        } catch (e: CancellationException) {
-                                            throw e
-                                        } catch (_: Exception) {
-                                            false
-                                        } finally {
-                                            busy = false
-                                            onBusy(false)
-                                        }
-                                    onResult(confirmed)
-                                }
-                            }
-                        },
+                        enabled = !busy && !uncertain,
+                        onClick = { onRerun(debug) },
                     ) {
                         GithubIcon(Lucide.RotateCcw, contentDescription = activity.Rerun)
                     }
@@ -78,19 +53,65 @@ internal fun WorkflowRerunSheet(
             )
         },
     ) {
-        GlasmioGroupedList(
-            modifier = Modifier.padding(LocalGlasmioSheetContentPadding.current).padding(12.dp),
+        Column(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(LocalGlasmioSheetContentPadding.current)
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GlasmioListRow(
-                title = activity.DebugLogging,
-                trailing = {
-                    GlasmioSwitch(
-                        checked = debug,
-                        enabled = !busy,
-                        onCheckedChange = { debug = it },
+            GlasmioGroupedList {
+                GlasmioListRow(
+                    title = activity.DebugLogging,
+                    trailing = {
+                        GlasmioSwitch(
+                            checked = debug,
+                            enabled = !busy && !uncertain,
+                            onCheckedChange = { debug = it },
+                        )
+                    },
+                )
+            }
+            if (busy) {
+                GlasmioGroupedList { GlasmioListRow(title = strings.Common.MutationPending) }
+            } else if (uncertain) {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = strings.Common.MutationUncertain,
+                        subtitle = activity.RunUncertain,
                     )
-                },
-            )
+                    GlasmioListRow(
+                        title = strings.Common.MutationAcknowledged,
+                        showTopSeparator = true,
+                        showDisclosure = false,
+                        onClick = { acknowledgeVisible = true },
+                    )
+                }
+            }
         }
+    }
+    if (acknowledgeVisible && uncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = strings.Common.MutationUncertain,
+            message = strings.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        strings.Common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        strings.Common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            onAcknowledgeUncertain()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
     }
 }

@@ -75,11 +75,17 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = rememberGithubUriHandler()
     val copy = rememberCopyText()
+    val parentsRevalidation by
+        viewModel.revalidation(CommitSection.Parents).collectAsStateWithLifecycle()
+    val pullRequestsRevalidation by
+        viewModel.revalidation(CommitSection.PullRequests).collectAsStateWithLifecycle()
     val parents = viewModel.entries(CommitSection.Parents).collectAsLazyPagingItems()
     val pullRequests = viewModel.entries(CommitSection.PullRequests).collectAsLazyPagingItems()
     GithubPagingContent(
         viewModel.entries(state.section),
         contentKey = state.section,
+        revalidation = viewModel.revalidation(state.section),
+        onRetryRevalidation = { viewModel.retryRevalidation(state.section) },
         order = state.section.ordinal,
     ) { paging ->
         val pages = paging.items
@@ -236,6 +242,30 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                     GithubReadingGroup { ReadingTextPlaceholder() }
                 }
             } else if (state.section == CommitSection.Details) {
+                if (parentsRevalidation is RevalidationState.Failed) {
+                    item(key = "commit-parents-sync-failed") {
+                        GlasmioGroupedList {
+                            GlasmioListRow(
+                                title = strings.Common.CacheSyncFailed,
+                                detail = strings.Common.Retry,
+                                showDisclosure = false,
+                                onClick = { viewModel.retryRevalidation(CommitSection.Parents) },
+                            )
+                        }
+                    }
+                }
+                if (pullRequestsRevalidation is RevalidationState.Failed) {
+                    item(key = "commit-prs-sync-failed") {
+                        GlasmioGroupedList {
+                            GlasmioListRow(
+                                title = strings.Common.CacheSyncFailed,
+                                detail = strings.Common.Retry,
+                                showDisclosure = false,
+                                onClick = { viewModel.retryRevalidation(CommitSection.PullRequests) },
+                            )
+                        }
+                    }
+                }
                 shownDetail?.let { detail ->
                     item(key = "commit-information") {
                         GithubSection(strings.Activity.Details) {
@@ -483,6 +513,36 @@ internal class CommitDetailViewModel(
     }
 
     fun entries(section: CommitSection) = entries.getValue(section)
+
+    fun revalidation(section: CommitSection): StateFlow<RevalidationState> =
+        if (section == CommitSection.Details) MutableStateFlow(RevalidationState.Idle)
+        else
+            state
+                .map { it.detail?.oid }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .flatMapLatest { oid ->
+                    val key =
+                        if (section == CommitSection.Files) {
+                            source.filesKey(route.owner, route.name, oid)
+                        } else {
+                            source.linksKey(route.owner, route.name, oid, section == CommitSection.Parents)
+                        }
+                    source.revalidation(account, key)
+                }
+                .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+
+    fun retryRevalidation(section: CommitSection) {
+        val oid = state.value.detail?.oid ?: return
+        if (section == CommitSection.Details) return
+        val key =
+            if (section == CommitSection.Files) {
+                source.filesKey(route.owner, route.name, oid)
+            } else {
+                source.linksKey(route.owner, route.name, oid, section == CommitSection.Parents)
+            }
+        source.retryRevalidation(account, key)
+    }
 
     fun select(section: CommitSection) {
         mutableState.update { it.copy(section = section) }

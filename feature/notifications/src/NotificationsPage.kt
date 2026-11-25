@@ -81,6 +81,7 @@ fun NotificationsPage(
         hideKeyboard()
     }
     var completionThreads by remember(viewModel) { mutableStateOf(emptySet<String>()) }
+    var acknowledgeUncertainConfirm by remember(viewModel) { mutableStateOf(false) }
     var threadActions by remember(viewModel) { mutableStateOf<NotificationDto?>(null) }
     val completeSelection = { completionThreads = state.selectedThreadIds.toSet() }
     val source = Triple(state.filter, state.repository, state.reasonFilter)
@@ -221,6 +222,8 @@ fun NotificationsPage(
             retryLabel = common.Retry,
             onToggleSelection = viewModel::toggleSelection,
             rowKeys = rowKeys,
+            onReconcileUncertain = viewModel::reconcileUncertain,
+            onAcknowledgeUncertain = { acknowledgeUncertainConfirm = true },
         )
     }
 
@@ -273,6 +276,28 @@ fun NotificationsPage(
                         completionThreads = emptySet()
                     },
                     enabled = !state.isProcessing,
+                ),
+            ),
+    )
+
+    GlasmioAlertDialog(
+        visible = acknowledgeUncertainConfirm && state.uncertainThreadIds.isNotEmpty(),
+        onDismissRequest = { acknowledgeUncertainConfirm = false },
+        title = common.MutationAcknowledged,
+        message = common.MutationAcknowledgeWarning,
+        buttons =
+            listOf(
+                GlasmioAlertButtonSpec(
+                    common.Cancel,
+                    { acknowledgeUncertainConfirm = false },
+                    GlasmioAlertButtonRole.Cancel,
+                ),
+                GlasmioAlertButtonSpec(
+                    common.MutationAcknowledged,
+                    {
+                        viewModel.acknowledgeUncertain()
+                        acknowledgeUncertainConfirm = false
+                    },
                 ),
             ),
     )

@@ -11,13 +11,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
+import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
@@ -41,13 +49,16 @@ internal fun RepositoryForkSheet(
     onDefaultBranchOnly: (Boolean) -> Unit,
     onCheckName: () -> Unit,
     onCreate: () -> Unit,
+    onAcknowledgeUncertain: () -> Unit = {},
 ) {
     val strings = LocalGithubStrings.current.Repository
     val common = LocalGithubStrings.current.Common
     val context = LocalContext.current
     val colors = GlasmioTheme.colors
     val submitting = state?.submitting == true
+    val uncertain = state?.uncertain == true
     val checking = state?.nameStatus == ForkNameStatus.Checking
+    var acknowledgeVisible by remember { mutableStateOf(false) }
     LaunchedEffect(state?.error, state?.nameStatus) {
         if (state != null) {
             state.error?.let { error ->
@@ -103,7 +114,7 @@ internal fun RepositoryForkSheet(
                                 }
                             }
                         },
-                        enabled = state?.visible == true && !submitting && !checking,
+                        enabled = state?.visible == true && !submitting && !uncertain && !checking,
                     ) {
                         GithubLoadingContent(
                             loading = checking,
@@ -140,7 +151,7 @@ internal fun RepositoryForkSheet(
                                 onName(name)
                             }
                         },
-                        enabled = !submitting,
+                        enabled = !submitting && !uncertain,
                         modifier = Modifier.semantics { contentDescription = strings.ForkName },
                     )
                 }
@@ -166,7 +177,7 @@ internal fun RepositoryForkSheet(
                                 GlasmioSwitch(
                                     checked = state.defaultBranchOnly,
                                     onCheckedChange = onDefaultBranchOnly,
-                                    enabled = !submitting,
+                                    enabled = !submitting && !uncertain,
                                     onTintColor = colors.accent,
                                     modifier =
                                         Modifier.semantics {
@@ -178,7 +189,44 @@ internal fun RepositoryForkSheet(
                         )
                     }
                 }
+                if (submitting) {
+                    GlasmioGroupedList { GlasmioListRow(title = common.MutationPending) }
+                } else if (uncertain) {
+                    GlasmioGroupedList {
+                        GlasmioListRow(title = common.MutationUncertain, subtitle = strings.ForkOutcomeUnknown)
+                        GlasmioListRow(
+                            title = common.MutationAcknowledged,
+                            showTopSeparator = true,
+                            showDisclosure = false,
+                            onClick = { acknowledgeVisible = true },
+                        )
+                    }
+                }
             }
         }
+    }
+    if (acknowledgeVisible && uncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = common.MutationUncertain,
+            message = common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            onAcknowledgeUncertain()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
     }
 }

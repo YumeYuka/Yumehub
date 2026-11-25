@@ -5,5 +5,5 @@ import org.koin.dsl.module
 
 val workspacesFeatureModule = module {
     viewModel { (route: CommitHistoryRoute) -> CommitHistoryViewModel(get(), get(), route) }
-    viewModel { (route: WorkspacesRoute) -> WorkspacesViewModel(get(), get(), get(), route) }
+    viewModel { (route: WorkspacesRoute) -> WorkspacesViewModel(get(), get(), get(), route, get()) }
 }

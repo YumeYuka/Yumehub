@@ -226,7 +226,8 @@ fun RepositoryPage(
     }
     // 头部（头像、大标题与简介）点击后打开仓库信息面板。
     var infoOpen by remember { mutableStateOf(false) }
-    val description = details?.description?.takeIf(String::isNotBlank)
+    val description =
+        (overview.descriptionOverride ?: details?.description)?.takeIf(String::isNotBlank)
     var currentReadmeAnchor by rememberSaveable { mutableStateOf(readme?.anchor) }
     val parentLinkHandler = LocalGithubLinkHandler.current
     val repositoryLinkHandler: (String) -> Unit =
@@ -573,6 +574,7 @@ fun RepositoryPage(
         onDefaultBranchOnly = forkViewModel::defaultBranchOnly,
         onCheckName = forkViewModel::checkName,
         onCreate = forkViewModel::create,
+        onAcknowledgeUncertain = forkViewModel::acknowledgeUncertain,
     )
     RepositoryInfoSheet(
         visible = infoOpen,

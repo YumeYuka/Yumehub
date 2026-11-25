@@ -25,8 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -98,19 +96,19 @@ internal fun WorkInfoSheet(
         }
     }
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
+    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    // 保存写回在后台继续，弹窗提交期间不再禁止关闭与交互。
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (!state.submitting) onDismiss() },
+        onDismissRequest = onDismiss,
         title = title,
         skipPartiallyExpanded = false,
-        dismissOnBackPress = !state.submitting,
-        dismissOnClickOutside = !state.submitting,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
             GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !state.submitting) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
@@ -143,7 +141,7 @@ internal fun WorkInfoSheet(
             )
         }
     }
-    if (visible) WorkPropertySelectionSheet(state, viewModel)
+    if (visible) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
 }
 
 /** 头部 chip 直接打开单个属性的选择面板，不再先展开信息 sheet。 */
@@ -172,20 +170,16 @@ internal fun WorkPropertySheet(
     }
     LaunchedEffect(viewModel) { viewModel.load() }
     var requested by remember(property) { mutableStateOf<WorkProperty?>(null) }
-    var editorSeen by remember(property) { mutableStateOf(false) }
     LaunchedEffect(property, state.value) {
         if (state.value != null && requested != property) {
             requested = property
             viewModel.edit(property)
         }
     }
-    LaunchedEffect(state.editor) {
-        val editor = state.editor
-        if (editor != null) editorSeen = true else if (editorSeen) onDismiss()
-    }
     LaunchedEffect(state.failed) { if (state.failed) onDismiss() }
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
-    WorkPropertySelectionSheet(state, viewModel)
+    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    WorkPropertySelectionSheet(state, viewModel, onDismiss, saveImmediately = true)
 }
 
 @Composable
@@ -573,48 +567,89 @@ private fun WorkInfoRowPlaceholder(
 private fun WorkPropertySelectionSheet(
     state: WorkPropertiesState,
     viewModel: WorkInfoViewModel,
+    onDismiss: () -> Unit,
+    saveImmediately: Boolean = false,
 ) {
-    val editor = state.editor
+    val live = state.editor
+    // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
+    var retained by remember { mutableStateOf<WorkPropertyEditor?>(null) }
+    if (live != null) retained = live
+    val editor = live ?: retained
     val strings = LocalGithubStrings.current.WorkDetail
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focus = LocalFocusManager.current
-    if (editor?.failed == true || editor?.moreFailed == true) {
+    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    if (editor?.failed == true || editor?.needsReconcile == true || editor?.moreFailed == true) {
         GithubLoadFailureToast(
             Unit,
             if (editor.needsReconcile) strings.PropertySaveFailed else strings.PropertyLoadFailed,
         )
     }
     GithubSearchSelectionSheet(
-        visible = editor != null,
+        // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发，
+        // 由那里清空 retained 与调用方状态，收起期间内容用快照渲染。
+        visible = live != null || retained != null,
         title = editor?.property?.selectionTitle(strings).orEmpty(),
         placeholder = strings.PropertySearch,
         queryKey = editor?.query.orEmpty(),
         onQueryChange = viewModel::search,
         onDismiss = {
-            keyboard?.hide()
-            focus.clearFocus(force = true)
             viewModel.closeEditor()
+            retained = null
+            onDismiss()
         },
-        onConfirm = {
-            keyboard?.hide()
-            focus.clearFocus(force = true)
-            viewModel.applyEditor()
-        },
-        enabled = !state.submitting,
+        onConfirm = { viewModel.applyEditor(saveImmediately) },
         showConfirm = editor?.editable != false,
         confirmEnabled =
-            editor != null && !editor.loading && !editor.failed && !editor.needsReconcile,
+            live != null && !live.loading && !live.failed && !live.needsReconcile &&
+                !state.submitting,
+        requestClose = live == null && retained != null,
     ) {
         if (editor == null) return@GithubSearchSelectionSheet
-        if (
-            editor.property == WorkProperty.Milestone && !editor.loading &&
-                (editor.failed || editor.needsReconcile)
-        ) {
-            item(key = "work-milestone-retry") {
+        if (!editor.loading && (editor.failed || editor.needsReconcile)) {
+            item(key = "work-property-retry") {
+                var acknowledgeVisible by remember { mutableStateOf(false) }
+                val common = LocalGithubStrings.current.Common
                 GlasmioGroupedList {
                     GlasmioListRow(
-                        title = LocalGithubStrings.current.Common.Retry,
+                        title = if (state.uncertain) common.MutationReconcile else common.Retry,
+                        subtitle =
+                            when {
+                                state.uncertain -> common.MutationUncertain
+                                editor.needsReconcile -> strings.PropertySaveFailed
+                                else -> strings.PropertyLoadFailed
+                            },
                         onClick = viewModel::retryEditor,
+                    )
+                    if (state.uncertain) {
+                        GlasmioListRow(
+                            title = common.MutationAcknowledged,
+                            showTopSeparator = true,
+                            showDisclosure = false,
+                            onClick = { acknowledgeVisible = true },
+                        )
+                    }
+                }
+                if (acknowledgeVisible && state.uncertain) {
+                    GlasmioAlertDialog(
+                        visible = true,
+                        title = common.MutationUncertain,
+                        message = common.MutationAcknowledgeWarning,
+                        buttons =
+                            listOf(
+                                GlasmioAlertButtonSpec(
+                                    common.Cancel,
+                                    onClick = { acknowledgeVisible = false },
+                                    role = GlasmioAlertButtonRole.Cancel,
+                                ),
+                                GlasmioAlertButtonSpec(
+                                    common.MutationAcknowledged,
+                                    onClick = {
+                                        acknowledgeVisible = false
+                                        viewModel.acknowledgeUncertain()
+                                    },
+                                    role = GlasmioAlertButtonRole.Default,
+                                ),
+                            ),
+                        onDismissRequest = { acknowledgeVisible = false },
                     )
                 }
             }
@@ -627,7 +662,6 @@ private fun WorkPropertySelectionSheet(
                         repeat(3) { index -> WorkInfoRowPlaceholder(showTopSeparator = index > 0) }
                     }
                 }
-            editor.failed -> Unit
             else -> {
                 val query = editor.query.trim()
                 val options =
@@ -673,7 +707,7 @@ private fun WorkPropertySelectionSheet(
                                         option,
                                         checked = editor.selected.any { it.id == option.id },
                                         showTopSeparator = index > 0,
-                                        onSelect = if (editor.editable) ({ viewModel.select(option) }) else null,
+                                        onSelect = if (editor.editable && !state.submitting) ({ viewModel.select(option) }) else null,
                                     )
                                 }
                             }
@@ -710,7 +744,7 @@ private fun WorkPropertySelectionSheet(
                                     option,
                                     checked = editor.selected.any { it.id == option.id },
                                     showTopSeparator = index > 0,
-                                    onSelect = { viewModel.select(option) },
+                                    onSelect = if (editor.editable && !state.submitting) ({ viewModel.select(option) }) else null,
                                 )
                             }
                         }

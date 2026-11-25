@@ -51,6 +51,10 @@ fun WorkListPage(
   val branchPicker by viewModel.branchPicker.collectAsStateWithLifecycle()
   val assigneePicker by viewModel.assigneePicker.collectAsStateWithLifecycle()
   val optionsFailed by viewModel.optionsFailed.collectAsStateWithLifecycle()
+  val creationState by viewModel.creationState.collectAsStateWithLifecycle()
+  androidx.compose.runtime.LaunchedEffect(creationVisible) {
+      viewModel.setCreationVisible(creationVisible)
+  }
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(
       kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter,
@@ -58,8 +62,13 @@ fun WorkListPage(
       milestones = filterOptions.milestones,
       issueTypes = if (kind == CollaborationKind.Issue) filterOptions.issueTypes else emptyList(),
   ) { actions, searching ->
-  GithubPagingContent(pages, contentKey = filter, order = workListTabOrder(kind, filter)) { paging
-    ->
+  GithubPagingContent(
+      pages,
+      contentKey = filter,
+      revalidation = viewModel.revalidation,
+      onRetryRevalidation = viewModel::retryRevalidation,
+      order = workListTabOrder(kind, filter),
+  ) { paging ->
     val items = paging.items
     val host = requireNotNull(LocalGithubPageHost.current)
     val slots =
@@ -95,27 +104,36 @@ fun WorkListPage(
       }
       pageSearchClearance(searching)
     }
+    androidx.compose.runtime.LaunchedEffect(creationState.createdNumber) {
+        val number = creationState.createdNumber ?: return@LaunchedEffect
+        val wasVisible = creationVisible
+        viewModel.consumeCreatedNumber()
+        creationVisible = false
+        items.refresh()
+        if (wasVisible && host.navigationEnabled) onOpenDetail(number)
+    }
     WorkCreationSheet(
         kind = kind,
         visible = creationVisible,
+        creationState = creationState,
         branchPicker = branchPicker,
         issueTypes = filterOptions.issueTypeOptions,
         milestones = filterOptions.milestoneOptions,
         issueTemplates = filterOptions.issueTemplates,
         labels = filterOptions.labels,
         assigneePicker = assigneePicker,
+        onDraftChange = { title, body, base, head ->
+            viewModel.updateCreationDraft(title = title, body = body, base = base, head = head)
+        },
         onDismiss = { creationVisible = false },
-        onCreate = viewModel::create,
+        onSubmit = viewModel::submitCreation,
+        onAcknowledgeUncertain = viewModel::acknowledgeCreationUncertain,
         onBranchQueryChange = viewModel::searchBranches,
         onBranchRetry = viewModel::retryBranches,
         onBranchLoadMore = viewModel::loadMoreBranches,
         onAssigneeQueryChange = viewModel::searchAssignees,
         onAssigneeRetry = viewModel::retryAssignees,
         onAssigneeLoadMore = viewModel::loadMoreAssignees,
-        onCreated = { number ->
-          items.refresh()
-          if (host.navigationEnabled) onOpenDetail(number)
-        },
     )
   }
   }

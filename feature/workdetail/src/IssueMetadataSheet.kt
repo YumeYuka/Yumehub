@@ -23,6 +23,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
@@ -40,6 +41,7 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
     var query by remember(panel) { mutableStateOf("") }
     var selected by remember(choices) { mutableStateOf(choices?.selected.orEmpty()) }
     var editing by remember(panel) { mutableStateOf<IssueField?>(null) }
+    var acknowledgeVisible by remember(panel) { mutableStateOf(false) }
     val field = editing?.takeIf { candidate -> fields?.fields?.any { it == candidate } == true }
     LaunchedEffect(field) { if (field == null) editing = null }
     val title = when (panel) {
@@ -49,16 +51,17 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
         null -> ""
     }
     GithubSearchSelectionSheet(
-        visible = visible && panel != null && field == null,
+        visible = visible && panel != null && field == null && !state.closeChoices,
         title = title,
         placeholder = strings.PropertySearch,
         queryKey = query,
         onQueryChange = { query = it },
         onDismiss = editor::dismiss,
         onConfirm = { editor.saveChoices(selected) },
-        enabled = !state.saving,
         showConfirm = choices?.editable == true,
-        confirmEnabled = !state.conflict && choices != null && selected.toSet() != choices.selected.toSet(),
+        confirmEnabled =
+            !state.saving && !state.closeChoices && !state.conflict &&
+                choices != null && selected.toSet() != choices.selected.toSet(),
     ) {
         if (panel == null) return@GithubSearchSelectionSheet
         if (state.loading || state.saving && field == null) {
@@ -68,29 +71,24 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
                 }
             }
         }
-        if (state.loadFailed || state.conflict || state.saveFailed) {
+        if (state.loadFailed || state.conflict || state.saveFailed || state.uncertain) {
             item("error") {
-                IssueMetadataError(state, onReload = { editor.open(panel) })
+                IssueMetadataError(
+                    state = state,
+                    onReload = { editor.open(panel) },
+                    onAcknowledge = if (state.uncertain) ({ acknowledgeVisible = true }) else null,
+                )
             }
         }
         if (choices != null) {
             val isType = panel == IssueMetadataPanel.Type
-            val unset = if (isType) all.WorkList.NoIssueType else strings.Unassigned
             val matches = choices.options.filter { it.title.matchesIssueQuery(it.subtitle, query) }
-            val showUnset = isType && (choices.editable || choices.selected.isEmpty()) && unset.contains(query.trim(), true)
             item("choices") {
                 GlasmioGroupedList {
-                    if (showUnset) {
-                        IssueChoiceRow(unset, null, selected.isEmpty(), false, onClick =
-                            if (choices.editable && !state.saving && !state.conflict) {
-                                { editor.clearSaveError(); selected = emptyList() }
-                            } else null,
-                        )
-                    }
                     matches.forEachIndexed { index, choice ->
                         val checked = selected.any { it.id == choice.id }
                         IssueChoiceRow(
-                            choice.title, choice.subtitle, checked, showUnset || index > 0,
+                            choice.title, choice.subtitle, checked, index > 0,
                             leading = {
                                 if (isType) {
                                     GithubIcon(
@@ -101,22 +99,19 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
                                     )
                                 } else GithubAvatar(choice.avatarUrl, choice.title, size = 20.dp)
                             },
-                            onClick = if (choices.editable && choice.editable && !state.saving && !state.conflict) {
+                            onClick = if (choices.editable && choice.editable && !state.saving && !state.closeChoices && !state.conflict) {
                                 {
                                     editor.clearSaveError()
-                                    selected = if (isType) listOf(choice)
-                                    else if (checked) selected.filterNot { it.id == choice.id }
+                                    selected = if (isType) {
+                                        if (checked) emptyList() else listOf(choice)
+                                    } else if (checked) selected.filterNot { it.id == choice.id }
                                     else selected + choice
                                 }
                             } else null,
                         )
                     }
-                    if (!showUnset && matches.isEmpty()) {
-                        GlasmioListRow(
-                            title = if (choices.selected.isEmpty() && query.isBlank() && !choices.editable) unset
-                            else strings.NoPropertyOptions,
-                            showDisclosure = false,
-                        )
+                    if (matches.isEmpty()) {
+                        GlasmioListRow(title = strings.NoPropertyOptions, showDisclosure = false)
                     }
                 }
             }
@@ -138,9 +133,34 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
                 state = state,
                 onDismiss = { editor.clearSaveError(); editing = null },
                 onReload = { editing = null; editor.open(IssueMetadataPanel.Fields) },
+                onAcknowledge = if (state.uncertain) ({ acknowledgeVisible = true }) else null,
                 onSave = { editor.saveField(field, it) },
             )
         }
+    }
+    if (acknowledgeVisible && state.uncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = all.Common.MutationUncertain,
+            message = all.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        all.Common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        all.Common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            editor.acknowledgeUncertain()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
     }
 }
 
@@ -199,13 +219,14 @@ private fun IssueFieldValueSheet(
     state: IssueMetadataState,
     onDismiss: () -> Unit,
     onReload: () -> Unit,
-    onSave: (IssueFieldValue?) -> Unit,
+    onAcknowledge: (() -> Unit)?,
+    onSave: (IssueFieldValue?) -> Boolean,
 ) {
     val all = LocalGithubStrings.current
     val strings = all.WorkDetail
-    val canEdit = editable && !state.saving && !state.conflict
-    val allowDismiss by rememberUpdatedState(!state.saving || !visible)
-    val sheet = rememberGlasmioSheetState { it != GlasmioSheetValue.Hidden || allowDismiss }
+    val scope = rememberCoroutineScope()
+    val canEdit = editable && !state.saving && !state.conflict && !state.uncertain
+    val sheet = rememberGlasmioSheetState()
     var text by rememberSaveable(field.id, field.value) {
         mutableStateOf(field.value?.let { field.displayValue(it) }.orEmpty())
     }
@@ -235,20 +256,23 @@ private fun IssueFieldValueSheet(
         sheetState = sheet,
         fitContent = true,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
-        dismissOnBackPress = !state.saving,
-        dismissOnClickOutside = !state.saving,
-        onDismissRequest = { if (!state.saving) onDismiss() },
+        dismissOnBackPress = true,
+        dismissOnClickOutside = true,
+        onDismissRequest = onDismiss,
         topBar = {
             GlasmioSheetTopToolbar(
                 title = field.name,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !state.saving) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = all.Common.Close)
                     }
                 },
                 actions = {
                     if (editable) {
-                        GlasmioIconButton(onClick = { onSave(value) }, enabled = canEdit && valid && value != field.value) {
+                        GlasmioIconButton(
+                            onClick = { if (onSave(value)) scope.launch { sheet.hide() } },
+                            enabled = canEdit && valid && value != field.value,
+                        ) {
                             GithubIcon(Lucide.Check, contentDescription = all.Common.Confirm)
                         }
                     }
@@ -261,7 +285,9 @@ private fun IssueFieldValueSheet(
                 .padding(LocalGlasmioSheetContentPadding.current).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.conflict || state.saveFailed) IssueMetadataError(state, onReload)
+            if (state.conflict || state.saveFailed || state.uncertain) {
+                IssueMetadataError(state, onReload, onAcknowledge)
+            }
             GlasmioGroupedList {
                 if (!editable) {
                     GlasmioListRow(
@@ -322,21 +348,34 @@ private fun IssueFieldValueSheet(
 }
 
 @Composable
-private fun IssueMetadataError(state: IssueMetadataState, onReload: () -> Unit) {
+private fun IssueMetadataError(
+    state: IssueMetadataState,
+    onReload: () -> Unit,
+    onAcknowledge: (() -> Unit)? = null,
+) {
     val all = LocalGithubStrings.current
     val strings = all.WorkDetail
-    val reload = state.loadFailed || state.conflict
+    val reload = state.loadFailed || state.conflict || state.uncertain
     GlasmioGroupedList {
         GlasmioListRow(
             title = when {
+                state.uncertain -> all.Common.MutationUncertain
                 state.conflict -> strings.PropertyChanged
                 state.loadFailed -> strings.PropertyLoadFailed
                 else -> strings.PropertySaveFailed
             },
-            detail = if (reload) all.Common.Retry else null,
+            detail = if (state.uncertain) all.Common.MutationReconcile else if (reload) all.Common.Retry else null,
             onClick = onReload.takeIf { reload },
             showDisclosure = false,
         )
+        if (state.uncertain && onAcknowledge != null) {
+            GlasmioListRow(
+                title = all.Common.MutationAcknowledged,
+                showTopSeparator = true,
+                showDisclosure = false,
+                onClick = onAcknowledge,
+            )
+        }
     }
 }
 

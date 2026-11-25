@@ -19,7 +19,15 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Package
 import io.github.yumeyucca.lucide.RefreshCw
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CommandAccepted
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.repository.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -72,7 +80,20 @@ internal class ActionsDetailModel(
     var artifactsFailed by mutableStateOf(false)
         private set
 
+    var rerunning by mutableStateOf(false)
+        private set
+
+    var rerunUncertain by mutableStateOf(false)
+        private set
+
+    private var rerunUncertainOpId: String? = null
+    private var rerunObservedSuite: String? = null
+    private val rerunResultsChannel = Channel<Boolean>(Channel.CONFLATED)
+    val rerunResults = rerunResultsChannel.receiveAsFlow()
+
     private var artifactRequest: kotlinx.coroutines.Job? = null
+    private var artifactObserver: kotlinx.coroutines.Job? = null
+
     private val runId
         get() = route.run ?: detail?.url?.substringAfterLast('/')?.toLongOrNull()
 
@@ -88,7 +109,21 @@ internal class ActionsDetailModel(
         if (artifactPageLoading == null) loadArtifacts(run, page)
     }
 
-    private fun loadArtifacts(run: Long, page: Int = 1) {
+    private fun observeArtifacts(run: Long) {
+        artifactObserver?.cancel()
+        artifactObserver =
+            viewModelScope.launch {
+                repo
+                    .observeFirstArtifactPage(account, route.owner, route.name, run)
+                    .collect { state ->
+                        state.data?.let { artifacts = it }
+                        artifactPageLoading = if (state.loading && state.data == null) 1 else null
+                        artifactsFailed = state.error != null
+                    }
+            }
+    }
+
+    private fun loadArtifacts(run: Long, page: Int) {
         artifactRequest?.cancel()
         artifactPageLoading = page
         artifactsFailed = false
@@ -96,12 +131,9 @@ internal class ActionsDetailModel(
             try {
                 val result = repo.artifacts(account, route.owner, route.name, run, page)
                 artifacts =
-                    if (page == 1) result
-                    else
-                        result.copy(
-                            files =
-                                (artifacts?.files.orEmpty() + result.files).distinctBy { it.id },
-                        )
+                    result.copy(
+                        files = (artifacts?.files.orEmpty() + result.files).distinctBy { it.id },
+                    )
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -116,7 +148,7 @@ internal class ActionsDetailModel(
         request?.cancel()
         val previous = detail
         val knownRun = runId
-        if (!append && knownRun != null) loadArtifacts(knownRun)
+        if (!append && knownRun != null) observeArtifacts(knownRun)
         lastAppend = append
         loading = true
         failed = false
@@ -135,13 +167,88 @@ internal class ActionsDetailModel(
                     if (append)
                         result.copy(jobs = (previous!!.jobs + result.jobs).distinctBy { it.id })
                     else result
-                if (knownRun == null) runId?.let { loadArtifacts(it) }
+                if (knownRun == null) runId?.let { observeArtifacts(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 failed = true
             }
             loading = false
+        }
+    }
+
+    fun rerunFailed(suiteId: String, debug: Boolean) {
+        if (rerunning || rerunUncertain) return
+        rerunning = true
+        val key = MutationKey(MutationKind.CHECK_RERUN, suiteId, CommandAccepted.serializer())
+        viewModelScope.launch {
+            val coord = repo.mutations(account)
+            if (rerunObservedSuite != suiteId) {
+                rerunObservedSuite = suiteId
+                launch {
+                    coord.observeCommand(key).collect { cmd ->
+                        when (cmd.phase) {
+                            WritePhase.PENDING -> rerunning = true
+                            WritePhase.IDLE -> {
+                                rerunning = false
+                                if (cmd.result != null) {
+                                    rerunUncertain = false
+                                    rerunUncertainOpId = null
+                                    rerunResultsChannel.trySend(true)
+                                }
+                            }
+                            WritePhase.REJECTED -> {
+                                rerunning = false
+                                rerunUncertain = false
+                                rerunResultsChannel.trySend(false)
+                            }
+                            WritePhase.UNCERTAIN -> {
+                                rerunning = false
+                                rerunUncertain = true
+                                rerunUncertainOpId =
+                                    coord.pending.value
+                                        .firstOrNull { it.kind == key.kind && it.target == key.target }
+                                        ?.operationId
+                                rerunResultsChannel.trySend(false)
+                            }
+                        }
+                    }
+                }
+            }
+            val accepted =
+                coord.submitCommand(
+                    key = key,
+                    tags = setOf(CacheTag(DataDomain.Work, null)),
+                    send = {
+                        repo.rerunFailed(account, suiteId, debug)
+                        CommandAccepted
+                    },
+                    readBack = { null },
+                )
+            if (!accepted) {
+                rerunning = false
+                rerunUncertain = true
+                rerunUncertainOpId =
+                    coord.pending.value
+                        .firstOrNull { it.kind == key.kind && it.target == key.target }
+                        ?.operationId
+                rerunResultsChannel.trySend(false)
+            }
+        }
+    }
+
+    fun acknowledgeRerun(suiteId: String) {
+        val opId = rerunUncertainOpId
+        viewModelScope.launch {
+            val coord = repo.mutations(account)
+            val id =
+                opId
+                    ?: coord.pending.value
+                        .firstOrNull { it.kind == MutationKind.CHECK_RERUN && it.target == suiteId }
+                        ?.operationId
+            if (id != null) coord.acknowledge(id)
+            rerunUncertain = false
+            rerunUncertainOpId = null
         }
     }
 }
@@ -182,8 +289,17 @@ fun ActionsPage(
     val downloads: DownloadStore = koinInject()
     val host = requireNotNull(LocalGithubPageHost.current)
     var confirm by remember { mutableStateOf(false) }
-    var submitting by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    LaunchedEffect(vm, context, strings) {
+        vm.rerunResults.collect { confirmed ->
+            confirm = false
+            vm.load()
+            val message =
+                if (confirmed) strings.Activity.RerunSubmitted
+                else strings.Activity.RunUncertain
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
     val browser = rememberExternalUriHandler()
     val url =
         detail?.url
@@ -200,7 +316,6 @@ fun ActionsPage(
             strings.Activity.WorkflowRunTitle(workflowName, runNumber)
         } else null
     GithubLoadFailureToast(vm.failed.takeIf { it }, strings.Activity.LoadFailed)
-    GithubLoadFailureToast(vm.artifactsFailed.takeIf { it }, strings.Activity.LoadFailed)
     GithubPage(
         title = workflowName ?: strings.Repository.ActionsTitle,
         smallTitle = smallTitle,
@@ -212,13 +327,12 @@ fun ActionsPage(
                 lineHeight = 32.sp,
                 fontWeight = FontWeight.Bold,
             ),
-        locked = submitting,
         itemSpacing = 12.dp,
         actions = {
             GithubToolbarActions(
-                toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, !submitting, onClick = vm::load),
+                toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = vm::load),
                 url?.let {
-                    toolbarIcon(Lucide.ExternalLink, strings.Repository.OpenInBrowser, !submitting) { browser(it) }
+                    toolbarIcon(Lucide.ExternalLink, strings.Repository.OpenInBrowser) { browser(it) }
                 },
             )
         },
@@ -228,8 +342,8 @@ fun ActionsPage(
                 GithubSection(strings.Release.Artifacts) {
                     files.forEachIndexed { index, file ->
                         key(file.id) {
-                            ArtifactRow(file, index > 0, !submitting) {
-                                if (host.navigationEnabled && !submitting && !file.expired) {
+                            ArtifactRow(file, index > 0, true) {
+                                if (host.navigationEnabled && !file.expired) {
                                     try {
                                         downloads.enqueueArtifact(
                                             account,
@@ -305,19 +419,11 @@ fun ActionsPage(
     }
     if (confirm && detail?.canRerunFailed == true) {
         WorkflowRerunSheet(
-            repo,
-            account,
-            detail.suite,
-            onBusy = { submitting = it },
+            busy = vm.rerunning,
+            uncertain = vm.rerunUncertain,
             onClose = { confirm = false },
-            onResult = { confirmed ->
-                confirm = false
-                vm.load()
-                val message =
-                    if (confirmed) strings.Activity.RerunSubmitted
-                    else strings.Activity.RunUncertain
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            },
+            onRerun = { debug -> vm.rerunFailed(detail.suite, debug) },
+            onAcknowledgeUncertain = { vm.acknowledgeRerun(detail.suite) },
         )
     }
 }

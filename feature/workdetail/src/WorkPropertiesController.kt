@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 
 internal class WorkPropertiesController(
@@ -20,6 +22,7 @@ internal class WorkPropertiesController(
 ) {
     private var loadJob: Job? = null
     private var editorJob: Job? = null
+    private var saveJob: Job? = null
 
     fun load() {
         val current = state()
@@ -78,7 +81,8 @@ internal class WorkPropertiesController(
             return
         }
         val value = current.value ?: return
-        if (current.submitting || (!value.editable && property != WorkProperty.Labels)) return
+        val editable = if (property == WorkProperty.Labels) value.labelsEditable else value.editable
+        if (current.submitting || (!editable && property != WorkProperty.Labels)) return
         if (current.editor?.property == property) return
         val original = value.values[property].orEmpty()
         val selected = current.drafts[property] ?: original
@@ -89,16 +93,17 @@ internal class WorkPropertiesController(
                     property,
                     original,
                     selected,
-                    loading = value.editable,
-                    editable = value.editable,
+                    loading = editable,
+                    editable = editable,
                 )
             )
         }
-        if (value.editable) loadOptions(property)
+        if (editable) loadOptions(property)
     }
 
+
     fun closeEditor() {
-        if (state().submitting) return
+        // 保存写入在独立的 saveJob 中继续，关闭编辑器不会取消进行中的网络写回。
         editorJob?.cancel()
         update { it.copy(editor = null) }
     }
@@ -107,6 +112,19 @@ internal class WorkPropertiesController(
         val editor = state().editor ?: return
         if (state().submitting) return
         if (editor.property == WorkProperty.Reviewers) {
+            if (editor.needsReconcile) {
+                editorJob?.cancel()
+                update { it.copy(editor = it.editor?.copy(loading = true, failed = false)) }
+                editorJob = scope.launch {
+                    val coord = detail.mutations()
+                    val key = detail.propertyMutationKey(WorkProperty.Reviewers)
+                    coord.reconcile(key) { detail.reviewRequests().requested.map { it.id } }
+                    val opId = coord.findUncertainOperationId(key.kind, key.target)
+                    update { it.copy(uncertain = opId != null, uncertainOperationId = opId) }
+                    loadReviewRequests(editor)
+                }
+                return
+            }
             loadReviewRequests(editor)
             return
         }
@@ -119,20 +137,30 @@ internal class WorkPropertiesController(
         if (editor.needsReconcile) {
             editorJob = scope.launch {
                 try {
+                    val coord = detail.mutations()
+                    val key = detail.propertyMutationKey(editor.property)
+                    coord.reconcile(key) {
+                        val fresh = detail.properties()
+                        fresh.values[editor.property].orEmpty().map { it.id }
+                    }
                     val value = detail.properties()
+                    val opId = coord.findUncertainOperationId(key.kind, key.target)
                     update { current ->
                         val active = current.editor ?: return@update current
                         val actual = value.values[active.property].orEmpty()
+                        val editable = if (active.property == WorkProperty.Labels) value.labelsEditable else value.editable
                         current.copy(
                             value = value,
+                            uncertain = opId != null,
+                            uncertainOperationId = opId,
                             editor =
                                 active.copy(
                                     original = actual,
-                                    selected = if (value.editable) active.selected else actual,
+                                    selected = if (editable) active.selected else actual,
                                     options = (actual + active.options).distinctBy { it.id },
                                     loading = false,
-                                    needsReconcile = false,
-                                    editable = value.editable,
+                                    needsReconcile = opId != null,
+                                    editable = editable,
                                 ),
                         )
                     }
@@ -355,55 +383,101 @@ internal class WorkPropertiesController(
         }
     }
 
-    fun applyEditor() {
+    fun applyEditor(saveImmediately: Boolean = false) {
         val current = state()
         val editor = current.editor ?: return
         if (
             current.submitting || !editor.editable || editor.loading || editor.failed ||
                 editor.needsReconcile
         ) return
-        val milestone = editor.property == WorkProperty.Milestone
-        if (milestone && editor.original.singleOrNull()?.id == editor.selected.singleOrNull()?.id) {
-            closeEditor()
-            return
-        }
-        if (milestone || editor.property == WorkProperty.Reviewers) {
-            if (!milestone && !editor.reviewRequestsChanged()) return
+        val property = editor.property
+        val reviewers = property == WorkProperty.Reviewers
+        val persist = saveImmediately || property == WorkProperty.Milestone || reviewers
+        if (persist) {
+            if (editor.original.mapTo(hashSetOf()) { it.id } == editor.selected.mapTo(hashSetOf()) { it.id }) {
+                closeEditor()
+                return
+            }
+            loadJob?.cancel()
             editorJob?.cancel()
-            update { it.copy(submitting = true) }
-            editorJob = scope.launch {
+            update { it.copy(loading = false, submitting = true, saveFailed = false) }
+            saveJob?.cancel()
+            saveJob = scope.launch {
                 try {
-                    if (milestone) detail.saveMilestone(editor.original, editor.selected)
-                    else detail.saveReviewRequests(editor.original, editor.selected)
-                    update { latest ->
-                        val value = latest.value
-                        latest.copy(
-                            value =
-                                if (milestone && value != null) {
-                                    value.copy(
-                                        values = value.values + (editor.property to editor.selected),
-                                    )
-                                } else value,
-                            editor = null,
-                            submitting = false,
+                    val coord = detail.mutations()
+                    val key = detail.propertyMutationKey(property)
+                    val desiredIds = editor.selected.map { it.id }
+                    val result =
+                        coord.submitAndAwait(
+                            key = key,
+                            confirmed = editor.original.map { it.id },
+                            desired = desiredIds,
+                            tags = detail.mutationTags,
+                            send = { _ ->
+                                if (reviewers) detail.saveReviewRequests(editor.original, editor.selected)
+                                else detail.saveProperty(property, editor.original, editor.selected)
+                                desiredIds
+                            },
+                            readBack = {
+                                if (reviewers) detail.reviewRequests().requested.map { it.id }
+                                else detail.properties().values[property].orEmpty().map { it.id }
+                            },
                         )
+                    if (result.phase == WritePhase.IDLE) {
+                        update { latest ->
+                            val value = latest.value
+                            latest.copy(
+                                value = value?.let {
+                                    if (reviewers) it else it.copy(values = it.values + (property to editor.selected))
+                                },
+                                drafts = latest.drafts - property,
+                                editor = null,
+                                submitting = false,
+                                saveFailed = false,
+                                uncertain = false,
+                                uncertainOperationId = null,
+                            )
+                        }
+                    } else {
+                        val isUncertain = result.phase == WritePhase.UNCERTAIN
+                        val opId = if (isUncertain) coord.findUncertainOperationId(key.kind, key.target) else null
+                        update { latest ->
+                            if (latest.editor != null) {
+                                latest.copy(
+                                    submitting = false,
+                                    uncertain = isUncertain,
+                                    uncertainOperationId = opId,
+                                    editor = latest.editor.copy(needsReconcile = true),
+                                )
+                            } else {
+                                latest.copy(
+                                    submitting = false,
+                                    saveFailed = true,
+                                    uncertain = isUncertain,
+                                    uncertainOperationId = opId,
+                                )
+                            }
+                        }
                     }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
-                    update {
-                        it.copy(submitting = false, editor = editor.copy(needsReconcile = true))
+                    // 编辑器仍在时保留选择供重新核对；用户已关闭则只报失败。
+                    update { latest ->
+                        if (latest.editor != null)
+                            latest.copy(submitting = false, editor = latest.editor.copy(needsReconcile = true))
+                        else latest.copy(submitting = false, saveFailed = true)
                     }
                 }
             }
             return
         }
-        val actual = current.value?.values?.get(editor.property).orEmpty()
+        val actual = current.value?.values?.get(property).orEmpty()
         val drafts = current.drafts.toMutableMap()
         if (editor.selected.map { it.id }.toSet() == actual.map { it.id }.toSet()) {
-            drafts.remove(editor.property)
+            drafts.remove(property)
         } else {
-            drafts[editor.property] = editor.selected
+            drafts[property] = editor.selected
         }
         editorJob?.cancel()
         update { it.copy(editor = null, drafts = drafts) }
@@ -422,9 +496,81 @@ internal class WorkPropertiesController(
             update { it.copy(saved = true) }
             return
         }
-        val originals = pending.keys.associateWith { value.values[it].orEmpty() }
-        detail.savePropertiesInBackground(pending, originals)
-        update { it.copy(drafts = emptyMap(), saved = true) }
+        editorJob?.cancel()
+        loadJob?.cancel()
+        update { it.copy(loading = false, submitting = true, saveFailed = false, uncertain = false) }
+        scope.launch {
+            try {
+                val coord = detail.mutations()
+                for ((property, selected) in pending) {
+                    val actual = state().value?.values?.get(property).orEmpty()
+                    val key = detail.propertyMutationKey(property)
+                    val desiredIds = selected.map { it.id }
+                    val result =
+                        coord.submitAndAwait(
+                            key = key,
+                            confirmed = actual.map { it.id },
+                            desired = desiredIds,
+                            tags = detail.mutationTags,
+                            send = { _ ->
+                                detail.saveProperty(property, actual, selected)
+                                desiredIds
+                            },
+                            readBack = {
+                                detail.properties().values[property].orEmpty().map { it.id }
+                            },
+                        )
+                    if (result.phase == WritePhase.IDLE) {
+                        update { latest ->
+                            latest.copy(
+                                value = latest.value?.let { it.copy(values = it.values + (property to selected)) },
+                                drafts = latest.drafts - property,
+                            )
+                        }
+                    } else {
+                        val isUncertain = result.phase == WritePhase.UNCERTAIN
+                        val opId = if (isUncertain) coord.findUncertainOperationId(key.kind, key.target) else null
+                        update {
+                            it.copy(
+                                submitting = false,
+                                saveFailed = true,
+                                uncertain = isUncertain,
+                                uncertainOperationId = opId,
+                            )
+                        }
+                        return@launch
+                    }
+                }
+                update {
+                    it.copy(
+                        drafts = emptyMap(),
+                        submitting = false,
+                        uncertain = false,
+                        uncertainOperationId = null,
+                        saved = true,
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                update { it.copy(submitting = false, saveFailed = true) }
+            }
+        }
+    }
+
+    fun acknowledgeUncertain() {
+        val opId = state().uncertainOperationId ?: return
+        scope.launch {
+            detail.mutations().acknowledge(opId)
+            update {
+                it.copy(
+                    uncertain = false,
+                    uncertainOperationId = null,
+                    saveFailed = false,
+                    editor = it.editor?.copy(needsReconcile = false),
+                )
+            }
+        }
     }
 
     fun consumeSaved() {

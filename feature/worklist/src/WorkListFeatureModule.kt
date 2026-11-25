@@ -6,6 +6,6 @@ import org.koin.dsl.module
 
 val workListFeatureModule = module {
     viewModel { (owner: String, repository: String, kind: CollaborationKind, login: String) ->
-        CollaborationListViewModel(get(), get(), owner, repository, kind, login)
+        CollaborationListViewModel(get(), get(), owner, repository, kind, login, get())
     }
 }

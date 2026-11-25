@@ -69,6 +69,7 @@ internal fun WorkflowDispatchSheet(
     if (pickBranch) {
         RunBranchPicker(account, route, branch, onDismiss = { pickBranch = false }) {
             branch = it.removePrefix("refs/heads/")
+            pickBranch = false
         }
         return
     }

@@ -24,7 +24,10 @@ import moe.yumeyuka.yumehub.data.twofactor.MobileAuthRequest
 import moe.yumeyuka.yumehub.data.twofactor.MobileAuthStatus
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorNotifier
+import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRegistrationUncertainException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRepository
+import moe.yumeyuka.yumehub.data.twofactor.TwoFactorUncertainSubmissionException
+import moe.yumeyuka.yumehub.locale.GithubTxt
 import retrofit2.HttpException
 
 enum class TwoFactorPhase {
@@ -40,6 +43,8 @@ data class TwoFactorUiState(
     val error: String? = null,
     val receivingError: String? = null,
     val notificationWarning: String? = null,
+    val submissionUncertain: Boolean = false,
+    val registrationUncertain: Boolean = false,
 ) {
     val isVisible: Boolean
         get() = request != null && phase == TwoFactorPhase.Prompt
@@ -48,7 +53,13 @@ data class TwoFactorUiState(
         get() = request?.requiresChallenge == true
 
     val canSubmit: Boolean
-        get() = phase == TwoFactorPhase.Prompt && (!requiresDigits || isValidDigits(digits))
+        get() =
+            phase == TwoFactorPhase.Prompt &&
+                !submissionUncertain &&
+                (!requiresDigits || isValidDigits(digits))
+
+    val canReject: Boolean
+        get() = phase == TwoFactorPhase.Prompt && !submissionUncertain
 }
 
 class TwoFactorViewModel(
@@ -66,6 +77,7 @@ class TwoFactorViewModel(
     private val foregroundState = MutableStateFlow(true)
     private var notifiedRequestId: Int? = null
     private var settledRequestId: Int? = null
+    private var uncertainRequestId: Int? = null
     private var receivingErrorReported = false
     private var notificationWarningShown = false
 
@@ -81,6 +93,7 @@ class TwoFactorViewModel(
                     sessionGeneration = generation
                     submission?.cancel()
                     settledRequestId = null
+                    uncertainRequestId = null
                     mutableState.value = TwoFactorUiState()
                     notifier.cancel()
                     notifiedRequestId = null
@@ -162,9 +175,33 @@ class TwoFactorViewModel(
         val state = mutableState.value
         val request = state.request ?: return
         val login = currentLogin ?: return
-        if (state.phase != TwoFactorPhase.Prompt) return
+        if (!state.canReject) return
         submit(request, login) { generation ->
             twoFactorRepository.reject(login, generation, request)
+        }
+    }
+
+    fun acknowledgeSubmissionUncertain() {
+        val state = mutableState.value
+        if (!state.submissionUncertain) return
+        val requestId = state.request?.id ?: uncertainRequestId
+        if (requestId != null && uncertainRequestId == requestId) {
+            uncertainRequestId = null
+            settledRequestId = requestId
+        }
+        mutableState.value = state.withoutRequest().copy(submissionUncertain = false)
+    }
+
+    fun acknowledgeRegistrationUncertain() {
+        val login = currentLogin ?: return
+        val generation = sessionGeneration ?: return
+        viewModelScope.launch {
+            twoFactorRepository.acknowledgeUncertainRegistration(login)
+            if (ownsSession(login, generation)) {
+                receivingErrorReported = false
+                mutableState.value =
+                    mutableState.value.copy(registrationUncertain = false, receivingError = null)
+            }
         }
     }
 
@@ -174,6 +211,7 @@ class TwoFactorViewModel(
         action: suspend (Long) -> Unit,
     ) {
         val generation = sessionGeneration ?: return
+        if (uncertainRequestId == request.id) return
         mutableState.value =
             mutableState.value.copy(phase = TwoFactorPhase.Submitting, error = null)
         submission = viewModelScope.launch {
@@ -181,19 +219,52 @@ class TwoFactorViewModel(
                 withTimeout(REQUEST_TIMEOUT_MILLIS) { action(generation) }
                 updateIfCurrent(request.id, login, generation) {
                     settledRequestId = request.id
+                    uncertainRequestId = null
                     it.withoutRequest()
                 }
             } catch (_: TimeoutCancellationException) {
                 updateIfCurrent(request.id, login, generation) {
-                    it.copy(phase = TwoFactorPhase.Prompt, error = "提交超时，请核对请求状态后重试")
+                    uncertainRequestId = request.id
+                    it.copy(
+                        phase = TwoFactorPhase.Prompt,
+                        submissionUncertain = true,
+                        error = GithubTxt.current.Common.MutationUncertain,
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Exception) {
+            } catch (error: TwoFactorUncertainSubmissionException) {
                 updateIfCurrent(request.id, login, generation) {
+                    uncertainRequestId = request.id
                     it.copy(
                         phase = TwoFactorPhase.Prompt,
-                        error = error.message ?: "提交验证失败，请重试",
+                        submissionUncertain = true,
+                        error = error.message ?: GithubTxt.current.Common.MutationUncertain,
+                    )
+                }
+            } catch (error: TwoFactorException) {
+                updateIfCurrent(request.id, login, generation) {
+                    if (error.definiteRejection) {
+                        it.copy(
+                            phase = TwoFactorPhase.Prompt,
+                            error = error.message ?: "提交验证失败，请重试",
+                        )
+                    } else {
+                        uncertainRequestId = request.id
+                        it.copy(
+                            phase = TwoFactorPhase.Prompt,
+                            submissionUncertain = true,
+                            error = error.message ?: GithubTxt.current.Common.MutationUncertain,
+                        )
+                    }
+                }
+            } catch (error: Exception) {
+                updateIfCurrent(request.id, login, generation) {
+                    uncertainRequestId = request.id
+                    it.copy(
+                        phase = TwoFactorPhase.Prompt,
+                        submissionUncertain = true,
+                        error = error.message ?: GithubTxt.current.Common.MutationUncertain,
                     )
                 }
             }
@@ -201,8 +272,9 @@ class TwoFactorViewModel(
     }
 
     fun dismiss() {
-        if (mutableState.value.phase != TwoFactorPhase.Submitting) {
-            mutableState.value = mutableState.value.withoutRequest()
+        val current = mutableState.value
+        if (current.phase != TwoFactorPhase.Submitting && !current.submissionUncertain) {
+            mutableState.value = current.withoutRequest()
         }
     }
 
@@ -210,6 +282,7 @@ class TwoFactorViewModel(
         TwoFactorUiState(
             receivingError = receivingError,
             notificationWarning = notificationWarning,
+            registrationUncertain = registrationUncertain,
         )
 
     /** Applies [transform] only if the shown request and account still match the completed work. */
@@ -236,14 +309,26 @@ class TwoFactorViewModel(
             if (phase != TwoFactorPhase.Submitting) {
                 try {
                     withTimeout(REQUEST_TIMEOUT_MILLIS) {
-                        twoFactorRepository.ensureDeviceKey(login, generation, force = false)
+                        val regUncertain = twoFactorRepository.hasUncertainRegistration(login)
+                        if (regUncertain) {
+                            if (ownsSession(login, generation)) {
+                                mutableState.value =
+                                    mutableState.value.copy(registrationUncertain = true)
+                            }
+                        } else {
+                            twoFactorRepository.ensureDeviceKey(login, generation, force = false)
+                        }
                         val status = twoFactorRepository.fetchStatus(login, generation)
-                        if (!status.hasValidDeviceAuthKey) {
+                        if (!status.hasValidDeviceAuthKey && !twoFactorRepository.hasUncertainRegistration(login)) {
                             twoFactorRepository.ensureDeviceKey(login, generation, force = true)
                         }
                         if (ownsSession(login, generation)) {
                             receivingErrorReported = false
-                            mutableState.value = mutableState.value.copy(receivingError = null)
+                            mutableState.value =
+                                mutableState.value.copy(
+                                    receivingError = null,
+                                    registrationUncertain = twoFactorRepository.hasUncertainRegistration(login),
+                                )
                             reconcile(login, status)
                         }
                     }
@@ -253,6 +338,15 @@ class TwoFactorViewModel(
                     requestFailed = true
                 } catch (error: CancellationException) {
                     throw error
+                } catch (_: TwoFactorRegistrationUncertainException) {
+                    if (ownsSession(login, generation)) {
+                        mutableState.value =
+                            mutableState.value.copy(
+                                registrationUncertain = true,
+                                receivingError = GithubTxt.current.Common.MutationUncertain,
+                            )
+                    }
+                    requestFailed = true
                 } catch (error: Exception) {
                     val cause = error.cause ?: error
                     val message =
@@ -305,13 +399,17 @@ class TwoFactorViewModel(
         }
         val active = status.activeRequest?.takeUnless { it.id == settledRequestId }
         when {
-            active == null ->
-                if (current.phase == TwoFactorPhase.Prompt) {
+            active == null -> {
+                // 不因 fetchStatus 消失而推断结果未知的审批已成功；保留待确认提示直到用户确认或有新请求到来。
+                if (current.phase == TwoFactorPhase.Prompt && !current.submissionUncertain) {
                     mutableState.value = current.withoutRequest()
                 }
-            current.request?.id != active.id ->
+            }
+            current.request?.id != active.id -> {
+                uncertainRequestId = null
                 mutableState.value =
                     current.withoutRequest().copy(request = active, phase = TwoFactorPhase.Prompt)
+            }
         }
     }
 

@@ -114,6 +114,9 @@ internal fun WorkActivityCard(
 
   val rows: @Composable () -> Unit = {
     entries.forEachIndexed { index, item ->
+      if (item is WorkTimelineEntry.Comment && item.value.nodeId?.let(state.commentProjections::get)?.deleted == true) {
+        return@forEachIndexed
+      }
       key(item.key) {
         val showSeparator = index > 0
         when (item) {

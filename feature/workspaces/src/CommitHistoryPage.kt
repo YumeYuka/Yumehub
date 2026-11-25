@@ -116,7 +116,10 @@ fun CommitHistoryPage(owner: String, name: String, ref: String) {
         onRetry = viewModel.branches::retry,
         onLoadMore = viewModel.branches::loadMore,
         onQueryChange = viewModel.branches::search,
-        onSelect = { branch -> if (host.navigationEnabled) viewModel.switchBranch(branch) },
+        onSelect = { branch ->
+            if (host.navigationEnabled) viewModel.switchBranch(branch)
+            branchPickerVisible = false
+        },
     )
 }
 

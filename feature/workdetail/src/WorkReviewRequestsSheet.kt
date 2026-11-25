@@ -10,8 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -29,7 +27,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
-
+import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 @Composable
 internal fun WorkReviewRequestsSheet(
     state: WorkPropertiesState,
@@ -38,36 +36,33 @@ internal fun WorkReviewRequestsSheet(
 ) {
     val locale = LocalGithubStrings.current
     val strings = locale.WorkDetail
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focus = LocalFocusManager.current
-    val editor = state.editor?.takeIf { it.property == WorkProperty.Reviewers }
-    var started by remember { mutableStateOf(false) }
+    val live = state.editor?.takeIf { it.property == WorkProperty.Reviewers }
+    // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
+    var retained by remember { mutableStateOf<WorkPropertyEditor?>(null) }
+    if (live != null) retained = live
+    val editor = live ?: retained
     LaunchedEffect(viewModel) { viewModel.edit(WorkProperty.Reviewers) }
-    LaunchedEffect(editor != null) {
-        if (editor != null) started = true else if (started) onDismiss()
-    }
+    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
     val editable =
-        editor != null && editor.editable && !editor.loading && !editor.failed &&
-            !editor.needsReconcile && !state.submitting
+        live != null && live.editable && !live.loading && !live.failed &&
+            !live.needsReconcile && !state.submitting
     val shown = remember(editor) { editor?.reviewerGroups() }
     GithubSearchSelectionSheet(
-        visible = editor != null || !started,
+        // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发。
+        visible = live != null || retained != null,
         title = strings.RequestReview,
         placeholder = strings.PropertySearch,
         queryKey = editor?.query.orEmpty(),
         onQueryChange = viewModel::search,
         onDismiss = {
             viewModel.closeEditor()
+            retained = null
             onDismiss()
         },
-        onConfirm = {
-            keyboard?.hide()
-            focus.clearFocus(force = true)
-            viewModel.applyEditor()
-        },
-        enabled = !state.submitting,
-        confirmEnabled = editable && editor.reviewRequestsChanged(),
+        onConfirm = { viewModel.applyEditor() },
+        confirmEnabled = editable && editor?.reviewRequestsChanged() == true,
         showConfirm = editor?.editable == true,
+        requestClose = live == null && retained != null,
     ) {
         if (editor == null || shown == null || editor.loading) {
             item("review-requests-loading") {
@@ -79,14 +74,50 @@ internal fun WorkReviewRequestsSheet(
             }
         } else if (editor.failed || editor.needsReconcile) {
             item("review-requests-retry") {
+                var acknowledgeVisible by remember { mutableStateOf(false) }
                 GlasmioGroupedList {
                     GlasmioListRow(
-                        title = locale.Common.Retry,
+                        title = if (state.uncertain) locale.Common.MutationReconcile else locale.Common.Retry,
                         subtitle =
-                            if (editor.needsReconcile) strings.PropertySaveFailed
-                            else strings.PropertyLoadFailed,
+                            when {
+                                state.uncertain -> locale.Common.MutationUncertain
+                                editor.needsReconcile -> strings.PropertySaveFailed
+                                else -> strings.PropertyLoadFailed
+                            },
                         onClick = viewModel::retryEditor,
                         showTopSeparator = false,
+                    )
+                    if (state.uncertain) {
+                        GlasmioListRow(
+                            title = locale.Common.MutationAcknowledged,
+                            showTopSeparator = true,
+                            showDisclosure = false,
+                            onClick = { acknowledgeVisible = true },
+                        )
+                    }
+                }
+                if (acknowledgeVisible && state.uncertain) {
+                    io.github.neoruaa.glasmio.ui.GlasmioAlertDialog(
+                        visible = true,
+                        title = locale.Common.MutationUncertain,
+                        message = locale.Common.MutationAcknowledgeWarning,
+                        buttons =
+                            listOf(
+                                io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
+                                    locale.Common.Cancel,
+                                    onClick = { acknowledgeVisible = false },
+                                    role = io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Cancel,
+                                ),
+                                io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
+                                    locale.Common.MutationAcknowledged,
+                                    onClick = {
+                                        acknowledgeVisible = false
+                                        viewModel.acknowledgeUncertain()
+                                    },
+                                    role = io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Default,
+                                ),
+                            ),
+                        onDismissRequest = { acknowledgeVisible = false },
                     )
                 }
             }

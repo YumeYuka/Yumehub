@@ -48,9 +48,11 @@ internal class WorkInfoViewModel(
 
     fun select(option: WorkPropertyOption) = controller.select(option)
 
-    fun applyEditor() = controller.applyEditor()
+    fun applyEditor(saveImmediately: Boolean = false) = controller.applyEditor(saveImmediately)
 
     fun saveAll() = controller.saveAll()
 
     fun consumeSaved() = controller.consumeSaved()
+
+    fun acknowledgeUncertain() = controller.acknowledgeUncertain()
 }

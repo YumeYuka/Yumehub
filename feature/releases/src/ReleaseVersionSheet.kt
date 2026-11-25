@@ -19,17 +19,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
 import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseVersion
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
@@ -45,10 +50,13 @@ internal fun ReleaseVersionSheet(
     visible: Boolean,
     versions: Flow<PagingData<GithubReleaseVersion>>,
     selectedId: String?,
+    revalidation: StateFlow<RevalidationState> = MutableStateFlow(RevalidationState.Idle),
+    onRetryRevalidation: () -> Unit = {},
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
     val strings = LocalGithubStrings.current
+    val revalidationState by revalidation.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var opened by remember { mutableStateOf(false) }
     LaunchedEffect(visible) {
@@ -90,6 +98,18 @@ internal fun ReleaseVersionSheet(
         onConfirm = onDismiss,
         showConfirm = false,
     ) { finish ->
+        if (revalidationState is RevalidationState.Failed) {
+            item(key = "release-versions-sync-failed") {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = strings.Common.CacheSyncFailed,
+                        detail = strings.Common.Retry,
+                        showDisclosure = false,
+                        onClick = onRetryRevalidation,
+                    )
+                }
+            }
+        }
         val canLoadMore =
             pages != null &&
                 query.isNotEmpty() &&

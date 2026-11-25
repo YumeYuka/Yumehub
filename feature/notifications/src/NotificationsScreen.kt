@@ -44,7 +44,31 @@ internal fun LazyListScope.NotificationsScreen(
     retryLabel: String,
     onToggleSelection: (String) -> Unit,
     rowKeys: List<String>,
+    onReconcileUncertain: () -> Unit = {},
+    onAcknowledgeUncertain: () -> Unit = {},
 ) {
+    if (state.uncertainThreadIds.isNotEmpty()) {
+        item(key = "notifications-uncertain-banner") {
+            val common = LocalGithubStrings.current.Common
+            GlasmioGroupedList {
+                GlasmioListRow(
+                    title = common.MutationUncertain,
+                    subtitle = "${state.uncertainThreadIds.size}",
+                    systemName = null,
+                )
+                GlasmioListRow(
+                    title = common.MutationReconcile,
+                    systemName = null,
+                    onClick = onReconcileUncertain,
+                )
+                GlasmioListRow(
+                    title = common.MutationAcknowledged,
+                    systemName = null,
+                    onClick = onAcknowledgeUncertain,
+                )
+            }
+        }
+    }
     state.actionError?.let { message ->
         notificationStatus(
             "notifications-action-error",
@@ -105,6 +129,7 @@ internal fun LazyListScope.NotificationsScreen(
                 !state.isProcessing,
                 state.isSelecting,
                 notification?.threadId in state.selectedThreadIds,
+                notification?.threadId in state.uncertainThreadIds,
                 onToggleSelection,
                 onOpenTarget,
                 onOpenNotification,
@@ -265,6 +290,7 @@ private fun NotificationRow(
     enabled: Boolean,
     isSelecting: Boolean,
     isSelected: Boolean,
+    uncertain: Boolean,
     onToggleSelection: (String) -> Unit,
     onOpenTarget: (NotificationTarget) -> Unit,
     onOpenNotification: (NotificationDto) -> Unit,
@@ -279,6 +305,7 @@ private fun NotificationRow(
             preview = preview,
             isSelecting = isSelecting,
             isSelected = isSelected,
+            uncertain = uncertain,
             onLongClick =
                 if (enabled && !isSelecting && threadId != null) {
                     { onThreadActions(notification) }

@@ -27,6 +27,7 @@ import kotlinx.coroutines.CancellationException
 import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseDetail
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
@@ -75,6 +76,8 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         visible = showTimeline && host.navigationEnabled,
         versions = viewModel.timeline,
         selectedId = detail?.version?.id ?: state.selectedVersionId,
+        revalidation = viewModel.versionsRevalidation,
+        onRetryRevalidation = viewModel::retryVersionsRevalidation,
         onDismiss = { showTimeline = false },
         onSelect = { versionId ->
             showTimeline = false
@@ -88,6 +91,12 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         else
             remember(version.id, viewModel) { viewModel.assets(version.id) }
                 .collectAsLazyPagingItems()
+    val assetsRevalidation =
+        if (version != null) {
+            remember(version.id, viewModel) { viewModel.assetsRevalidation(version.id) }
+                .collectAsStateWithLifecycle()
+                .value
+        } else null
     val assetSlots =
         if (version != null && assets != null) {
             rememberGithubPagingSlots(assets, "release-assets:${version.id}", autoRefresh = false) {
@@ -183,6 +192,18 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             }
         }
         if (detail != null && assets != null && assetSlots != null) {
+            if (assetsRevalidation is RevalidationState.Failed && version != null) {
+                item(key = "release-assets-sync-failed:${version.id}") {
+                    GlasmioGroupedList {
+                        GlasmioListRow(
+                            title = strings.Common.CacheSyncFailed,
+                            detail = strings.Common.Retry,
+                            showDisclosure = false,
+                            onClick = { viewModel.retryAssetsRevalidation(version.id) },
+                        )
+                    }
+                }
+            }
             releaseDownloads(
                 detail,
                 assets,

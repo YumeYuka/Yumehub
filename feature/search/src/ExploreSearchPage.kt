@@ -83,6 +83,8 @@ fun ExploreSearchPage(
         GithubPagingContent(
             search.items,
             contentKey = search.category to search.query,
+            revalidation = search.revalidation,
+            onRetryRevalidation = viewModel::retryRevalidation,
             order = search.category.ordinal,
         ) { paging ->
             val results = paging.items

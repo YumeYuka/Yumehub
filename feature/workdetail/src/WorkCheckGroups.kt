@@ -1,12 +1,15 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
@@ -27,6 +30,9 @@ internal fun WorkCheckGroups(
     }
     key(head) {
         val pages = remember(viewModel, head) { viewModel.checks(head) }.collectAsLazyPagingItems()
+        val revalidation by
+            remember(viewModel, head) { viewModel.checksRevalidation(head) }
+                .collectAsStateWithLifecycle()
         val snapshot = pages.itemSnapshotList
         val groups = remember(snapshot) { snapshot.items.groupBy { it.suiteId } }
         val loads = pages.loadState
@@ -35,6 +41,16 @@ internal fun WorkCheckGroups(
                 ?: loads.append as? LoadState.Error
                 ?: loads.prepend as? LoadState.Error
         GithubLoadFailureToast(failure, strings.Activity.LoadFailed)
+        if (revalidation is RevalidationState.Failed) {
+            GlasmioGroupedList {
+                GlasmioListRow(
+                    title = strings.Common.CacheSyncFailed,
+                    detail = strings.Common.Retry,
+                    showDisclosure = false,
+                    onClick = { viewModel.retryChecksRevalidation(head) },
+                )
+            }
+        }
 
         if (
             snapshot.items.isNotEmpty() &&

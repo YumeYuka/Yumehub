@@ -16,7 +16,12 @@ import moe.yumeyuka.yumehub.data.repository.PagingContext
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.PagingSnapshot
 import moe.yumeyuka.yumehub.data.repository.defaultPagingConfig
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
+
+internal fun feedPagingKey(filters: Set<FeedFilter>, sort: FeedSort): String =
+    "dashboard-feed:v5:${sort.name}:${filters.toSet().map { it.name }.sorted().joinToString(",")}:size=25"
 
 internal fun feedPager(
     api: DashboardFeedRepository,
@@ -26,15 +31,16 @@ internal fun feedPager(
     repository: PagingRepository,
 ): Flow<PagingData<FeedEventDto>> {
     val selected = filters.toSet()
-    val key =
-        "dashboard-feed:v5:${sort.name}:${selected.map { it.name }.sorted().joinToString(",")}:size=25"
-    return repository.pages(login, key, defaultPagingConfig(FeedPageSize)) { context ->
+    val key = feedPagingKey(selected, sort)
+    val feedTags =
+        setOf(CacheTag(DataDomain.Relationships, null), CacheTag(DataDomain.Repositories, null))
+    return repository.pages(login, key, defaultPagingConfig(FeedPageSize), feedTags) { context ->
         FeedPagingSource(
             api,
             login,
             selected,
             sort,
-            repository.snapshot(login, key, FeedEventDto.serializer(), context),
+            repository.snapshot(login, key, FeedEventDto.serializer(), context, feedTags),
             context,
         )
     }
@@ -61,11 +67,13 @@ private class FeedPagingSource(
                 if (params is LoadParams.Refresh) snapshot.initialPage(FeedPageSize) else null
             val result =
                 if (initial != null) {
-                    context.revalidate(this) {
-                        // 校验首屏不能改写当前列表正用于追加的游标。
-                        val updated = loadFirst(force = true, cursors = mutableMapOf(1 to null))
-                        snapshot.save(updated)
-                        initial != updated.copy(updatedAt = initial.updatedAt)
+                    if (!initial.isFresh()) {
+                        context.revalidate(this) {
+                            // 校验首屏不能改写当前列表正用于追加的游标。
+                            val updated = loadFirst(force = true, cursors = mutableMapOf(1 to null))
+                            snapshot.save(updated)
+                            initial != updated.copy(updatedAt = initial.updatedAt)
+                        }
                     }
                     initial
                 } else {

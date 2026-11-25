@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,14 +13,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.NotificationThreadAction as ThreadActionKind
+import moe.yumeyuka.yumehub.data.repository.NotificationThreadState
 import moe.yumeyuka.yumehub.data.repository.NotificationsQuery
 import moe.yumeyuka.yumehub.data.repository.NotificationsRepository
 import moe.yumeyuka.yumehub.data.repository.NotificationsSnapshot
@@ -69,6 +75,7 @@ data class NotificationsUiState(
     val actionError: String? = null,
     val isSelecting: Boolean = false,
     val selectedThreadIds: Set<String> = emptySet(),
+    val uncertainThreadIds: Set<String> = emptySet(),
 ) {
     val visibleNotifications: List<NotificationDto>
         get() =
@@ -92,13 +99,38 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private var nextPage: Int? = null
     private var pagingPaused = false
     private var failedAction: ThreadAction? = null
-    private val openedReadJobs = mutableMapOf<String, Job>()
+    private var coordinator: MutationCoordinator? = null
+    private val threadObservers = mutableMapOf<String, Job>()
+    private val overlayStates = mutableMapOf<String, NotificationThreadState>()
+    private var pendingUncertainTargets: Set<String> = emptySet()
 
     val uiState: StateFlow<NotificationsUiState> = mutableUiState.asStateFlow()
 
     init {
         // 首次进入由 GithubRefreshEffect 统一触发，避免 init 与首次激活各请求一次第一页。
         observeQuery(refresh = false)
+        viewModelScope.launch {
+            val coord =
+                try {
+                    repository.mutations(account)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    return@launch
+                }
+            if (!repository.account.equals(account, ignoreCase = true)) return@launch
+            coordinator = coord
+            launch {
+                coord.pending.collect { summaries ->
+                    pendingUncertainTargets =
+                        summaries
+                            .filter { it.kind == MutationKind.NOTIFICATION }
+                            .mapTo(mutableSetOf()) { it.target }
+                    pendingUncertainTargets.forEach { ensureThreadObserver(coord, it) }
+                    applySnapshot(resource.state.value)
+                }
+            }
+        }
         viewModelScope.launch {
             repository.changes(account).versions
                 .map { it[DataDomain.Work] }
@@ -116,10 +148,56 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         }
     }
 
+    private fun threadKey(threadId: String) =
+        MutationKey(MutationKind.NOTIFICATION, threadId, NotificationThreadState.serializer())
+
+    private fun ensureThreadObserver(coord: MutationCoordinator, threadId: String) {
+        if (threadObservers[threadId]?.isActive == true) return
+        threadObservers[threadId] =
+            viewModelScope.launch {
+                coord.observe(threadKey(threadId)).collect { write ->
+                    val state = write.desired ?: write.confirmed
+                    if (state != null && write.phase != WritePhase.IDLE) {
+                        overlayStates[threadId] = state
+                    } else if (write.phase == WritePhase.IDLE) {
+                        overlayStates.remove(threadId)
+                    }
+                    if (write.phase == WritePhase.UNCERTAIN) {
+                        pendingUncertainTargets = pendingUncertainTargets + threadId
+                    } else if (write.phase == WritePhase.IDLE || write.phase == WritePhase.REJECTED) {
+                        pendingUncertainTargets = pendingUncertainTargets - threadId
+                    }
+                    applySnapshot(resource.state.value)
+                }
+            }
+    }
+
     fun revalidate() {
         val state = mutableUiState.value
         if (state.isProcessing || state.isSelecting) return
         repository.refresh(account, state.query())
+    }
+
+    fun reconcileUncertain() {
+        revalidate()
+        val coord = coordinator ?: return
+        pendingUncertainTargets.toList().forEach { threadId ->
+            coord.reconcile(threadKey(threadId)) {
+                val existing =
+                    resource.cached?.notifications?.firstOrNull { it.id == threadId }
+                NotificationThreadState(
+                    unread = existing?.unread ?: false,
+                    done = mutableUiState.value.filter == NotificationFilter.Done,
+                )
+            }
+        }
+    }
+
+    fun acknowledgeUncertain() {
+        val coord = coordinator ?: return
+        coord.pending.value
+            .filter { it.kind == MutationKind.NOTIFICATION }
+            .forEach { coord.acknowledge(it.operationId) }
     }
 
     fun loadMore() {
@@ -241,33 +319,48 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             !notification.unread ||
                 state.isProcessing ||
                 state.isSelecting ||
-                threadId in openedReadJobs
+                threadId in state.uncertainThreadIds
         )
             return
-        val job =
-            viewModelScope.launch(start = CoroutineStart.LAZY) {
-                try {
-                    repository.markRead(account, threadId)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    if (failedAction == null && !mutableUiState.value.isProcessing) {
-                        failedAction = ThreadAction(setOf(threadId), ThreadActionKind.MarkRead)
-                        mutableUiState.value =
-                            mutableUiState.value.copy(
-                                actionError =
-                                    GithubTxt.current.Notifications.ActionFailure(
-                                        GithubTxt.current.Notifications.MarkRead,
-                                        error.messageForUser(),
-                                    ),
-                            )
+        viewModelScope.launch {
+            val coord =
+                coordinator
+                    ?: try {
+                        repository.mutations(account).also { coordinator = it }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        return@launch
                     }
-                } finally {
-                    openedReadJobs.remove(threadId)
-                }
+            ensureThreadObserver(coord, threadId)
+            val key = threadKey(threadId)
+            val isDone = state.filter == NotificationFilter.Done
+            val confirmed = NotificationThreadState(unread = notification.unread, done = isDone)
+            val desired = NotificationThreadState(unread = false, done = isDone)
+            coord.submit(
+                key,
+                confirmed = confirmed,
+                desired = desired,
+                tags = setOf(CacheTag(DataDomain.Notifications, null)),
+                send = {
+                    repository.sendThreadAction(account, threadId, ThreadActionKind.MarkRead)
+                    desired
+                },
+                readBack = { confirmed },
+            )
+            val finalState = coord.observe(key).first { it.phase != WritePhase.PENDING }
+            if (finalState.phase == WritePhase.REJECTED && failedAction == null && !mutableUiState.value.isProcessing) {
+                failedAction = ThreadAction(setOf(threadId), ThreadActionKind.MarkRead)
+                mutableUiState.value =
+                    mutableUiState.value.copy(
+                        actionError =
+                            GithubTxt.current.Notifications.ActionFailure(
+                                GithubTxt.current.Notifications.MarkRead,
+                                finalState.message ?: GithubTxt.current.Notifications.RequestFailed,
+                            ),
+                    )
             }
-        openedReadJobs[threadId] = job
-        job.start()
+        }
     }
 
     fun markSelectedRead() = processSelection(ThreadActionKind.MarkRead)
@@ -331,7 +424,16 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         nextPage = snapshot?.takeIf { it.nextCursor != null }?.let { it.loadedThroughPage + 1 }
         // 失效的磁盘窗口必须先重读，不能继续使用操作前的游标。
         pagingPaused = snapshot?.pagingPaused == true || snapshot != null && cached.updatedAt == 0L
-        val notifications = snapshot?.notifications.orEmpty()
+        val baseNotifications = snapshot?.notifications.orEmpty()
+        val notifications =
+            baseNotifications.mapNotNull { notification ->
+                val threadId = notification.threadId ?: return@mapNotNull notification
+                val overlay = overlayStates[threadId] ?: return@mapNotNull notification
+                val matchesDone = overlay.done == current.filter.done
+                val matchesRead = current.filter.includeRead || overlay.unread
+                if (!matchesDone || !matchesRead) null
+                else notification.copy(unread = overlay.unread)
+            }
         val selected =
             current.selectedThreadIds.intersect(
                 notifications.mapNotNull { it.threadId }.toSet(),
@@ -360,6 +462,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 loadError = error.takeUnless { appending },
                 appendError = error.takeIf { appending },
                 selectedThreadIds = selected,
+                uncertainThreadIds = pendingUncertainTargets.toSet(),
             )
     }
 
@@ -403,6 +506,8 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         }
     }
 
+    private enum class BatchOutcome { Confirmed, Rejected, Uncertain, NotSent }
+
     private fun process(action: ThreadAction) {
         val state = mutableUiState.value
         if (
@@ -423,41 +528,121 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 actionError = null,
             )
         viewModelScope.launch {
-            val succeeded = mutableSetOf<String>()
-            var failure: Exception? = null
-            for (batch in action.threadIds.chunked(3)) {
+            val coord =
+                coordinator
+                    ?: try {
+                        repository.mutations(account).also { coordinator = it }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        mutableUiState.value =
+                            mutableUiState.value.copy(
+                                isProcessing = false,
+                                actionError =
+                                    GithubTxt.current.Notifications.ActionFailure(
+                                        action.kind.label,
+                                        error.messageForUser(),
+                                    ),
+                            )
+                        return@launch
+                    }
+            val confirmedIds = mutableSetOf<String>()
+            val rejectedIds = mutableSetOf<String>()
+            val uncertainIds = mutableSetOf<String>()
+            val notSentIds = mutableSetOf<String>()
+            var lastFailureMessage: String? = null
+            var stopped = false
+            val allIds = action.threadIds.toList()
+            for (batch in allIds.chunked(3)) {
+                if (stopped) {
+                    notSentIds.addAll(batch)
+                    continue
+                }
                 val results = coroutineScope {
                     batch
                         .map { threadId ->
                             async {
-                                try {
-                                    openedReadJobs[threadId]?.join()
-                                    repository.markThread(account, threadId, action.kind)
-                                    threadId to null
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (error: Exception) {
-                                    threadId to error
+                                val existing =
+                                    resource.cached?.notifications?.firstOrNull { it.id == threadId }
+                                val currentUnread = existing?.unread ?: (state.filter == NotificationFilter.Unread)
+                                val currentDone = state.filter == NotificationFilter.Done
+                                val confirmedState =
+                                    NotificationThreadState(currentUnread, currentDone)
+                                val desiredState =
+                                    when (action.kind) {
+                                        ThreadActionKind.MarkRead ->
+                                            NotificationThreadState(false, currentDone)
+                                        ThreadActionKind.MarkUnread ->
+                                            NotificationThreadState(true, currentDone)
+                                        ThreadActionKind.MarkDone ->
+                                            NotificationThreadState(currentUnread, true)
+                                        ThreadActionKind.MarkUndone ->
+                                            NotificationThreadState(currentUnread, false)
+                                    }
+                                ensureThreadObserver(coord, threadId)
+                                val key = threadKey(threadId)
+                                val submitted =
+                                    coord.submit(
+                                        key,
+                                        confirmed = confirmedState,
+                                        desired = desiredState,
+                                        tags = setOf(CacheTag(DataDomain.Notifications, null)),
+                                        send = {
+                                            repository.sendThreadAction(account, threadId, action.kind)
+                                            desiredState
+                                        },
+                                        readBack = { confirmedState },
+                                    )
+                                if (!submitted) {
+                                    Triple(threadId, BatchOutcome.Uncertain, GithubTxt.current.Common.MutationUncertain)
+                                } else {
+                                    val settled =
+                                        coord.observe(key).first { it.phase != WritePhase.PENDING }
+                                    when (settled.phase) {
+                                        WritePhase.IDLE -> Triple(threadId, BatchOutcome.Confirmed, null)
+                                        WritePhase.REJECTED ->
+                                            Triple(
+                                                threadId,
+                                                BatchOutcome.Rejected,
+                                                settled.message ?: GithubTxt.current.Notifications.RequestFailed,
+                                            )
+                                        WritePhase.UNCERTAIN ->
+                                            Triple(
+                                                threadId,
+                                                BatchOutcome.Uncertain,
+                                                GithubTxt.current.Common.MutationUncertain,
+                                            )
+                                        WritePhase.PENDING -> Triple(threadId, BatchOutcome.Uncertain, null)
+                                    }
                                 }
                             }
                         }
                         .awaitAll()
                 }
-                for ((threadId, error) in results) {
-                    if (error == null) succeeded.add(threadId)
-                    else if (failure == null || error.stopBatch()) failure = error
+                for ((threadId, outcome, msg) in results) {
+                    when (outcome) {
+                        BatchOutcome.Confirmed -> confirmedIds.add(threadId)
+                        BatchOutcome.Rejected -> {
+                            rejectedIds.add(threadId)
+                            if (lastFailureMessage == null) lastFailureMessage = msg
+                        }
+                        BatchOutcome.Uncertain -> {
+                            uncertainIds.add(threadId)
+                            stopped = true
+                        }
+                        BatchOutcome.NotSent -> notSentIds.add(threadId)
+                    }
                 }
                 applySnapshot(resource.state.value)
-                if (results.any { it.second?.stopBatch() == true }) break
             }
-            val remaining = action.threadIds - succeeded
-            if (remaining.isNotEmpty()) failedAction = action.copy(threadIds = remaining)
+            // 未知项绝不进入可以直接重发的 failedAction；只允许重发未发送或明确拒绝的条目。
+            val retryable = rejectedIds + notSentIds
+            if (retryable.isNotEmpty()) failedAction = action.copy(threadIds = retryable)
             val current = mutableUiState.value
-            val selected = current.selectedThreadIds - succeeded
+            val selected = current.selectedThreadIds - confirmedIds - uncertainIds
             val selectionFinished = state.selectedThreadIds.isNotEmpty() && selected.isEmpty()
-            val pausePaging = failure?.stopBatch() == true
+            val pausePaging = uncertainIds.isNotEmpty()
             if (pausePaging) {
-                // 操作已停止，保留部分成功结果，等用户主动刷新后再恢复两个方向的分页。
                 pagingPaused = true
                 listGeneration++
                 listJob?.cancel()
@@ -465,6 +650,25 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 repository.pausePaging(account, current.query())
             }
             val actionLabel = action.kind.label
+            val errorText =
+                when {
+                    uncertainIds.isNotEmpty() && retryable.isEmpty() ->
+                        GithubTxt.current.Common.MutationUncertain
+                    retryable.isNotEmpty() ->
+                        if (action.threadIds.size == 1)
+                            GithubTxt.current.Notifications.ActionFailure(
+                                actionLabel,
+                                lastFailureMessage ?: GithubTxt.current.Notifications.RequestFailed,
+                            )
+                        else
+                            GithubTxt.current.Notifications.PartialFailure(
+                                actionLabel,
+                                confirmedIds.size,
+                                retryable.size + uncertainIds.size,
+                                lastFailureMessage ?: GithubTxt.current.Notifications.RequestFailed,
+                            )
+                    else -> null
+                }
             mutableUiState.value =
                 current.copy(
                     isSelecting = current.isSelecting && !selectionFinished,
@@ -474,21 +678,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                     isLoadingMore = current.isLoadingMore && !pausePaging,
                     hasMore = current.hasMore && !pausePaging,
                     hasPrevious = current.hasPrevious && !pausePaging,
-                    actionError =
-                        failure?.let {
-                            if (action.threadIds.size == 1)
-                                GithubTxt.current.Notifications.ActionFailure(
-                                    actionLabel,
-                                    it.messageForUser(),
-                                )
-                            else
-                                GithubTxt.current.Notifications.PartialFailure(
-                                    actionLabel,
-                                    succeeded.size,
-                                    remaining.size,
-                                    it.messageForUser(),
-                                )
-                        },
+                    actionError = errorText,
                 )
         }
     }
@@ -507,13 +697,6 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 ThreadActionKind.MarkDone -> GithubTxt.current.Notifications.MarkDone
                 ThreadActionKind.MarkUndone -> GithubTxt.current.Notifications.MoveToInbox
             }
-
-    private fun Exception.stopBatch(): Boolean =
-        this is IOException || this is HttpException && code() == 401 || mayBeRateLimited()
-
-    // 二级限流的 403 不保证带有 Retry-After 等响应头。
-    private fun Exception?.mayBeRateLimited(): Boolean =
-        this is HttpException && (code() == 403 || code() == 429)
 
     private fun Exception.messageForUser(): String =
         when (this) {

@@ -58,7 +58,12 @@ fun ExplorePage(
         remember(feed, lifecycle) {
             feed.events.flowWithLifecycle(lifecycle, Lifecycle.State.RESUMED)
         }
-    GithubPagingContent(eventsWhileVisible, contentKey = options ?: "feed-options-loading") { paging ->
+    GithubPagingContent(
+        source = eventsWhileVisible,
+        contentKey = options ?: "feed-options-loading",
+        revalidation = feed.revalidation,
+        onRetryRevalidation = feed::retryRevalidation,
+    ) { paging ->
         val events = paging.items
         val slots =
             rememberGithubPagingSlots(

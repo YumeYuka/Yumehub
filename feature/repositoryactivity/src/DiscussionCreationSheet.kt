@@ -15,10 +15,10 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +27,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
+import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
@@ -36,68 +39,68 @@ import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.replaceFormText
 
 @Composable
 internal fun DiscussionCreationSheet(
     visible: Boolean,
+    creationState: DiscussionCreationState,
     categories: List<DiscussionCategoryDto>,
     optionsFailed: Boolean,
     onRetry: () -> Unit,
+    onTitleChange: (String) -> Unit,
     body: String,
     onEditBody: () -> Unit,
     onDismiss: () -> Unit,
-    onCreate: suspend (categoryId: String, title: String, body: String) -> Int,
-    onCreated: (Int) -> Unit,
+    onSubmit: (categoryId: String, title: String, body: String) -> Unit,
+    onAcknowledgeUncertain: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current
     val work = strings.WorkList
-    val scope = rememberCoroutineScope()
-    var selectedId by rememberSaveable(visible) { mutableStateOf<String?>(null) }
+    var selectedId by remember { mutableStateOf<String?>(null) }
     val category = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
-    var expanded by rememberSaveable(visible) { mutableStateOf(false) }
-    val title = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
-    var submitting by rememberSaveable(visible) { mutableStateOf(false) }
-    var failed by rememberSaveable(visible) { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+    val title = remember { TextFieldState() }
+    var acknowledgeVisible by remember { mutableStateOf(false) }
+    val submitting = creationState.submitting
+    val uncertain = creationState.uncertain
+    val failed = creationState.failed
+    LaunchedEffect(creationState.draftRestored, creationState.title) {
+        if (creationState.title.isNotEmpty() && title.text.isEmpty()) {
+            title.replaceFormText(creationState.title)
+        }
+        if (creationState.title.isEmpty() && !submitting && !failed && title.text.isNotEmpty()) {
+            title.replaceFormText("")
+        }
+    }
+    LaunchedEffect(title.text) {
+        if (visible && !submitting) onTitleChange(title.text.toString())
+    }
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (!submitting) onDismiss() },
-        dismissOnBackPress = !submitting,
-        dismissOnClickOutside = !submitting,
+        onDismissRequest = onDismiss,
+        dismissOnBackPress = true,
+        dismissOnClickOutside = true,
         fitContent = true,
         title = strings.Repository.NewDiscussion,
         topBar = {
             GlasmioTopBar(
                 title = strings.Repository.NewDiscussion,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !submitting) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
                     GlasmioIconButton(
-                        enabled = !submitting && title.text.isNotBlank() && category != null,
+                        enabled = !submitting && !uncertain && title.text.isNotBlank() && category != null,
                         onClick = {
                             val selected = category ?: return@GlasmioIconButton
-                            submitting = true
-                            failed = false
-                            scope.launch {
-                                try {
-                                    val number = onCreate(selected.id, title.text.trim().toString(), body)
-                                    onDismiss()
-                                    onCreated(number)
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (_: Exception) {
-                                    failed = true
-                                    submitting = false
-                                }
-                            }
+                            onSubmit(selected.id, title.text.trim().toString(), body)
                         },
                     ) {
                         GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
@@ -118,7 +121,7 @@ internal fun DiscussionCreationSheet(
                     title = work.Category,
                     detail = if (optionsFailed) strings.Common.Retry else category?.name,
                     systemName = null,
-                    enabled = !submitting && (category != null || optionsFailed),
+                    enabled = !submitting && !uncertain && (category != null || optionsFailed),
                     onClick = { if (optionsFailed) onRetry() else expanded = !expanded },
                 )
                 if (expanded) {
@@ -126,7 +129,7 @@ internal fun DiscussionCreationSheet(
                         GithubFilterChoiceRow(
                             title = option.name,
                             checked = option.id == category?.id,
-                            enabled = !submitting,
+                            enabled = !submitting && !uncertain,
                         ) {
                             selectedId = option.id
                             expanded = false
@@ -134,21 +137,59 @@ internal fun DiscussionCreationSheet(
                     }
                 }
             }
-            DiscussionCreationTitle(work.CreationTitle, title, submitting)
+            DiscussionCreationTitle(work.CreationTitle, title, submitting || uncertain)
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = work.CreationBody,
                     subtitle = body.lineSequence().firstOrNull { it.isNotBlank() },
-                    enabled = !submitting,
+                    enabled = !submitting && !uncertain,
                     onClick = onEditBody,
                 )
             }
-            if (failed) {
+            if (submitting) {
+                GlasmioGroupedList {
+                    GlasmioListRow(title = strings.Common.MutationPending, systemName = null)
+                }
+            } else if (uncertain) {
+                GlasmioGroupedList {
+                    GlasmioListRow(title = strings.Common.MutationUncertain, systemName = null)
+                    GlasmioListRow(
+                        title = strings.Common.MutationAcknowledged,
+                        showTopSeparator = true,
+                        showDisclosure = false,
+                        onClick = { acknowledgeVisible = true },
+                    )
+                }
+            } else if (failed) {
                 GlasmioGroupedList {
                     GlasmioListRow(title = work.CreationFailed, systemName = null)
                 }
             }
         }
+    }
+    if (acknowledgeVisible && uncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = strings.Common.MutationUncertain,
+            message = strings.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        strings.Common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        strings.Common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            onAcknowledgeUncertain()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
     }
 }
 

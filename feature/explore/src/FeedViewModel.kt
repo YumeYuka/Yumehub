@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,12 +24,22 @@ import kotlinx.serialization.builtins.serializer
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
 import moe.yumeyuka.yumehub.data.auth.AuthSession
+import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
+import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.DashboardFeedRepository
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentRepository
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.StarredRepositoriesPagingKey
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
+import moe.yumeyuka.yumehub.locale.GithubTxt
 import moe.yumeyuka.yumehub.ui.component.FeedCardState
 import moe.yumeyuka.yumehub.ui.component.collaborationErrorMessage
 import moe.yumeyuka.yumehub.ui.component.initialCard
@@ -53,7 +64,10 @@ internal class FeedViewModel(
     private val dashboard: DashboardFeedRepository,
 ) : ViewModel() {
     private var account: String? = null
+    private var coordinatorAccount: String? = null
+    private var coordinator: MutationCoordinator? = null
     private val jobs = mutableMapOf<String, Job>()
+    private val cardObservers = mutableMapOf<String, Job>()
     private val cardRequests = Semaphore(2)
     private var visible = emptyMap<String, FeedEventDto>()
     private val automaticReads = mutableMapOf<String, Job>()
@@ -71,10 +85,14 @@ internal class FeedViewModel(
                 if (account != session?.login) {
                     jobs.values.toList().forEach { it.cancel() }
                     jobs.clear()
+                    cardObservers.values.toList().forEach { it.cancel() }
+                    cardObservers.clear()
                     automaticReads.clear()
                     visible = emptyMap()
                     mutableCards.clear()
                     account = session?.login
+                    coordinator = null
+                    coordinatorAccount = null
                 }
                 if (session == null || options.filters.isEmpty()) flowOf(PagingData.empty())
                 else
@@ -88,15 +106,60 @@ internal class FeedViewModel(
             }
             .cachedIn(viewModelScope)
 
+    val revalidation: StateFlow<RevalidationState> =
+        combine(auth.session.distinctUntilChanged(), options.filterNotNull()) { session, options ->
+                session to options
+            }
+            .flatMapLatest { (session, options) ->
+                if (session == null || options.filters.isEmpty()) flowOf(RevalidationState.Idle)
+                else pagingRepository.revalidation(session.login, feedPagingKey(options.filters, options.sort))
+            }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+
+    fun retryRevalidation() {
+        val login = account ?: return
+        val opts = options.value ?: return
+        if (opts.filters.isEmpty()) return
+        pagingRepository.retryRevalidation(login, feedPagingKey(opts.filters, opts.sort))
+    }
+
     init {
         viewModelScope.launch {
             mutableOptions.value = withContext(Dispatchers.IO) { FeedOptions(loadFilters(), loadSort()) }
         }
         viewModelScope.launch {
             auth.session.collectLatest { session ->
-                if (session == null) return@collectLatest
+                if (session == null) {
+                    coordinator = null
+                    coordinatorAccount = null
+                    return@collectLatest
+                }
+                val loaded =
+                    try {
+                        dashboard.mutations(session.login)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        null
+                    }
+                if (account == session.login) {
+                    coordinator = loaded
+                    coordinatorAccount = session.login
+                    mutableCards.keys.toList().forEach { key ->
+                        val event = visible[key]
+                        if (event != null) ensureSlotObserver(session.login, key, event)
+                    }
+                }
                 cache.changes(session.login).versions.collect {
                     mutableCards.entries.toList().forEach { (key, holder) ->
+                        val coord = coordinator
+                        val mutationKey = mutationKeyFor(key)
+                        val slotState =
+                            if (coord != null && mutationKey != null) coord.current(mutationKey)
+                            else null
+                        if (slotState != null && (slotState.desired != null || slotState.phase != WritePhase.IDLE)) {
+                            return@forEach
+                        }
                         if (!holder.value.busy) {
                             val selected =
                                 when {
@@ -157,6 +220,7 @@ internal class FeedViewModel(
         }
         for ((key, event) in next) {
             if (event != visible[key]) load(event)
+            account?.let { ensureSlotObserver(it, key, event) }
         }
         visible = next
     }
@@ -179,8 +243,12 @@ internal class FeedViewModel(
                     event.payload.release != null)
         ) {
             if (current != (existing ?: event.initialCard())) update(key, current)
+            ensureSlotObserver(account, key, event)
             return
         }
+        val coord = coordinator?.takeIf { coordinatorAccount == account }
+        val mutationKey = mutationKeyFor(key)
+        val stamp = if (coord != null && mutationKey != null) coord.beginRead(mutationKey) else null
         val job =
             viewModelScope.launch(start = CoroutineStart.LAZY) {
                 update(key, (current ?: FeedCardState()).copy(busy = true))
@@ -190,10 +258,15 @@ internal class FeedViewModel(
                     }
                     currentCoroutineContext().ensureActive()
                     if (this@FeedViewModel.account != account) return@launch
-                    update(
-                        key,
-                        refreshed.initialCard() ?: throw IllegalStateException("Missing feed card"),
-                    )
+                    val card =
+                        refreshed.initialCard() ?: throw IllegalStateException("Missing feed card")
+                    val confirmedSelected = card.selected
+                    if (coord != null && mutationKey != null && stamp != null && confirmedSelected != null) {
+                        coord.publishConfirmed(mutationKey, stamp, confirmedSelected)
+                    }
+                    val projected = projectCardWithSlot(account, key, card)
+                    update(key, projected)
+                    ensureSlotObserver(account, key, refreshed)
                 } catch (_: Exception) {
                     currentCoroutineContext().ensureActive()
                     update(key, (current ?: FeedCardState()).copy(busy = false))
@@ -210,76 +283,168 @@ internal class FeedViewModel(
 
     fun toggle(event: FeedEventDto) {
         val key = event.cardKey() ?: return
-        val account = account ?: return
-        val state = mutableCards[key]?.value ?: cachedCard(account, event) ?: return
+        val activeAccount = account ?: return
+        val state = mutableCards[key]?.value ?: cachedCard(activeAccount, event) ?: return
         val selected = state.selected ?: return
-        if (state.busy) return
-        jobs.remove(key)?.cancel()
-        val repository =
-            state.repository?.let {
-                it.copy(
-                    stargazersCount =
-                        ((it.stargazersCount ?: 0) + if (selected) -1 else 1).coerceAtLeast(0),
-                )
-            }
-        val job =
-            viewModelScope.launch(start = CoroutineStart.LAZY) {
-                val userLogin = key.takeIf { it.startsWith("user:") }?.removePrefix("user:")
-                val selectedResource =
-                    if (userLogin != null) followingResource(account, userLogin)
-                    else
-                        repositoryParts(key).let { (owner, name) ->
-                            starredResource(account, owner, name)
+        val mutationKey = mutationKeyFor(key) ?: return
+        val target = !selected
+        ensureSlotObserver(activeAccount, key, event)
+        viewModelScope.launch {
+            val coord =
+                coordinator?.takeIf { coordinatorAccount == activeAccount }
+                    ?: try {
+                        dashboard.mutations(activeAccount).also {
+                            if (account == activeAccount) {
+                                coordinator = it
+                                coordinatorAccount = activeAccount
+                            }
                         }
-                val repoResource =
-                    if (userLogin == null)
-                        repositoryParts(key).let { (owner, name) ->
-                            repositoryResource(account, owner, name)
-                        }
-                    else null
-                selectedResource.update(!selected)
-                repository?.let { repoResource?.update(it) }
-                update(
-                    key,
-                    state.copy(
-                        repository = repository,
-                        selected = !selected,
-                        busy = true,
-                        actionError = null,
-                    ),
-                )
-                try {
-                    dashboard.setSelected(
-                        account,
-                        event.copy(subjectId = state.subjectId),
-                        !selected,
-                    )
-                    currentCoroutineContext().ensureActive()
-                    selectedResource.update(!selected)
-                    repository?.let { repoResource?.update(it) }
-                    if (userLogin == null) {
-                        pagingRepository.invalidate(account, StarredRepositoriesPagingKey)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        update(key, state.copy(actionError = collaborationErrorMessage(error)))
+                        return@launch
                     }
-                    update(
-                        key,
-                        state.copy(
-                            repository = repository,
-                            selected = !selected,
-                            actionError = null,
-                        ),
+            ensureSlotObserver(activeAccount, key, event)
+            val userLogin = key.takeIf { it.startsWith("user:") }?.removePrefix("user:")
+            val tags =
+                if (userLogin != null) {
+                    setOf(
+                        CacheTag(DataDomain.Profile, userLogin.lowercase()),
+                        relationshipCacheTag(userLogin),
+                        CacheTag(DataDomain.Relationships, null),
                     )
-                } catch (error: Exception) {
-                    currentCoroutineContext().ensureActive()
-                    selectedResource.update(selected)
-                    state.repository?.let { repoResource?.update(it) }
-                    update(key, state.copy(actionError = collaborationErrorMessage(error)))
-                } finally {
-                    if (jobs[key] === currentCoroutineContext()[Job]) jobs.remove(key)
+                } else {
+                    val (owner, name) = repositoryParts(key)
+                    setOf(
+                        repositoryCacheTag(owner, name),
+                        relationshipCacheTag("${owner.lowercase()}/${name.lowercase()}"),
+                        CacheTag(DataDomain.Repositories, null),
+                    )
+                }
+            val accepted =
+                coord.submit(
+                    mutationKey,
+                    confirmed = state.selected,
+                    desired = target,
+                    tags = tags,
+                    send = { nextSelected ->
+                        val confirmed =
+                            dashboard.setSelected(
+                                activeAccount,
+                                event.copy(subjectId = state.subjectId),
+                                nextSelected,
+                            )
+                        if (userLogin == null) {
+                            pagingRepository.invalidate(activeAccount, StarredRepositoriesPagingKey)
+                        }
+                        confirmed
+                    },
+                    readBack = {
+                        val refreshed = dashboard.refreshCard(activeAccount, event)
+                        refreshed.viewerSelected ?: nextSelectedFallback(state.selected)
+                    },
+                )
+            if (!accepted) {
+                val current = mutableCards[key]?.value ?: state
+                update(key, current.copy(actionError = GithubTxt.current.Common.MutationUncertain))
+            }
+        }
+    }
+
+    private fun nextSelectedFallback(value: Boolean?): Boolean = value ?: false
+
+    private fun ensureSlotObserver(activeAccount: String, key: String, event: FeedEventDto) {
+        val mutationKey = mutationKeyFor(key) ?: return
+        val coord = coordinator?.takeIf { coordinatorAccount == activeAccount } ?: return
+        if (cardObservers[key]?.isActive == true) return
+        cardObservers[key] =
+            viewModelScope.launch {
+                coord.observe(mutationKey).collect { write ->
+                    if (account != activeAccount) return@collect
+                    val current =
+                        mutableCards[key]?.value ?: cachedCard(activeAccount, event) ?: return@collect
+                    val projected = applyWriteState(activeAccount, key, current, write.confirmed, write.desired, write.phase, write.message)
+                    update(key, projected)
                 }
             }
-        jobs[key] = job
-        job.start()
     }
+
+    private fun projectCardWithSlot(
+        activeAccount: String,
+        key: String,
+        base: FeedCardState,
+    ): FeedCardState {
+        val mutationKey = mutationKeyFor(key) ?: return base
+        val coord = coordinator?.takeIf { coordinatorAccount == activeAccount } ?: return base
+        val write = coord.current(mutationKey)
+        return applyWriteState(
+            activeAccount,
+            key,
+            base,
+            write.confirmed,
+            write.desired,
+            write.phase,
+            write.message,
+        )
+    }
+
+    private fun applyWriteState(
+        activeAccount: String,
+        key: String,
+        current: FeedCardState,
+        confirmed: Boolean?,
+        desired: Boolean?,
+        phase: WritePhase,
+        message: String?,
+    ): FeedCardState {
+        val nextSelected = desired ?: confirmed ?: current.selected
+        val oldSelected = current.selected
+        val isRepo = key.startsWith("repo:")
+        val currentRepo = current.repository
+        val nextRepo =
+            if (isRepo && currentRepo != null && nextSelected != null && oldSelected != null && nextSelected != oldSelected) {
+                val delta = if (nextSelected) 1 else -1
+                val baseCount =
+                    currentRepo.stargazersCount
+                        ?: repositoryParts(key).let { (owner, name) ->
+                            repositoryResource(activeAccount, owner, name).cached?.stargazersCount
+                        }
+                        ?: 0
+                currentRepo.copy(stargazersCount = (baseCount + delta).coerceAtLeast(0))
+            } else currentRepo
+        val actionError =
+            when (phase) {
+                WritePhase.UNCERTAIN -> GithubTxt.current.Common.MutationUncertain
+                WritePhase.REJECTED -> message ?: GithubTxt.current.Common.MutationNotSubmitted
+                WritePhase.IDLE,
+                WritePhase.PENDING -> null
+            }
+        return current.copy(
+            repository = nextRepo,
+            selected = nextSelected,
+            actionError = actionError,
+        )
+    }
+
+    private fun mutationKeyFor(key: String): MutationKey<Boolean>? =
+        when {
+            key.startsWith("user:") ->
+                MutationKey(
+                    MutationKind.FOLLOW,
+                    key.removePrefix("user:").lowercase(java.util.Locale.ROOT),
+                    Boolean.serializer(),
+                )
+            key.startsWith("repo:") ->
+                repositoryParts(key).let { (owner, name) ->
+                    MutationKey(
+                        MutationKind.STAR,
+                        "${owner.lowercase(java.util.Locale.ROOT)}/${name.lowercase(java.util.Locale.ROOT)}",
+                        Boolean.serializer(),
+                    )
+                }
+            else -> null
+        }
 
     private fun repositoryResource(account: String, owner: String, name: String) =
         repositoryContent.details(account, owner, name)
@@ -289,6 +454,7 @@ internal class FeedViewModel(
             account,
             "user:${login.lowercase(java.util.Locale.ROOT)}",
             UserDto.serializer(),
+            tags = setOf(CacheTag(DataDomain.Profile, login.lowercase(java.util.Locale.ROOT))),
         )
 
     private fun starredResource(account: String, owner: String, name: String) =
@@ -296,6 +462,7 @@ internal class FeedViewModel(
             account,
             "starred-state:${owner.lowercase(java.util.Locale.ROOT)}/${name.lowercase(java.util.Locale.ROOT)}",
             Boolean.serializer(),
+            tags = setOf(relationshipCacheTag("${owner.lowercase()}/${name.lowercase()}")),
         )
 
     private fun followingResource(account: String, login: String) =
@@ -303,6 +470,7 @@ internal class FeedViewModel(
             account,
             "following-state:${login.lowercase(java.util.Locale.ROOT)}",
             Boolean.serializer(),
+            tags = setOf(relationshipCacheTag(login)),
         )
 
     private fun contributorsResource(account: String, owner: String, name: String) =
@@ -310,6 +478,7 @@ internal class FeedViewModel(
             account,
             "contributors-count:${owner.lowercase(java.util.Locale.ROOT)}/${name.lowercase(java.util.Locale.ROOT)}",
             Int.serializer(),
+            tags = setOf(repositoryCacheTag(owner, name)),
         )
 
     private fun cachedCard(account: String, event: FeedEventDto): FeedCardState? {
@@ -317,10 +486,14 @@ internal class FeedViewModel(
         if (key.startsWith("user:")) {
             val login = key.removePrefix("user:")
             val user = userResource(account, login).cached ?: event.payload.target ?: return null
-            return FeedCardState(
-                subjectId = event.subjectId,
-                user = user,
-                selected = followingResource(account, login).cached ?: event.viewerSelected,
+            return projectCardWithSlot(
+                account,
+                key,
+                FeedCardState(
+                    subjectId = event.subjectId,
+                    user = user,
+                    selected = followingResource(account, login).cached ?: event.viewerSelected,
+                ),
             )
         }
         val fullName = event.repo?.name ?: return null
@@ -330,14 +503,18 @@ internal class FeedViewModel(
             event.repositoryDetails
                 ?: repositoryResource(account, owner, name).cached
                 ?: return null
-        return FeedCardState(
-            repository = repository,
-            subjectId = event.subjectId,
-            work = event.workItem(),
-            selected = starredResource(account, owner, name).cached ?: event.viewerSelected,
-            contributorsCount =
-                contributorsResource(account, owner, name).cached?.takeIf { it >= 0 }
-                    ?: event.contributorsCount,
+        return projectCardWithSlot(
+            account,
+            key,
+            FeedCardState(
+                repository = repository,
+                subjectId = event.subjectId,
+                work = event.workItem(),
+                selected = starredResource(account, owner, name).cached ?: event.viewerSelected,
+                contributorsCount =
+                    contributorsResource(account, owner, name).cached?.takeIf { it >= 0 }
+                        ?: event.contributorsCount,
+            ),
         )
     }
 

@@ -33,7 +33,12 @@ fun ProfileCollectionsPage(
             ProfileCollectionsRoute.Kind.Organizations -> strings.Profile.Organizations
         }
     val organizations = route.kind == ProfileCollectionsRoute.Kind.Organizations
-    GithubPagingContent(viewModel.entries, contentKey = route) { paging ->
+    GithubPagingContent(
+        viewModel.entries,
+        contentKey = route,
+        revalidation = viewModel.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
+    ) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(pages, "profile-collection", paging.initialLoading) { entry ->

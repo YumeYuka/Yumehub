@@ -23,6 +23,7 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
 
 internal sealed interface ExploreResult {
@@ -41,6 +42,7 @@ internal data class ExploreSearch(
     val category: ExploreCategory,
     val items: Flow<PagingData<ExploreResult>>,
     val summary: StateFlow<ExploreSummary?>,
+    val revalidation: StateFlow<RevalidationState> = MutableStateFlow(RevalidationState.Idle),
     val needsQuery: Boolean = false,
     val query: String = "",
 )
@@ -110,6 +112,13 @@ internal class ExploreViewModel(
         }
     }
 
+    fun retryRevalidation() {
+        val login = account ?: return
+        val search = mutableSearch.value
+        if (search.query.isBlank()) return
+        repository.retryRevalidation(login, search.query, search.category)
+    }
+
     private fun present(account: String, query: String, category: ExploreCategory) {
         val key = Triple(account, query, category)
         if (presented == key) return
@@ -120,6 +129,7 @@ internal class ExploreViewModel(
         mutableSearch.value =
             search.copy(
                 query = query,
+                revalidation = repository.revalidation(account, query, category),
                 items =
                     search.items.cachedIn(CoroutineScope(viewModelScope.coroutineContext + job)),
             )

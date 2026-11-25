@@ -40,14 +40,39 @@ fun TwoFactorOverlay(
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onDismiss: () -> Unit,
+    onAcknowledgeSubmissionUncertain: () -> Unit = {},
+    onAcknowledgeRegistrationUncertain: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val strings = LocalGithubStrings.current
     val notice = if (!state.isVisible) state.receivingError ?: state.notificationWarning else null
     LaunchedEffect(notice) {
         if (notice != null && consumeNotice(notice)) {
             Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
         }
+    }
+    if (!state.isVisible && state.registrationUncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = strings.Common.MutationUncertain,
+            message = strings.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        label = strings.Common.Cancel,
+                        onClick = {},
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        label = strings.Common.MutationAcknowledged,
+                        onClick = onAcknowledgeRegistrationUncertain,
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = {},
+            modifier = modifier,
+        )
     }
     TwoFactorOverlayContent(
         state = state,
@@ -58,6 +83,7 @@ fun TwoFactorOverlay(
                 onDigitsChange,
                 onApprove,
                 onReject,
+                onAcknowledgeSubmissionUncertain,
                 onDismiss,
                 modifier,
             )
@@ -72,6 +98,7 @@ internal data class TwoFactorPromptContent(
     val digits: String,
     val error: String?,
     val canSubmit: Boolean,
+    val submissionUncertain: Boolean = false,
 )
 
 private fun TwoFactorUiState.promptContent() =
@@ -82,6 +109,7 @@ private fun TwoFactorUiState.promptContent() =
         digits = digits,
         error = error,
         canSubmit = canSubmit,
+        submissionUncertain = submissionUncertain,
     )
 
 @Composable
@@ -105,6 +133,7 @@ private fun TwoFactorPromptDialog(
     onDigitsChange: (String) -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onAcknowledgeSubmissionUncertain: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier,
 ) {
@@ -117,23 +146,36 @@ private fun TwoFactorPromptDialog(
         onDismissRequest = onDismiss,
         title = titleFor(prompt.type),
         message =
-            if (prompt.requiresDigits) strings.TwoFactor.DigitsMessage
-            else strings.TwoFactor.ConfirmationMessage,
+            when {
+                prompt.submissionUncertain -> strings.Common.MutationAcknowledgeWarning
+                prompt.requiresDigits -> strings.TwoFactor.DigitsMessage
+                else -> strings.TwoFactor.ConfirmationMessage
+            },
         modifier = modifier,
         buttons =
-            listOf(
-                GlasmioAlertButtonSpec(
-                    label = strings.TwoFactor.Reject,
-                    onClick = onReject,
-                    role = GlasmioAlertButtonRole.Cancel,
-                ),
-                GlasmioAlertButtonSpec(
-                    label = strings.TwoFactor.Approve,
-                    onClick = onApprove,
-                    role = GlasmioAlertButtonRole.Default,
-                    enabled = prompt.canSubmit,
-                ),
-            ),
+            if (prompt.submissionUncertain) {
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        label = strings.Common.MutationAcknowledged,
+                        onClick = onAcknowledgeSubmissionUncertain,
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                )
+            } else {
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        label = strings.TwoFactor.Reject,
+                        onClick = onReject,
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        label = strings.TwoFactor.Approve,
+                        onClick = onApprove,
+                        role = GlasmioAlertButtonRole.Default,
+                        enabled = prompt.canSubmit,
+                    ),
+                )
+            },
     ) {
         if (prompt.requiresDigits) {
             CompositionLocalProvider(

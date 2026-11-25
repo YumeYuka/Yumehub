@@ -5,15 +5,23 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.serializer
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.repository.DashboardFeedRepository
 import moe.yumeyuka.yumehub.data.repository.ProfileRepository
 import moe.yumeyuka.yumehub.data.repository.ProfileUnavailableException
@@ -43,6 +51,8 @@ internal data class UserProfileState(
     val following: Boolean? = null,
     val followSubmitting: Boolean = false,
     val followFailed: Boolean = false,
+    val followPhase: WritePhase = WritePhase.IDLE,
+    val followUncertain: Boolean = false,
 )
 
 internal class UserProfileViewModel(
@@ -54,8 +64,12 @@ internal class UserProfileViewModel(
     private val mutableState = MutableStateFlow(UserProfileState())
     val state = mutableState.asStateFlow()
     private val account = repository.account
+    private var confirmedProfile: ProfileDto? = null
     private val following =
         repository.followingResource(account, login.ifBlank { nodeId.orEmpty() })
+    private var coordinator: MutationCoordinator? = null
+    private var followObserverJob: Job? = null
+    private var observedTargetLogin: String? = null
     private var loadJob: Job? = null
     val isSelf: Boolean
         get() = (state.value.profile?.login ?: login).equals(account, ignoreCase = true)
@@ -63,10 +77,87 @@ internal class UserProfileViewModel(
     init {
         viewModelScope.launch {
             following.state.collect { relationship ->
-                mutableState.update { it.copy(following = relationship.data) }
+                val coord = coordinator
+                val key = observedTargetLogin?.let(::followKeyFor)
+                val activeWrite = key?.let { coord?.current(it) }
+                if (activeWrite == null || (activeWrite.desired == null && activeWrite.phase == WritePhase.IDLE)) {
+                    mutableState.update { it.copy(following = relationship.data) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            val loaded =
+                try {
+                    repository.mutations(account)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+            if (repository.account == account && loaded != null) {
+                coordinator = loaded
+                (confirmedProfile?.login ?: login.takeIf(String::isNotBlank))?.let {
+                    ensureFollowObserver(it)
+                }
             }
         }
         load()
+    }
+
+    private fun followKeyFor(targetLogin: String): MutationKey<Boolean> =
+        MutationKey(
+            MutationKind.FOLLOW,
+            targetLogin.lowercase(Locale.ROOT),
+            Boolean.serializer(),
+        )
+
+    private fun ensureFollowObserver(targetLogin: String) {
+        val coord = coordinator ?: return
+        val normalized = targetLogin.lowercase(Locale.ROOT)
+        if (observedTargetLogin == normalized && followObserverJob?.isActive == true) return
+        observedTargetLogin = normalized
+        followObserverJob?.cancel()
+        val key = followKeyFor(normalized)
+        followObserverJob =
+            viewModelScope.launch {
+                coord.observe(key).collect { write ->
+                    if (repository.account != account) return@collect
+                    val base = confirmedProfile
+                    val projectedFollowing =
+                        write.desired ?: write.confirmed ?: mutableState.value.following
+                    val baseFollowing =
+                        write.confirmed ?: base?.viewerIsFollowing ?: following.cached
+                    val projectedProfile =
+                        base?.let { profile ->
+                            if (
+                                projectedFollowing != null &&
+                                    baseFollowing != null &&
+                                    !profile.isOrganization
+                            ) {
+                                val delta =
+                                    (if (projectedFollowing) 1 else 0) -
+                                        (if (baseFollowing) 1 else 0)
+                                profile.copy(
+                                    followers = (profile.followers + delta).coerceAtLeast(0),
+                                    viewerIsFollowing = projectedFollowing,
+                                )
+                            } else profile.copy(viewerIsFollowing = projectedFollowing ?: profile.viewerIsFollowing)
+                        }
+                    if (projectedFollowing != null && write.phase == WritePhase.IDLE) {
+                        repository.followingResource(account, normalized).update(projectedFollowing)
+                    }
+                    mutableState.update {
+                        it.copy(
+                            profile = projectedProfile ?: it.profile,
+                            following = projectedFollowing,
+                            followSubmitting = write.phase == WritePhase.PENDING,
+                            followFailed = write.phase == WritePhase.REJECTED,
+                            followPhase = write.phase,
+                            followUncertain = write.phase == WritePhase.UNCERTAIN,
+                        )
+                    }
+                }
+            }
     }
 
     fun load() {
@@ -76,22 +167,72 @@ internal class UserProfileViewModel(
             try {
                 if (repository.account != account) throw CancellationException("Account changed")
                 if (login.isBlank() && nodeId == null) throw ProfileUnavailableException()
-                val profile = repository.loadUser(login, nodeId)
+                val coord =
+                    coordinator
+                        ?: try {
+                            repository.mutations(account).also {
+                                if (repository.account == account) coordinator = it
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            null
+                        }
+                val initialLogin = login.takeIf(String::isNotBlank)
+                val initialStamp =
+                    if (coord != null && initialLogin != null) {
+                        coord.beginRead(followKeyFor(initialLogin))
+                    } else null
+                val profile = repository.loadUserForAccount(account, login, nodeId)
                 if (repository.account != account) throw CancellationException("Account changed")
+                confirmedProfile = profile
+                ensureFollowObserver(profile.login)
+                val key = followKeyFor(profile.login)
+                val resolvedFollowing =
+                    if (profile.isOrganization) {
+                        val orgStamp = initialStamp ?: coord?.beginRead(key)
+                        val orgFollowing =
+                            following.await(force = true) {
+                                dashboard.organizationFollowing(account, profile.login)
+                            }
+                        if (coord != null && orgStamp != null) {
+                            coord.publishConfirmed(key, orgStamp, orgFollowing)
+                        }
+                        orgFollowing
+                    } else {
+                        profile.viewerIsFollowing?.also { selected ->
+                            if (!isSelf) {
+                                following.update(selected)
+                                repository.followingResource(account, profile.login).update(selected)
+                                if (coord != null && initialStamp != null) {
+                                    coord.publishConfirmed(key, initialStamp, selected)
+                                }
+                            }
+                        }
+                    }
+                val slotState = coord?.current(key)
+                val activeDesired = slotState?.desired ?: slotState?.confirmed ?: resolvedFollowing
+                val baseFollowing = slotState?.confirmed ?: resolvedFollowing
+                val projected =
+                    if (
+                        activeDesired != null &&
+                            baseFollowing != null &&
+                            !profile.isOrganization
+                    ) {
+                        val delta =
+                            (if (activeDesired) 1 else 0) - (if (baseFollowing) 1 else 0)
+                        profile.copy(
+                            followers = (profile.followers + delta).coerceAtLeast(0),
+                            viewerIsFollowing = activeDesired,
+                        )
+                    } else profile
                 mutableState.update {
                     it.copy(
-                        profile = profile,
+                        profile = projected,
+                        following = activeDesired ?: it.following,
                         unavailable = false,
                         readmeFailed = !profile.readmeResolved,
                     )
-                }
-                if (profile.isOrganization) {
-                    following.await(force = true) {
-                        dashboard.organizationFollowing(account, profile.login)
-                    }
-                }
-                profile.viewerIsFollowing?.let { selected ->
-                    if (!isSelf) following.update(selected)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -109,48 +250,81 @@ internal class UserProfileViewModel(
     fun toggleFollowing() {
         val current = state.value
         val selected = current.following ?: return
-        val userId = current.profile?.nodeId ?: return
+        val profile = current.profile ?: return
+        val userId = profile.nodeId ?: return
         if (
             isSelf ||
                 current.unavailable ||
-                current.followSubmitting ||
                 repository.account != account
         )
             return
-        mutableState.update { it.copy(followSubmitting = true, followFailed = false) }
+        val target = !selected
         viewModelScope.launch {
-            try {
-                val updated =
-                    if (current.profile.isOrganization)
-                        dashboard.setOrganizationFollowing(
-                            account,
-                            current.profile.login,
-                            !selected,
-                        )
-                    else repository.setFollowing(account, userId, !selected)
-                following.update(updated)
-                repository.relationshipChanged(account)
-                mutableState.update {
-                    it.copy(
-                        followSubmitting = false,
-                        profile =
-                            it.profile?.let { profile ->
-                                val delta =
-                                    if (profile.isOrganization || updated == selected) 0
-                                    else if (updated) 1 else -1
-                                profile.copy(
-                                    followers = (profile.followers + delta).coerceAtLeast(0),
-                                    viewerIsFollowing = updated,
+            val coord =
+                coordinator
+                    ?: try {
+                        repository.mutations(account).also { coordinator = it }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        mutableState.update { it.copy(followFailed = true) }
+                        return@launch
+                    }
+            ensureFollowObserver(profile.login)
+            val key = followKeyFor(profile.login)
+            val accepted =
+                coord.submit(
+                    key,
+                    confirmed = confirmedProfile?.viewerIsFollowing ?: selected,
+                    desired = target,
+                    tags =
+                        setOf(
+                            CacheTag(DataDomain.Profile, profile.login.lowercase(Locale.ROOT)),
+                            CacheTag(DataDomain.Profile, null),
+                            relationshipCacheTag(profile.login),
+                            CacheTag(DataDomain.Relationships, null),
+                        ),
+                    send = { nextFollowing ->
+                        val updated =
+                            if (profile.isOrganization) {
+                                dashboard.setOrganizationFollowing(
+                                    account,
+                                    profile.login,
+                                    nextFollowing,
                                 )
-                            },
-                    )
-                }
-                repository.resource(account).invalidate()
-                repository.refresh(account, force = true)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                mutableState.update { it.copy(followSubmitting = false, followFailed = true) }
+                            } else {
+                                repository.setFollowing(account, userId, nextFollowing)
+                            }
+                        repository.followingResource(account, profile.login).update(updated)
+                        repository.relationshipChanged(account)
+                        repository.resource(account).invalidate()
+                        repository.refresh(account, force = true)
+                        updated
+                    },
+                    readBack = {
+                        if (profile.isOrganization) {
+                            dashboard.organizationFollowing(account, profile.login)
+                        } else {
+                            repository.loadUserForAccount(account, profile.login, userId)
+                                .viewerIsFollowing ?: selected
+                        }
+                    },
+                )
+            if (!accepted) {
+                mutableState.update { it.copy(followUncertain = true) }
+            }
+        }
+    }
+
+    fun reconcileFollowing() {
+        val profile = state.value.profile ?: return
+        val coord = coordinator ?: return
+        coord.reconcile(followKeyFor(profile.login)) {
+            if (profile.isOrganization) {
+                dashboard.organizationFollowing(account, profile.login)
+            } else {
+                repository.loadUserForAccount(account, profile.login, profile.nodeId)
+                    .viewerIsFollowing ?: false
             }
         }
     }

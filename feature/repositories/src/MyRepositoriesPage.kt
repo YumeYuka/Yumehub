@@ -72,6 +72,8 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
     GithubPagingContent(
         source = listing.pages,
         contentKey = filters,
+        revalidation = listing.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
         order = listOf("updated", "stars", "full_name").indexOf(filters.sort),
     ) { paging ->
       val repositories = paging.items

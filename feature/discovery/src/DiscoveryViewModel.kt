@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.repository.DiscoveryLanguages
 import moe.yumeyuka.yumehub.data.repository.DiscoveryRepository
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.TrendingFilter
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -58,6 +59,31 @@ internal class DiscoveryViewModel(
             }
         }
     val repositories = pages.cachedIn(viewModelScope)
+
+    val revalidation: StateFlow<RevalidationState> =
+        if (route == DiscoveryRoute.Trending) {
+            filters.flatMapLatest {
+                repository.revalidation(account, repository.trendingKey(it.trending))
+            }
+        } else {
+            combine(filters, query) { filter, text -> filter to text }.flatMapLatest { (filter, text) ->
+                repository.revalidation(
+                    account,
+                    repository.featuredKey(text, filter.trending.language, filter.recentlyUpdated),
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+
+    fun retryRevalidation() {
+        val key =
+            if (route == DiscoveryRoute.Trending) {
+                repository.trendingKey(filters.value.trending)
+            } else {
+                val filter = filters.value
+                repository.featuredKey(query.value, filter.trending.language, filter.recentlyUpdated)
+            }
+        repository.retryRevalidation(account, key)
+    }
 
     fun search(value: String) { mutableQuery.value = value.trim() }
 

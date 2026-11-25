@@ -54,7 +54,12 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
     GithubPageSearchLayout(
         searching, input, { input = it }, vm::search, closeSearch, strings.MyRepositories.Search,
     ) {
-        GithubPagingContent(vm.repositories, contentKey = Triple(route, filters, query)) { paging ->
+        GithubPagingContent(
+            vm.repositories,
+            contentKey = Triple(route, filters, query),
+            revalidation = vm.revalidation,
+            onRetryRevalidation = vm::retryRevalidation,
+        ) { paging ->
             val items = paging.items
             val slots = rememberGithubPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
             GithubPage(
@@ -89,13 +94,6 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
                         emptyMessage = strings.MyRepositories.EmptyFiltered,
                         emptyIcon = if (trending) Lucide.Flame else Lucide.LayoutGrid,
                     )
-                }
-                if (items.loadState.refresh is LoadState.Error || items.loadState.append is LoadState.Error) {
-                    item(key = "retry") {
-                        GlasmioGroupedList {
-                            GlasmioListRow(title = strings.Common.Retry, onClick = items::retry)
-                        }
-                    }
                 }
                 pageSearchClearance(searching)
             }

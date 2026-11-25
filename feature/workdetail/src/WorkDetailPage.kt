@@ -212,7 +212,6 @@ fun WorkDetailPage(
             ),
         back = true,
         listState = listState,
-        locked = issueMetadata.saving,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
         detailPresentation = presentation,
         onRetryDetail = retryDetail,

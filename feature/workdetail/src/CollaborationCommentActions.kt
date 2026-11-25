@@ -92,16 +92,28 @@ internal fun CommentDiscussionEntry(
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
 ) {
+  val projection = comment.nodeId?.let(state.commentProjections::get)
+  if (projection?.deleted == true) return
+  val shownComment =
+      if (projection == null) comment
+      else {
+        comment.copy(
+            body = projection.body ?: comment.body,
+            bodyHtml = if (projection.body != null && projection.body != comment.body) null else projection.bodyHtml ?: comment.bodyHtml,
+            isMinimized = projection.isMinimized,
+            minimizedReason = projection.minimizedReason ?: comment.minimizedReason,
+        )
+      }
   val strings = LocalGithubStrings.current.WorkDetail
-  val canEdit = viewModel.canManageComment(comment)
-  val canHide = viewModel.canHideComment(comment)
+  val canEdit = viewModel.canManageComment(shownComment)
+  val canHide = viewModel.canHideComment(shownComment)
   val copy = rememberCopyText()
   val open = rememberGithubUriHandler()
   val navigationEnabled = LocalGithubPageHost.current?.navigationEnabled == true
   val enabled = navigationEnabled && (!state.submitting || state.sendingInBackground)
   val referenceUrl =
-      remember(comment.url, comment.body, comment.user?.login, state.browserUrl) {
-        referenceInNewIssueUrl(comment, state.browserUrl)
+      remember(shownComment.url, shownComment.body, shownComment.user?.login, state.browserUrl) {
+        referenceInNewIssueUrl(shownComment, state.browserUrl)
       }
   val menuItems =
       commentActionItems(
@@ -109,54 +121,54 @@ internal fun CommentDiscussionEntry(
           common = LocalGithubStrings.current.Common,
           canEdit = canEdit,
           canHide = canHide,
-          canCopyLink = !comment.url.isNullOrBlank(),
-          canCopyMarkdown = !comment.body.isNullOrBlank(),
+          canCopyLink = !shownComment.url.isNullOrBlank(),
+          canCopyMarkdown = !shownComment.body.isNullOrBlank(),
           canQuote = state.canComment && !state.submitting,
           canReference = referenceUrl != null,
-          onCopyLink = { comment.url?.let { copy(strings.CopyLink, it) } },
-          onCopyMarkdown = { copy(strings.CopyMarkdown, comment.body.orEmpty()) },
-          onQuoteReply = { viewModel.quoteComment(comment) },
+          onCopyLink = { shownComment.url?.let { copy(strings.CopyLink, it) } },
+          onCopyMarkdown = { copy(strings.CopyMarkdown, shownComment.body.orEmpty()) },
+          onQuoteReply = { viewModel.quoteComment(shownComment) },
           onReference = { referenceUrl?.let(open) },
-          onEdit = { viewModel.editComment(comment) },
-          onHide = { reason -> viewModel.hideComment(comment, reason) },
-          onDelete = { viewModel.requestDeleteComment(comment) },
+          onEdit = { viewModel.editComment(shownComment) },
+          onHide = { reason -> viewModel.hideComment(shownComment, reason) },
+          onDelete = { viewModel.requestDeleteComment(shownComment) },
       )
   GithubReadingGroup {
     GithubCommentAuthorHeader(
-        comment.user?.login,
-        comment.user?.avatarUrl,
-        githubRelativeTime(comment.createdAt, LocalGithubStrings.current.Notifications),
+        shownComment.user?.login,
+        shownComment.user?.avatarUrl,
+        githubRelativeTime(shownComment.createdAt, LocalGithubStrings.current.Notifications),
         role =
-            if (comment.isMinimized) {
-              comment.minimizedReason?.let { "${strings.HiddenComment} · ${it.label(strings)}" }
+            if (shownComment.isMinimized) {
+              shownComment.minimizedReason?.let { "${strings.HiddenComment} · ${it.label(strings)}" }
                   ?: strings.HiddenComment
             } else null,
         menuItems = menuItems,
         menuEnabled = enabled,
     )
     if (
-        !comment.isMinimized &&
-            (!comment.body.isNullOrBlank() || !comment.bodyHtml.isNullOrBlank())
+        !shownComment.isMinimized &&
+            (!shownComment.body.isNullOrBlank() || !shownComment.bodyHtml.isNullOrBlank())
     ) {
       CollaborationText(
-          comment.body,
+          shownComment.body,
           strings.NoBody,
           state.browserUrl,
-          html = comment.bodyHtml,
-          nodeId = comment.nodeId,
+          html = shownComment.bodyHtml,
+          nodeId = shownComment.nodeId,
           inCommentCard = true,
       )
     }
-    val subjectId = comment.nodeId
-    if (!comment.isMinimized && subjectId != null) {
+    val subjectId = shownComment.nodeId
+    if (!shownComment.isMinimized && subjectId != null) {
       GithubReactionBar(
           subjectKey = subjectId,
-          sourceReactions = comment.reactions,
-          canReact = comment.viewerCanReact,
+          sourceReactions = shownComment.reactions,
+          canReact = shownComment.viewerCanReact,
           enabled = enabled,
           updates = viewModel.reactionUpdates,
       ) { content, reacted ->
-        if (navigationEnabled) viewModel.toggleReaction(comment, content, reacted)
+        if (navigationEnabled) viewModel.toggleReaction(shownComment, content, reacted)
       }
     }
   }

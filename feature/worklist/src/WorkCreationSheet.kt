@@ -19,7 +19,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,8 +35,6 @@ import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.GitBranch
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.AssigneeOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
@@ -56,15 +53,17 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 internal fun WorkCreationSheet(
     kind: CollaborationKind,
     visible: Boolean,
+    creationState: WorkCreationState,
     branchPicker: BranchPickerState,
     issueTypes: List<IssueTypeOptionDto>,
     issueTemplates: List<IssueTemplateOptionDto>,
     milestones: List<MilestoneOptionDto>,
     labels: List<CollaborationLabelDto>,
     assigneePicker: AssigneePickerState,
+    onDraftChange: (title: String?, body: String?, base: String?, head: String?) -> Unit,
     onDismiss: () -> Unit,
-    onCreate:
-        suspend (
+    onSubmit:
+        (
             title: String,
             body: String,
             base: String,
@@ -74,14 +73,14 @@ internal fun WorkCreationSheet(
             labelIds: List<String>,
             assigneeIds: List<String>,
             issueTemplate: String?,
-        ) -> Int,
+        ) -> Unit,
+    onAcknowledgeUncertain: () -> Unit,
     onBranchQueryChange: (String) -> Unit,
     onBranchRetry: () -> Unit,
     onBranchLoadMore: () -> Unit,
     onAssigneeQueryChange: (String) -> Unit,
     onAssigneeRetry: () -> Unit,
     onAssigneeLoadMore: () -> Unit,
-    onCreated: (Int) -> Unit,
 ) {
     val strings = LocalGithubStrings.current
     val work = strings.WorkList
@@ -95,25 +94,48 @@ internal fun WorkCreationSheet(
     val title =
         if (kind == CollaborationKind.Issue) strings.Repository.NewIssue
         else strings.Repository.NewPullRequest
-    val scope = rememberCoroutineScope()
-    var branchTarget by rememberSaveable(visible) { mutableStateOf<BranchTarget?>(null) }
-    val subject = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
-    val body = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
-    val base = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
-    val head = rememberSaveable(visible, saver = TextFieldState.Saver) { TextFieldState() }
-    var issueTypeId by rememberSaveable(visible) { mutableStateOf<String?>(null) }
-    var issueTemplate by remember(visible) { mutableStateOf<IssueTemplateOptionDto?>(null) }
-    var preTemplateDraft by remember(visible) { mutableStateOf<IssueCreationDraft?>(null) }
-    var milestoneId by rememberSaveable(visible) { mutableStateOf<String?>(null) }
-    var labelIds by rememberSaveable(visible) { mutableStateOf(emptyList<String>()) }
-    var draftLabelIds by rememberSaveable(visible) { mutableStateOf(emptyList<String>()) }
-    var labelsVisible by rememberSaveable(visible) { mutableStateOf(false) }
-    var labelQuery by rememberSaveable(visible) { mutableStateOf("") }
-    var selectedAssignees by remember(visible) { mutableStateOf(emptyList<AssigneeOptionDto>()) }
-    var draftAssignees by remember(visible) { mutableStateOf(emptyList<AssigneeOptionDto>()) }
-    var assigneesVisible by rememberSaveable(visible) { mutableStateOf(false) }
-    var submitting by rememberSaveable(visible) { mutableStateOf(false) }
-    var failure by rememberSaveable(visible) { mutableStateOf(false) }
+    var branchTarget by rememberSaveable { mutableStateOf<BranchTarget?>(null) }
+    val subject = remember { TextFieldState() }
+    val body = remember { TextFieldState() }
+    val base = remember { TextFieldState() }
+    val head = remember { TextFieldState() }
+    var issueTypeId by remember { mutableStateOf<String?>(null) }
+    var issueTemplate by remember { mutableStateOf<IssueTemplateOptionDto?>(null) }
+    var preTemplateDraft by remember { mutableStateOf<IssueCreationDraft?>(null) }
+    var milestoneId by remember { mutableStateOf<String?>(null) }
+    var labelIds by remember { mutableStateOf(emptyList<String>()) }
+    var draftLabelIds by remember { mutableStateOf(emptyList<String>()) }
+    var labelsVisible by rememberSaveable { mutableStateOf(false) }
+    var labelQuery by rememberSaveable { mutableStateOf("") }
+    var selectedAssignees by remember { mutableStateOf(emptyList<AssigneeOptionDto>()) }
+    var draftAssignees by remember { mutableStateOf(emptyList<AssigneeOptionDto>()) }
+    var assigneesVisible by rememberSaveable { mutableStateOf(false) }
+    var acknowledgeVisible by remember { mutableStateOf(false) }
+    val submitting = creationState.submitting
+    val uncertain = creationState.uncertain
+    val failure = creationState.failed
+    LaunchedEffect(creationState.draftRestored, creationState.title, creationState.body) {
+        if (creationState.title.isNotEmpty() && subject.text.isEmpty()) {
+            subject.replaceFormText(creationState.title)
+        }
+        if (creationState.body.isNotEmpty() && body.text.isEmpty()) {
+            body.replaceFormText(creationState.body)
+        }
+        if (creationState.title.isEmpty() && creationState.body.isEmpty() && !submitting && !failure) {
+            if (subject.text.isNotEmpty()) subject.replaceFormText("")
+            if (body.text.isNotEmpty()) body.replaceFormText("")
+        }
+    }
+    LaunchedEffect(subject.text, body.text, base.text, head.text) {
+        if (visible && !submitting) {
+            onDraftChange(
+                subject.text.toString(),
+                body.text.toString(),
+                base.text.toString(),
+                head.text.toString(),
+            )
+        }
+    }
     val noIssueType = IssueTypeOptionDto("", work.NoIssueType)
     val selectedIssueType = issueTypes.firstOrNull { it.id == issueTypeId } ?: noIssueType
     val issueTypeChoices = listOf(noIssueType) + issueTypes
@@ -130,9 +152,9 @@ internal fun WorkCreationSheet(
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (!submitting) onDismiss() },
-        dismissOnBackPress = !submitting,
-        dismissOnClickOutside = !submitting,
+        onDismissRequest = onDismiss,
+        dismissOnBackPress = true,
+        dismissOnClickOutside = true,
         fitContent = true,
         title = title,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
@@ -140,7 +162,7 @@ internal fun WorkCreationSheet(
             GlasmioSheetTopToolbar(
                 title = title,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !submitting) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
@@ -148,36 +170,23 @@ internal fun WorkCreationSheet(
                     GlasmioIconButton(
                         enabled =
                             !submitting &&
+                                !uncertain &&
                                 subject.text.isNotBlank() &&
                                 (kind == CollaborationKind.Issue ||
                                     base.text.isNotBlank() && head.text.isNotBlank() &&
                                         !base.text.contentEquals(head.text)),
                         onClick = {
-                            submitting = true
-                            failure = false
-                            scope.launch {
-                                try {
-                                    val number =
-                                        onCreate(
-                                            subject.text.toString().trim(),
-                                            body.text.toString(),
-                                            base.text.toString().trim(),
-                                            head.text.toString().trim(),
-                                            issueTypeId,
-                                            milestoneId,
-                                            labelIds,
-                                            selectedAssignees.map(AssigneeOptionDto::id),
-                                            issueTemplate?.name,
-                                        )
-                                    onDismiss()
-                                    onCreated(number)
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (_: Exception) {
-                                    failure = true
-                                    submitting = false
-                                }
-                            }
+                            onSubmit(
+                                subject.text.toString().trim(),
+                                body.text.toString(),
+                                base.text.toString().trim(),
+                                head.text.toString().trim(),
+                                issueTypeId,
+                                milestoneId,
+                                labelIds,
+                                selectedAssignees.map(AssigneeOptionDto::id),
+                                issueTemplate?.name,
+                            )
                         },
                     ) {
                         GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
@@ -339,13 +348,55 @@ internal fun WorkCreationSheet(
                     { branchTarget = BranchTarget.Head },
                 )
             }
-            WorkCreationField(work.CreationBody, body, submitting)
-            if (failure) {
+            WorkCreationField(work.CreationBody, body, submitting || uncertain)
+            if (submitting) {
+                GlasmioGroupedList {
+                    GlasmioListRow(title = strings.Common.MutationPending, systemName = null)
+                }
+            } else if (uncertain) {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = strings.Common.MutationUncertain,
+                        subtitle = creationState.errorMessage ?: strings.Common.MutationNotSubmitted,
+                        systemName = null,
+                    )
+                    GlasmioListRow(
+                        title = strings.Common.MutationAcknowledged,
+                        showTopSeparator = true,
+                        showDisclosure = false,
+                        onClick = { acknowledgeVisible = true },
+                    )
+                }
+            } else if (failure) {
                 GlasmioGroupedList {
                     GlasmioListRow(title = work.CreationFailed, systemName = null)
                 }
             }
         }
+    }
+    if (acknowledgeVisible && uncertain) {
+        GlasmioAlertDialog(
+            visible = true,
+            title = strings.Common.MutationUncertain,
+            message = strings.Common.MutationAcknowledgeWarning,
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        strings.Common.Cancel,
+                        onClick = { acknowledgeVisible = false },
+                        role = GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        strings.Common.MutationAcknowledged,
+                        onClick = {
+                            acknowledgeVisible = false
+                            onAcknowledgeUncertain()
+                        },
+                        role = GlasmioAlertButtonRole.Default,
+                    ),
+                ),
+            onDismissRequest = { acknowledgeVisible = false },
+        )
     }
     GithubChoiceSheet(
         visible = branchTarget != null,

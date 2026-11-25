@@ -26,8 +26,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CommandAccepted
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.NullableValue
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.cache.workCacheTag
 import moe.yumeyuka.yumehub.data.repository.*
 import moe.yumeyuka.yumehub.locale.GithubTxt
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -413,12 +424,18 @@ private fun DiscussionBody(
       )
 }
 
+@Serializable
+internal data class DiscussionUpvoteState(val upvoted: Boolean, val upvotes: Int)
+
 internal data class DiscussionDetailState(
     val detail: GithubDiscussionDetail? = null,
     val comments: ThreadWindow<GithubDiscussionComment>? = null,
     val failed: Boolean = false,
     val actionRunning: Boolean = false,
     val actionFailed: Boolean = false,
+    val upvotePhase: WritePhase = WritePhase.IDLE,
+    val answerPhase: WritePhase = WritePhase.IDLE,
+    val pollPhase: WritePhase = WritePhase.IDLE,
 )
 
 internal class DiscussionDetailViewModel(
@@ -434,9 +451,93 @@ internal class DiscussionDetailViewModel(
   private var job: Job? = null
   private var revalidationJob: Job? = null
   private var commentDraft = ""
+  private var coordinator: MutationCoordinator? = null
+  private var confirmedDetail: GithubDiscussionDetail? = null
+  private val reactionObservers = mutableMapOf<String, Job>()
+  private var detailObserversStarted = false
+  private val workTag = workCacheTag("Discussion", route.owner, route.name, route.number)
 
   init {
+    viewModelScope.launch {
+      coordinator =
+          try {
+            source.mutations(account)
+          } catch (error: CancellationException) {
+            throw error
+          } catch (_: Exception) {
+            null
+          }
+      confirmedDetail?.let { startDetailObservers(it) }
+    }
     load()
+  }
+
+  private fun upvoteKey(discussionId: String) =
+      MutationKey(MutationKind.DISCUSSION_UPVOTE, discussionId, DiscussionUpvoteState.serializer())
+
+  private fun answerKey(discussionId: String) =
+      MutationKey(
+          MutationKind.DISCUSSION_ANSWER,
+          discussionId,
+          NullableValue.serializer(String.serializer()),
+      )
+
+  private fun reactionKey(subjectId: String) =
+      MutationKey(
+          MutationKind.REACTION,
+          subjectId,
+          ListSerializer(GithubReactionGroup.serializer()),
+      )
+
+  private fun pollKey(pollId: String) =
+      MutationKey(MutationKind.DISCUSSION_VOTE, pollId, GithubDiscussionPoll.serializer())
+
+  private fun commentKey(discussionId: String) =
+      MutationKey(
+          MutationKind.COMMENT,
+          "discussion:$discussionId:${route.parentId.orEmpty()}",
+          CommandAccepted.serializer(),
+      )
+
+  private fun startDetailObservers(detail: GithubDiscussionDetail) {
+    val coord = coordinator ?: return
+    if (detailObserversStarted) return
+    detailObserversStarted = true
+    viewModelScope.launch {
+      coord.observe(upvoteKey(detail.id)).collect { write ->
+        val next = write.desired ?: write.confirmed
+        mutableState.update { current ->
+          current.copy(
+              detail =
+                  if (next != null) {
+                    current.detail?.copy(upvoted = next.upvoted, upvotes = next.upvotes)
+                  } else current.detail,
+              upvotePhase = write.phase,
+              actionFailed =
+                  current.actionFailed ||
+                      write.phase == WritePhase.REJECTED ||
+                      write.phase == WritePhase.UNCERTAIN,
+          )
+        }
+      }
+    }
+    viewModelScope.launch {
+      coord.observe(answerKey(detail.id)).collect { write ->
+        mutableState.update { current ->
+          current.copy(
+              answerPhase = write.phase,
+              actionRunning = write.phase == WritePhase.PENDING,
+              actionFailed =
+                  current.actionFailed ||
+                      write.phase == WritePhase.REJECTED ||
+                      write.phase == WritePhase.UNCERTAIN,
+          )
+        }
+        if (write.phase == WritePhase.IDLE && write.confirmed != null) {
+          load()
+        }
+      }
+    }
   }
 
   fun load() {
@@ -445,7 +546,19 @@ internal class DiscussionDetailViewModel(
     job = viewModelScope.launch {
       mutableState.update { it.copy(failed = false) }
       try {
+        val coord = coordinator
         val detail = source.load(account, route.owner, route.name, route.number, route.parentId)
+        confirmedDetail = detail
+        if (coord != null) {
+          val upKey = upvoteKey(detail.id)
+          val stamp = coord.beginRead(upKey)
+          coord.publishConfirmed(
+              upKey,
+              stamp,
+              DiscussionUpvoteState(detail.upvoted, detail.upvotes),
+          )
+          startDetailObservers(detail)
+        }
         val previous = state.value
         val comments =
             previous.comments?.takeIf { previous.detail?.id == detail.id }
@@ -456,7 +569,12 @@ internal class DiscussionDetailViewModel(
                     route.parentId != null,
                 )
         comments.load(ThreadDirection.Latest)
-        mutableState.update { it.copy(detail = detail, comments = comments) }
+        val upvoteSlot = coord?.current(upvoteKey(detail.id))?.let { it.desired ?: it.confirmed }
+        val projectedDetail =
+            if (upvoteSlot != null) {
+              detail.copy(upvoted = upvoteSlot.upvoted, upvotes = upvoteSlot.upvotes)
+            } else detail
+        mutableState.update { it.copy(detail = projectedDetail, comments = comments) }
       } catch (error: CancellationException) {
         throw error
       } catch (_: Exception) {
@@ -472,10 +590,22 @@ internal class DiscussionDetailViewModel(
     revalidationJob = viewModelScope.launch {
       mutableState.update { it.copy(failed = false) }
       try {
+        val coord = coordinator
+        val upKey = upvoteKey(previous.id)
+        val stamp = coord?.beginRead(upKey)
         val detail = source.load(account, route.owner, route.name, route.number, route.parentId)
+        confirmedDetail = detail
+        if (coord != null && stamp != null) {
+          coord.publishConfirmed(upKey, stamp, DiscussionUpvoteState(detail.upvoted, detail.upvotes))
+        }
+        val upvoteSlot = coord?.current(upKey)?.let { it.desired ?: it.confirmed }
+        val projectedDetail =
+            if (upvoteSlot != null) {
+              detail.copy(upvoted = upvoteSlot.upvoted, upvotes = upvoteSlot.upvotes)
+            } else detail
         mutableState.update { current ->
           if (current.detail?.id == previous.id && detail.id == previous.id) {
-            current.copy(detail = detail)
+            current.copy(detail = projectedDetail)
           } else {
             current
           }
@@ -490,39 +620,90 @@ internal class DiscussionDetailViewModel(
 
   fun toggleUpvote() {
     val detail = state.value.detail ?: return
-    if (state.value.actionRunning || !detail.canUpvote && !detail.upvoted) return
-    mutableState.update { it.copy(actionRunning = true, actionFailed = false) }
+    if (!detail.canUpvote && !detail.upvoted) return
+    val nextUpvoted = !detail.upvoted
+    val nextCount = (detail.upvotes + if (nextUpvoted) 1 else -1).coerceAtLeast(0)
+    mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      try {
-        val (upvoted, count) = source.toggleUpvote(account, detail.id, detail.upvoted)
-        mutableState.update {
-          it.copy(
-              detail = it.detail?.copy(upvoted = upvoted, upvotes = count),
-              actionRunning = false,
+      val coord =
+          coordinator
+              ?: try {
+                source.mutations(account).also {
+                  coordinator = it
+                  startDetailObservers(detail)
+                }
+              } catch (error: CancellationException) {
+                throw error
+              } catch (_: Exception) {
+                mutableState.update { it.copy(actionFailed = true) }
+                return@launch
+              }
+      val base = confirmedDetail ?: detail
+      val accepted =
+          coord.submit(
+              upvoteKey(detail.id),
+              confirmed = DiscussionUpvoteState(base.upvoted, base.upvotes),
+              desired = DiscussionUpvoteState(nextUpvoted, nextCount),
+              tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
+              send = { desired ->
+                val (upvoted, count) = source.setUpvote(account, detail.id, desired.upvoted)
+                DiscussionUpvoteState(upvoted, count)
+              },
+              readBack = {
+                val reloaded = source.load(account, route.owner, route.name, route.number, route.parentId)
+                DiscussionUpvoteState(reloaded.upvoted, reloaded.upvotes)
+              },
           )
-        }
-      } catch (error: CancellationException) {
-        mutableState.update { it.copy(actionRunning = false) }
-        throw error
-      } catch (_: Exception) {
-        mutableState.update { it.copy(actionRunning = false, actionFailed = true) }
+      if (!accepted) {
+        mutableState.update { it.copy(actionFailed = true) }
       }
     }
   }
 
   fun setAnswer(commentId: String, answer: Boolean) {
-    if (state.value.actionRunning) return
-    mutableState.update { it.copy(actionRunning = true, actionFailed = false) }
+    val detail = state.value.detail ?: return
+    mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      try {
-        source.setAnswer(account, commentId, answer)
-        mutableState.update { it.copy(actionRunning = false) }
-        load()
-      } catch (error: CancellationException) {
-        mutableState.update { it.copy(actionRunning = false) }
-        throw error
-      } catch (_: Exception) {
-        mutableState.update { it.copy(actionRunning = false, actionFailed = true) }
+      val coord =
+          coordinator
+              ?: try {
+                source.mutations(account).also {
+                  coordinator = it
+                  startDetailObservers(detail)
+                }
+              } catch (error: CancellationException) {
+                throw error
+              } catch (_: Exception) {
+                mutableState.update { it.copy(actionFailed = true) }
+                return@launch
+              }
+      val desiredId = if (answer) commentId else null
+      val currentAnswerId =
+          state.value.comments?.state?.value?.items?.firstOrNull { it.isAnswer }?.id
+      val accepted =
+          coord.submit(
+              answerKey(detail.id),
+              confirmed = NullableValue(currentAnswerId),
+              desired = NullableValue(desiredId),
+              tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
+              send = { desired ->
+                val answerId = desired.value
+                if (answerId != null) {
+                  source.setAnswer(account, answerId, true)
+                } else {
+                  source.setAnswer(account, commentId, false)
+                }
+                desired
+              },
+              readBack = {
+                source.load(account, route.owner, route.name, route.number, route.parentId)
+                NullableValue(
+                    state.value.comments?.state?.value?.items?.firstOrNull { it.isAnswer }?.id,
+                )
+              },
+          )
+      if (!accepted) {
+        mutableState.update { it.copy(actionFailed = true) }
       }
     }
   }
@@ -530,27 +711,53 @@ internal class DiscussionDetailViewModel(
   fun votePoll(optionId: String) {
     val poll = state.value.detail?.poll ?: return
     if (
-        state.value.actionRunning ||
+        state.value.pollPhase == WritePhase.PENDING ||
             !poll.viewerCanVote ||
             poll.viewerHasVoted ||
             poll.options.none { it.id == optionId }
     )
         return
-    mutableState.update { it.copy(actionRunning = true, actionFailed = false) }
+    mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      try {
-        val updatedPoll = source.votePoll(account, poll.id, optionId)
-        mutableState.update {
-          it.copy(
-              detail = it.detail?.copy(poll = updatedPoll),
-              actionRunning = false,
-          )
+      val coord =
+          coordinator
+              ?: try {
+                source.mutations(account).also { coordinator = it }
+              } catch (error: CancellationException) {
+                throw error
+              } catch (_: Exception) {
+                mutableState.update { it.copy(actionFailed = true) }
+                return@launch
+              }
+      val key = pollKey(poll.id)
+      launch {
+        coord.observeCommand(key).collect { cmd ->
+          mutableState.update { current ->
+            current.copy(
+                detail = cmd.result?.let { voted -> current.detail?.copy(poll = voted) }
+                    ?: current.detail,
+                pollPhase = cmd.phase,
+                actionFailed =
+                    current.actionFailed ||
+                        cmd.phase == WritePhase.REJECTED ||
+                        cmd.phase == WritePhase.UNCERTAIN,
+            )
+          }
         }
-      } catch (error: CancellationException) {
-        mutableState.update { it.copy(actionRunning = false) }
-        throw error
-      } catch (_: Exception) {
-        mutableState.update { it.copy(actionRunning = false, actionFailed = true) }
+      }
+      val accepted =
+          coord.submitCommand(
+              key,
+              tags = setOf(workTag),
+              send = { source.votePoll(account, poll.id, optionId) },
+              readBack = {
+                val reloaded =
+                    source.load(account, route.owner, route.name, route.number, route.parentId)
+                reloaded.poll?.takeIf { it.viewerHasVoted }
+              },
+          )
+      if (!accepted) {
+        mutableState.update { it.copy(actionFailed = true) }
       }
     }
   }
@@ -561,24 +768,73 @@ internal class DiscussionDetailViewModel(
       reacted: Boolean,
   ) {
     val sourceReactions = state.value.reactableGroups(subjectId) ?: return
+    val coord = coordinator
+    val slotReactions = coord?.current(reactionKey(subjectId))?.let { it.desired ?: it.confirmed }
     val previous = reactionUpdates.current(subjectId, sourceReactions)
-    if (previous?.pending == true) return
-    val reactions = previous?.reactions ?: sourceReactions
+    val reactions = slotReactions ?: previous?.reactions ?: sourceReactions
     if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
-    val pending =
-        GithubReactionUpdate(sourceReactions, reactions.withToggledReaction(content), pending = true)
+    val desired = reactions.withToggledReaction(content)
+    val pending = GithubReactionUpdate(sourceReactions, desired, pending = true)
+    reactionUpdates.set(subjectId, pending)
+    mutableReactionFailure.value = null
     viewModelScope.launch {
-      reactionUpdates.set(subjectId, pending)
-      mutableReactionFailure.value = null
-      try {
-        val confirmed = source.toggleReaction(account, subjectId, content, reacted)
-        reactionUpdates.set(subjectId, pending.copy(reactions = confirmed, pending = false))
-      } catch (error: CancellationException) {
+      val activeCoord =
+          coord
+              ?: try {
+                source.mutations(account).also { coordinator = it }
+              } catch (error: CancellationException) {
+                reactionUpdates.set(subjectId, previous)
+                throw error
+              } catch (error: Exception) {
+                reactionUpdates.set(subjectId, previous)
+                mutableReactionFailure.value = error
+                return@launch
+              }
+      if (reactionObservers[subjectId]?.isActive != true) {
+        reactionObservers[subjectId] =
+            launch {
+              activeCoord.observe(reactionKey(subjectId)).collect { write ->
+                val baseline = state.value.reactableGroups(subjectId) ?: sourceReactions
+                val value = write.desired ?: write.confirmed
+                if (value != null) {
+                  reactionUpdates.set(
+                      subjectId,
+                      GithubReactionUpdate(
+                          source = baseline,
+                          reactions = value,
+                          pending = write.phase == WritePhase.PENDING,
+                      ),
+                  )
+                }
+                if (write.phase == WritePhase.REJECTED || write.phase == WritePhase.UNCERTAIN) {
+                  mutableReactionFailure.value =
+                      IllegalStateException(write.message ?: "Reaction failed")
+                }
+              }
+            }
+      }
+      val accepted =
+          activeCoord.submit(
+              reactionKey(subjectId),
+              confirmed = sourceReactions,
+              desired = desired,
+              tags = setOf(workTag),
+              send = { nextDesired ->
+                val baseline =
+                    activeCoord.current(reactionKey(subjectId)).confirmed ?: sourceReactions
+                convergeGithubReactions(baseline, nextDesired) { targetContent, currentReacted ->
+                  source.toggleReaction(account, subjectId, targetContent, currentReacted)
+                }
+              },
+              readBack = {
+                val reloaded =
+                    source.load(account, route.owner, route.name, route.number, route.parentId)
+                if (reloaded.id == subjectId) reloaded.reactions else sourceReactions
+              },
+          )
+      if (!accepted) {
         reactionUpdates.set(subjectId, previous)
-        throw error
-      } catch (error: Exception) {
-        reactionUpdates.set(subjectId, previous)
-        mutableReactionFailure.value = error
+        mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
       }
     }
   }
@@ -609,34 +865,80 @@ internal class DiscussionDetailViewModel(
     if (!validComment(body)) return
     editor.update(submitting = true, submitEnabled = false, error = null)
     viewModelScope.launch {
-      try {
-        source.addComment(account, discussionId, route.parentId, body)
-        if (route.parentId == null) {
-          mutableState.update { current ->
-            current.copy(
-                detail = current.detail?.let { it.copy(commentsCount = it.commentsCount + 1) },
-            )
+      val coord =
+          coordinator
+              ?: try {
+                source.mutations(account).also { coordinator = it }
+              } catch (error: CancellationException) {
+                editor.update(submitting = false)
+                throw error
+              } catch (_: Exception) {
+                editor.update(
+                    submitting = false,
+                    editable = true,
+                    submitEnabled = true,
+                    error = GithubTxt.current.Activity.CommentFailed,
+                )
+                return@launch
+              }
+      val key = commentKey(discussionId)
+      val observeJob =
+          launch {
+            coord.observeCommand(key).collect { cmd ->
+              when (cmd.phase) {
+                WritePhase.IDLE ->
+                    if (cmd.result != null) {
+                      if (route.parentId == null) {
+                        mutableState.update { current ->
+                          current.copy(
+                              detail =
+                                  current.detail?.let { it.copy(commentsCount = it.commentsCount + 1) },
+                          )
+                        }
+                      }
+                      state.value.comments?.load(ThreadDirection.Latest)
+                      commentDraft = ""
+                      editor.complete()
+                      editor.update(submitting = false)
+                    }
+                WritePhase.PENDING ->
+                    editor.update(submitting = true, submitEnabled = false, error = null)
+                WritePhase.UNCERTAIN -> {
+                  load()
+                  editor.update(
+                      submitting = false,
+                      editable = false,
+                      submitEnabled = false,
+                      error = GithubTxt.current.Activity.CommentUnconfirmed,
+                  )
+                }
+                WritePhase.REJECTED ->
+                    editor.update(
+                        submitting = false,
+                        editable = true,
+                        submitEnabled = true,
+                        error = GithubTxt.current.Activity.CommentFailed,
+                    )
+              }
+            }
           }
-        }
-        state.value.comments?.load(ThreadDirection.Latest)
-        commentDraft = ""
-        editor.complete()
-        editor.update(submitting = false)
-      } catch (error: CancellationException) {
-        editor.update(submitting = false)
-        throw error
-      } catch (error: Exception) {
-        val uncertain =
-            error is IOException ||
-                error is SerializationException ||
-                (error is HttpException && error.code() >= 500)
-        val strings = GithubTxt.current.Activity
-        if (uncertain) load()
+      val accepted =
+          coord.submitCommand(
+              key,
+              tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
+              send = {
+                source.addComment(account, discussionId, route.parentId, body)
+                CommandAccepted
+              },
+              readBack = { null },
+          )
+      if (!accepted) {
+        observeJob.cancel()
         editor.update(
             submitting = false,
-            editable = !uncertain,
-            submitEnabled = !uncertain,
-            error = if (uncertain) strings.CommentUnconfirmed else strings.CommentFailed,
+            editable = false,
+            submitEnabled = false,
+            error = GithubTxt.current.Activity.CommentUnconfirmed,
         )
       }
     }

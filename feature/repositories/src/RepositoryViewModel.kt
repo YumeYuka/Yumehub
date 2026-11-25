@@ -12,14 +12,18 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.MyRepositoriesPageSize
 import moe.yumeyuka.yumehub.data.repository.MyRepositoriesRepository
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryPagingSource
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.defaultPagingConfig
 
 internal data class RepositoryFilters(
@@ -32,7 +36,12 @@ internal data class RepositoryFilters(
 internal data class RepositoryListing(
     val filters: RepositoryFilters,
     val pages: Flow<PagingData<RepositoryDto>>,
+    val revalidation: StateFlow<RevalidationState>,
 )
+
+private fun repositoryPagingKey(filter: RepositoryFilters): String =
+    "my-repositories:v4:type=${filter.type}:sort=${filter.sort}:" +
+        "size=$MyRepositoriesPageSize:language=${filter.language}:query=${filter.query}"
 
 // Pager 的闲置缓存比路由活得久；工厂只捕获数据依赖和查询参数。
 private fun repositoryPages(
@@ -41,15 +50,24 @@ private fun repositoryPages(
     pagingRepository: PagingRepository,
     filter: RepositoryFilters,
 ): Flow<PagingData<RepositoryDto>> {
-  val key =
-      "my-repositories:v4:type=${filter.type}:sort=${filter.sort}:" +
-          "size=$MyRepositoriesPageSize:language=${filter.language}:query=${filter.query}"
-  return pagingRepository.pages(login, key, defaultPagingConfig(MyRepositoriesPageSize)) { context ->
+  val key = repositoryPagingKey(filter)
+  return pagingRepository.pages(
+      login,
+      key,
+      defaultPagingConfig(MyRepositoriesPageSize),
+      tags = setOf(CacheTag(DataDomain.Repositories, "my-repositories")),
+  ) { context ->
     RepositoryPagingSource(
         repositories,
         login,
         MyRepositoriesPageSize,
-        pagingRepository.snapshot(login, key, RepositoryDto.serializer(), context),
+        pagingRepository.snapshot(
+            login,
+            key,
+            RepositoryDto.serializer(),
+            context,
+            tags = setOf(CacheTag(DataDomain.Repositories, "my-repositories")),
+        ),
         type = filter.type,
         sort = filter.sort,
         query = filter.query,
@@ -91,7 +109,12 @@ internal class RepositoryViewModel(
       RepositoryListing(
           filter,
           repositoryPages(repositories, login, pagingRepository, filter).cachedIn(listingScope),
+          pagingRepository.revalidation(login, repositoryPagingKey(filter)),
       )
+
+  fun retryRevalidation() {
+    pagingRepository.retryRevalidation(login, repositoryPagingKey(listing.value.filters))
+  }
 
   private fun changeFilters(next: RepositoryFilters) {
     if (next == mutableListing.value.filters) return

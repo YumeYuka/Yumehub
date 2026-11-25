@@ -48,7 +48,12 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
     val host = requireNotNull(LocalGithubPageHost.current)
     val head = state.data?.head?.sha?.takeIf(String::isNotBlank)
     val contentKey = "pr-diff:$account:$route:$head"
-    GithubPagingContent(viewModel.files, contentKey = contentKey) { paging ->
+    GithubPagingContent(
+        viewModel.files,
+        contentKey = contentKey,
+        revalidation = viewModel.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
+    ) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(

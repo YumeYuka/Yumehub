@@ -48,6 +48,7 @@ internal fun NotificationCard(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
+    uncertain: Boolean = false,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
@@ -61,6 +62,7 @@ internal fun NotificationCard(
                 preview,
                 isSelecting,
                 isSelected,
+                uncertain,
                 onClick,
                 onLongClick,
             )
@@ -74,6 +76,7 @@ private fun NotificationCardContent(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
+    uncertain: Boolean,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
@@ -194,6 +197,20 @@ private fun NotificationCardContent(
                         preview = preview,
                         activityText = activityText,
                         metadataStyle = metadataStyle,
+                    )
+                }
+                if (uncertain) {
+                    Text(
+                        LocalGithubStrings.current.Common.MutationUncertain,
+                        style = metadataStyle,
+                        color =
+                            readableForeground(
+                                colors.destructive,
+                                colors.elevatedBackground,
+                                colors.content,
+                            ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

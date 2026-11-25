@@ -6,10 +6,12 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.repository.ProfileCollectionsRepository
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
 
 internal sealed interface ProfileCollectionEntry {
     data class Repository(val value: RepositoryDto) : ProfileCollectionEntry
@@ -18,10 +20,25 @@ internal sealed interface ProfileCollectionEntry {
 }
 
 internal class ProfileCollectionsViewModel(
-    repository: ProfileCollectionsRepository,
+    private val repository: ProfileCollectionsRepository,
     route: ProfileCollectionsRoute,
 ) : ViewModel() {
     private val account = repository.account
+    private val pagingKey =
+        when (route.kind) {
+            ProfileCollectionsRoute.Kind.Repositories ->
+                repository.repositoriesKey(route.login, route.organization)
+            ProfileCollectionsRoute.Kind.Starred ->
+                repository.starredKey(account, route.login)
+            ProfileCollectionsRoute.Kind.Organizations ->
+                repository.organizationsKey(route.login)
+        }
+    val revalidation: StateFlow<RevalidationState> = repository.revalidation(account, pagingKey)
+
+    fun retryRevalidation() {
+        repository.retryRevalidation(account, pagingKey)
+    }
+
     val entries: Flow<PagingData<ProfileCollectionEntry>> =
         when (route.kind) {
             ProfileCollectionsRoute.Kind.Repositories ->

@@ -213,7 +213,10 @@ fun WorkspacesPage(
         onRetry = viewModel.branches::retry,
         onLoadMore = viewModel.branches::loadMore,
         onQueryChange = viewModel.branches::search,
-        onSelect = { branch -> if (host.navigationEnabled) viewModel.switchBranch(branch) },
+        onSelect = { branch ->
+            if (host.navigationEnabled) viewModel.switchBranch(branch)
+            branchPickerVisible = false
+        },
     )
 }
 

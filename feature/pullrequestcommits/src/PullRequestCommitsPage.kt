@@ -88,7 +88,12 @@ fun PullRequestCommitsPage(
     )
     val head = state.data?.head?.sha?.takeIf(String::isNotBlank)
     val contentKey = "pr-commits:$account:$route:$head"
-    GithubPagingContent(viewModel.commits, contentKey = contentKey) { paging ->
+    GithubPagingContent(
+        viewModel.commits,
+        contentKey = contentKey,
+        revalidation = viewModel.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
+    ) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(

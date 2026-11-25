@@ -13,6 +13,7 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.GithubPagingRetryAction
 import moe.yumeyuka.yumehub.ui.component.GithubUserCard
+import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -38,6 +39,8 @@ fun FollowingPage(
     GithubPagingContent(
         source = if (following) viewModel.following else viewModel.followers,
         contentKey = following,
+        revalidation = IdleGithubPagingRevalidation,
+        onRetryRevalidation = {},
         order = if (following) 0 else 1,
     ) { paging ->
         val pages = paging.items

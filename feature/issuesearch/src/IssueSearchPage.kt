@@ -34,8 +34,13 @@ fun IssueSearchPage(
   val filter by viewModel.filter.collectAsStateWithLifecycle()
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter) { actions, searching ->
-    GithubPagingContent(pages, contentKey = filter, order = workListTabOrder(kind, filter)) { paging
-    ->
+    GithubPagingContent(
+        pages,
+        contentKey = filter,
+        revalidation = viewModel.revalidation,
+        onRetryRevalidation = viewModel::retryRevalidation,
+        order = workListTabOrder(kind, filter),
+    ) { paging ->
       val items = paging.items
       val slots =
           rememberGithubPagingSlots(
