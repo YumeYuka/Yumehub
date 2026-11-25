@@ -211,7 +211,7 @@ fun WorkDetailPage(
             ),
         back = true,
         listState = listState,
-        locked = state.submitting && !state.sendingInBackground || issueMetadata.saving,
+        locked = issueMetadata.saving,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
         detailPresentation = presentation,
         onRetryDetail = retryDetail,
@@ -260,10 +260,7 @@ fun WorkDetailPage(
                 onClick = {
                     if (host.navigationEnabled && presentation.interactive) infoVisible = true
                 },
-                enabled =
-                    presentation.interactive &&
-                        state.item != null &&
-                        (!state.submitting || state.sendingInBackground),
+                enabled = presentation.interactive && state.item != null,
             ) {
                 GithubIcon(Lucide.Info, contentDescription = strings.Information)
             }

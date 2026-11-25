@@ -100,12 +100,14 @@ class NotificationsRepository(
                 runtime.mutex(normalized).withLock {
                     val resource = resource(account, query)
                     resource.refresh {
-                        val previous = resource.cached
+                        val cached = resource.state.value
+                        val window = cached.data.refreshWindow(cached.updatedAt)
                         loadWindow(
                             account,
                             query,
-                            previous?.loadedFromPage ?: 1,
-                            previous?.loadedThroughPage?.coerceAtLeast(1) ?: 1,
+                            window.fromPage,
+                            window.throughPage,
+                            window.previous,
                         )
                     }.join()
                 }
@@ -405,6 +407,7 @@ class NotificationsRepository(
                     }
                     // 线程状态改变后从首个游标重读窗口，不继续使用旧位置。
                     resource.invalidate()
+                    runtime.cancelRefresh(key.query)
                 }
         }
         cache.changes(account).publish(DataDomain.Notifications)
@@ -453,6 +456,11 @@ class NotificationsRepository(
             return job
         }
 
+        // 调用方已持有 resources 锁；变更信号不能加入刚失效的校验。
+        fun cancelRefresh(query: NotificationsQuery) {
+            refreshes.remove(query)?.cancel()
+        }
+
         fun mutex(query: NotificationsQuery): Mutex =
             synchronized(resources) {
                 reap()
@@ -485,6 +493,19 @@ private fun List<NotificationDto>.distinctRecords() = distinctBy { it.recordKey(
 
 private fun List<String>.distinctRepositories() =
     distinctBy { it.lowercase(Locale.ROOT) }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+internal data class NotificationRefreshWindow(
+    val fromPage: Int,
+    val throughPage: Int,
+    val previous: NotificationsSnapshot?,
+)
+
+internal fun NotificationsSnapshot?.refreshWindow(updatedAt: Long): NotificationRefreshWindow {
+    val from = this?.loadedFromPage ?: 1
+    val through = this?.loadedThroughPage?.coerceAtLeast(from) ?: from
+    val prefix = this?.takeIf { !it.pagingPaused && updatedAt > 0L }
+    return NotificationRefreshWindow(from, through, prefix)
+}
 
 internal fun NotificationsSnapshot.canReuseWindow(): Boolean =
     !pagingPaused &&

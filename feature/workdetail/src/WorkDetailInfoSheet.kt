@@ -107,9 +107,7 @@ internal fun WorkReviewSheet(
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (!busy) onDismiss() },
-        dismissOnBackPress = !busy,
-        dismissOnClickOutside = !busy,
+        onDismissRequest = onDismiss,
         fitContent = true,
         title = review.Review,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
@@ -117,7 +115,7 @@ internal fun WorkReviewSheet(
             GlasmioSheetTopToolbar(
                 title = review.Review,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !busy) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
@@ -197,13 +195,13 @@ internal fun WorkMergeSheet(
     val id = item?.nodeId
     val head = item?.head?.sha
     val base = item?.baseRefName
-    var selected by rememberSaveable(visible, id) { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable(id, head, base) { mutableStateOf<String?>(null) }
     val method = selected?.takeIf { selection -> methods.any { it.first == selection } }
     val editMessage = method == "MERGE" || method == "SQUASH"
     var editedHeadline by
-        rememberSaveable(visible, id, head, base, method) { mutableStateOf<String?>(null) }
+        rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
     var editedBody by
-        rememberSaveable(visible, id, head, base, method) { mutableStateOf<String?>(null) }
+        rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
     var retry by remember(visible, id, head, base, method) { mutableStateOf(0) }
     var defaults by
         remember(visible, id, head, base, method, retry) { mutableStateOf<WorkMergeMessage?>(null) }
@@ -245,9 +243,7 @@ internal fun WorkMergeSheet(
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     GlasmioBottomSheet(
         visible = visible,
-        onDismissRequest = { if (!busy) onDismiss() },
-        dismissOnBackPress = !busy,
-        dismissOnClickOutside = !busy,
+        onDismissRequest = onDismiss,
         title = strings.MergePullRequest,
         fitContent = true,
         topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
@@ -255,7 +251,7 @@ internal fun WorkMergeSheet(
             GlasmioSheetTopToolbar(
                 title = strings.MergePullRequest,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !busy) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },

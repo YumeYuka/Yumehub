@@ -62,9 +62,6 @@ internal fun LazyListScope.CollaborationDetailScreen(
     }
     return
   }
-  val sectionEnabled =
-      !state.submitting || state.sendingInBackground
-
   if (state.submissionUncertain) {
     item(key = "collaboration-submission-recovery") {
       GithubSection(LocalGithubStrings.current.WorkDetail.RecoveryTitle) {
@@ -97,7 +94,7 @@ internal fun LazyListScope.CollaborationDetailScreen(
         val host = requireNotNull(LocalGithubPageHost.current)
         WorkDiscussionSummary(
             entry = entry,
-            enabled = sectionEnabled,
+            enabled = host.navigationEnabled,
             onStatus = onStatus,
             onOpenFiles = { if (host.navigationEnabled) onOpenFiles() },
             onOpenCommits = { if (host.navigationEnabled) onOpenCommits() },
@@ -137,14 +134,9 @@ internal fun LazyListScope.CollaborationDetailScreen(
             title = state.section.label(strings),
             detail = strings.Discussion,
             systemName = null,
-            onClick =
-                if (sectionEnabled)
-                    ({
-                      if (host.navigationEnabled) {
-                        viewModel.selectSection(CollaborationSection.Discussion)
-                      }
-                    })
-                else null,
+            onClick = {
+              if (host.navigationEnabled) viewModel.selectSection(CollaborationSection.Discussion)
+            },
         )
       }
     }

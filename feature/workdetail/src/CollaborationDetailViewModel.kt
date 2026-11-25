@@ -726,8 +726,6 @@ internal class CollaborationDetailViewModel(
     }
 
     fun selectSection(section: CollaborationSection) {
-        val state = uiState.value
-        if (state.submitting && !state.sendingInBackground) return
         if (kind == CollaborationKind.PullRequest || section == CollaborationSection.Discussion) {
             mutableUiState.update { it.copy(section = section) }
         }
@@ -1167,7 +1165,7 @@ internal class CollaborationDetailViewModel(
                     it.copy(
                         reviewDraft = "",
                         reviewEvent = PullRequestReviewEvent.Comment,
-                        statusPanel = null,
+                        statusPanel = it.statusPanel.takeUnless { panel -> panel == WorkStatusPanel.Reviews },
                     )
                 }
             },

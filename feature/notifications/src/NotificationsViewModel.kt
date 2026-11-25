@@ -113,12 +113,8 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
 
     fun revalidate() {
         val state = mutableUiState.value
-        if (state.isProcessing || state.isSelecting || listJob?.isActive == true) return
-        appending = false
-        listJob = viewModelScope.launch {
-            repository.refresh(account, state.query()).join()
-            applySnapshot(resource.state.value)
-        }
+        if (state.isProcessing || state.isSelecting) return
+        repository.refresh(account, state.query())
     }
 
     fun loadMore() {
@@ -247,14 +243,6 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             viewModelScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     repository.markRead(account, threadId)
-                    val current = mutableUiState.value
-                    if (!current.isProcessing) {
-                        loadPages(
-                            loadedFromPage,
-                            loadedThroughPage.coerceAtLeast(loadedFromPage),
-                            replace = true,
-                        )
-                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -390,11 +378,15 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         listJob = viewModelScope.launch {
             try {
                 repository.loadPages(account, state.query(), fromPage, throughPage, replace)
-                if (generation == listGeneration) applySnapshot(resource.state.value)
+                if (generation == listGeneration) {
+                    appending = false
+                    applySnapshot(resource.state.value)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (generation != listGeneration) return@launch
+                appending = false
                 mutableUiState.value =
                     mutableUiState.value.copy(
                         isRefreshing = false,
@@ -416,6 +408,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             return
         listGeneration++
         listJob?.cancel()
+        appending = false
         failedAction = null
         mutableUiState.value =
             state.copy(
@@ -492,15 +485,6 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                                 )
                         },
                 )
-            if (succeeded.isNotEmpty() && !pausePaging) {
-                // 移出当前筛选会使页码偏移，重读已显示的页后再更新列表和游标。
-                nextPage = null
-                loadPages(
-                    loadedFromPage,
-                    loadedThroughPage.coerceAtLeast(loadedFromPage),
-                    replace = true,
-                )
-            }
         }
     }
 
