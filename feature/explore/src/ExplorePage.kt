@@ -21,6 +21,8 @@ import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
@@ -31,6 +33,7 @@ import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import org.koin.androidx.compose.koinViewModel
 
+@OptIn(FlowPreview::class)
 @Composable
 fun ExplorePage(
     onOpenSearch: () -> Unit,
@@ -42,8 +45,12 @@ fun ExplorePage(
 ) {
     val feed: FeedViewModel = koinViewModel()
     val cards = feed.cards
-    val options by feed.options.collectAsStateWithLifecycle()
-    val (filters, sort) = options
+    val restoredOptions by feed.options.collectAsStateWithLifecycle()
+    val options = restoredOptions
+    val filters = options?.filters.orEmpty()
+    val slotKey = remember(options) {
+        "feed-${options?.sort?.name}:${filters.map { it.name }.sorted()}"
+    }
     val strings = LocalGithubStrings.current
     var filtersVisible by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -51,12 +58,12 @@ fun ExplorePage(
         remember(feed, lifecycle) {
             feed.events.flowWithLifecycle(lifecycle, Lifecycle.State.RESUMED)
         }
-    GithubPagingContent(eventsWhileVisible, contentKey = options) { paging ->
+    GithubPagingContent(eventsWhileVisible, contentKey = options ?: "feed-options-loading") { paging ->
         val events = paging.items
         val slots =
             rememberGithubPagingSlots(
                 events,
-                "feed-${sort.name}:${filters.map { it.name }.sorted()}",
+                slotKey,
                 paging.initialLoading,
             ) {
                 it.id
@@ -66,6 +73,7 @@ fun ExplorePage(
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 try {
                     snapshotFlow { latestSlots.visibleItems(paging.listState) }
+                        .debounce(100L)
                         .collect(feed::setVisible)
                 } finally {
                     feed.setVisible(emptyList())
@@ -82,7 +90,7 @@ fun ExplorePage(
                 GlasmioIconButton(onClick = onOpenSearch) {
                     GithubIcon(Lucide.Search, contentDescription = strings.Common.Search)
                 }
-                GlasmioIconButton(onClick = { filtersVisible = true }) {
+                GlasmioIconButton(onClick = { filtersVisible = true }, enabled = options != null) {
                     GithubIcon(
                         Lucide.ListFilter,
                         contentDescription = strings.WorkList.SortAndFilter,
@@ -94,6 +102,7 @@ fun ExplorePage(
                 ExploreDiscoverSection(onOpenTrending, onOpenFeatured)
             }
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
+            if (options == null) return@GithubPage
             FeedScreen(
                 events = events,
                 slots = slots,
@@ -107,10 +116,12 @@ fun ExplorePage(
             )
         }
     }
-    ExploreFiltersSheet(
-        visible = filtersVisible,
-        options = options,
-        onDismiss = { filtersVisible = false },
-        onApply = feed::applyOptions,
-    )
+    if (options != null) {
+        ExploreFiltersSheet(
+            visible = filtersVisible,
+            options = options,
+            onDismiss = { filtersVisible = false },
+            onApply = feed::applyOptions,
+        )
+    }
 }

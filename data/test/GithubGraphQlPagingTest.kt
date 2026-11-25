@@ -4,7 +4,11 @@ import androidx.paging.PagingSource.LoadParams.Append
 import androidx.paging.PagingSource.LoadParams.Refresh
 import androidx.paging.PagingSource.LoadResult.Page
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -56,6 +60,42 @@ class GithubGraphQlPagingTest {
         val second = source.load(Append(checkNotNull(first.nextKey), 30, false)) as Page
         assertEquals(listOf("next"), second.data)
         assertEquals(listOf(null, "old-cursor"), fixture.requests)
+    }
+
+    @Test
+    fun obsoleteResponseCannotPublishOrSaveFirstPage() = runBlocking {
+        withTimeout(5_000) {
+            val started = CompletableDeferred<Unit>()
+            val response = CompletableDeferred<GithubGraphQlPage<String>>()
+            var current = true
+            var saved: PagingSnapshotPage<String>? = null
+            val source =
+                GithubGraphQlPagingSource(
+                    pageSize = 30,
+                    identity = { it },
+                    mapItem = { it },
+                    loader = {
+                        {
+                            started.complete(Unit)
+                            response.await()
+                        }
+                    },
+                    ensureCurrent = { if (!current) throw CancellationException("obsolete") },
+                    firstPageCache =
+                        GithubGraphQlFirstPageCache(
+                            restore = { null },
+                            save = { saved = it },
+                            revalidate = { _, _ -> error("No cached page to revalidate") },
+                        ),
+                )
+            val oldLoad = async { source.load(Refresh(null, 30, false)) }
+            started.await()
+            current = false
+            response.complete(GithubGraphQlPage(listOf("obsolete"), null))
+
+            assertTrue(runCatching { oldLoad.await() }.exceptionOrNull() is CancellationException)
+            assertNull(saved)
+        }
     }
 
     private class Fixture(updatedAt: Long, val failRefresh: Boolean = false) {

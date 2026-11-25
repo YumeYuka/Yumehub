@@ -7,10 +7,13 @@ import java.security.SecureRandom
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -67,7 +70,7 @@ class GitHubAuthRepository(
     override val session = tokenStore.authSession
 
     override suspend fun switchAccount(login: String) = sessionMutex.withLock {
-        tokenStore.selectAccount(login)
+        withContext(Dispatchers.IO) { tokenStore.selectAccount(login) }
     }
 
     override fun createAuthorizationIntent(): Intent {
@@ -102,15 +105,17 @@ class GitHubAuthRepository(
         val login = viewer?.get("login")?.jsonPrimitive?.contentOrNull
         if (login.isNullOrBlank()) throw AuthException("GitHub did not return the viewer login")
         val scope = tokenResponse.scope ?: response.request.scope ?: GitHubAuthConfig.SCOPE
-        tokenStore.saveAccount(
-            SavedAccount(
-                login = login,
-                avatarUrl = viewer["avatarUrl"]?.jsonPrimitive?.contentOrNull,
-                accessToken = accessToken,
-                refreshToken = tokenResponse.refreshToken.orEmpty(),
-                scope = scope,
-            ),
-        )
+        withContext(Dispatchers.IO) {
+            tokenStore.saveAccount(
+                SavedAccount(
+                    login = login,
+                    avatarUrl = viewer["avatarUrl"]?.jsonPrimitive?.contentOrNull,
+                    accessToken = accessToken,
+                    refreshToken = tokenResponse.refreshToken.orEmpty(),
+                    scope = scope,
+                ),
+            )
+        }
     }
 
     override suspend fun recoverSession(rejectedToken: String): SessionRecovery =
@@ -145,7 +150,9 @@ class GitHubAuthRepository(
             val accessToken = tokenResponse.requireAccessToken()
             if (accessToken == rejectedToken)
                 throw AuthException("GitHub did not renew the access token")
-            tokenStore.updateTokens(accessToken, tokenResponse.refreshToken, tokenResponse.scope)
+            withContext(Dispatchers.IO) {
+                tokenStore.updateTokens(accessToken, tokenResponse.refreshToken, tokenResponse.scope)
+            }
             SessionRecovery.Refreshed
         }
 
@@ -164,7 +171,7 @@ class GitHubAuthRepository(
     }
 
     /** 会话失效时连同该账号的收藏快照一起清理，避免私有仓库信息残留。 */
-    private fun clearSessionData() {
+    private suspend fun clearSessionData() = withContext(Dispatchers.IO) {
         tokenStore.accountLogin.value.takeIf { it.isNotBlank() }?.let(favoritesStore::clear)
         tokenStore.removeActiveAccount()
     }
@@ -283,23 +290,25 @@ class GitHubAuthRepository(
         performTokenRequest(response.createTokenExchangeRequest())
 
     private suspend fun performTokenRequest(tokenRequest: TokenRequest): TokenResponse =
-        suspendCancellableCoroutine { continuation ->
-            authorizationService.performTokenRequest(
-                tokenRequest,
-                ClientSecretPost(GitHubAuthConfig.CLIENT_SECRET),
-            ) { tokenResponse, exception ->
-                if (!continuation.isActive) return@performTokenRequest
-                when {
-                    tokenResponse != null -> continuation.resume(tokenResponse)
-                    exception != null ->
-                        continuation.resumeWithException(exception.toAuthException())
-                    else ->
-                        continuation.resumeWithException(
-                            AuthException("Token exchange returned no response"),
-                        )
+        withTimeoutOrNull(30_000L) {
+            suspendCancellableCoroutine { continuation ->
+                authorizationService.performTokenRequest(
+                    tokenRequest,
+                    ClientSecretPost(GitHubAuthConfig.CLIENT_SECRET),
+                ) { tokenResponse, exception ->
+                    if (!continuation.isActive) return@performTokenRequest
+                    when {
+                        tokenResponse != null -> continuation.resume(tokenResponse)
+                        exception != null ->
+                            continuation.resumeWithException(exception.toAuthException())
+                        else ->
+                            continuation.resumeWithException(
+                                AuthException("Token exchange returned no response"),
+                            )
+                    }
                 }
             }
-        }
+        } ?: throw AuthException("Token exchange timed out")
 
     private fun TokenResponse.requireAccessToken(): String =
         accessToken?.takeIf { it.isNotBlank() }

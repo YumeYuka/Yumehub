@@ -5,7 +5,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 页面主线程拥有待写集合；即使 VM 的 scope 已取消，退出时仍能提交最后一次输入。 */
+/** 主线程只维护 debounce 队列；存储回调将写入交给应用级串行 I/O 队列。 */
 internal class PendingDraftWrites(
     private val scope: CoroutineScope,
     private val save: (String, String) -> Unit,

@@ -7,7 +7,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
@@ -47,6 +50,7 @@ fun WorkListPage(
   val filterOptions by viewModel.filterOptions.collectAsStateWithLifecycle()
   val branchPicker by viewModel.branchPicker.collectAsStateWithLifecycle()
   val assigneePicker by viewModel.assigneePicker.collectAsStateWithLifecycle()
+  val optionsFailed by viewModel.optionsFailed.collectAsStateWithLifecycle()
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(
       kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter,
@@ -79,6 +83,16 @@ fun WorkListPage(
           slots,
           onOpenDetail,
       )
+      if (optionsFailed) {
+        item(key = "work-list-options-retry") {
+          GlasmioGroupedList {
+            GlasmioListRow(
+                title = LocalGithubStrings.current.Common.Retry,
+                onClick = viewModel::retryFilterOptions,
+            )
+          }
+        }
+      }
       pageSearchClearance(searching)
     }
     WorkCreationSheet(

@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.notifier
 
-import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -18,14 +17,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import moe.yumeyuka.yumehub.App
 import moe.yumeyuka.yumehub.R
 import moe.yumeyuka.yumehub.data.download.DownloadStatus
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.download.DownloadTask
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
-import org.koin.android.ext.android.get
 import org.koin.android.ext.android.inject
+import org.koin.core.component.get
 
 class DownloadService : Service() {
     private val store: DownloadStore by inject()
@@ -41,6 +41,7 @@ class DownloadService : Service() {
     private var nextId = 3000
     private var foreground: String? = null
     private var latestStartId = 0
+    private var observing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -53,6 +54,10 @@ class DownloadService : Service() {
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
+    }
+
+    private fun observeDownloads() {
+        observing = true
         // 进程重建后无法继续上次的传输，只清理失效的进度通知，不动完成通知。
         val live = store.tasks.value.filter { it.active }.map { it.id }.toSet()
         manager.activeNotifications.forEach {
@@ -64,6 +69,16 @@ class DownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!(application as App).storageReady) {
+            // A new process has no queued transfers, but a stale foreground start still needs ack.
+            if (intent?.action == START || intent?.action == RESUME) {
+                startForeground(ID, notification(null))
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
+        if (!observing) observeDownloads()
         latestStartId = startId
         stoppedNormally = false
         val id = intent?.data?.lastPathSegment
@@ -128,12 +143,12 @@ class DownloadService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        store.interruptActive()
+        if (observing) store.interruptActive()
         stopSelf()
     }
 
     override fun onDestroy() {
-        if (!stoppedNormally) store.interruptActive()
+        if (observing && !stoppedNormally) store.interruptActive()
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         ids.values.forEach { manager.cancel(it) }
@@ -258,6 +273,7 @@ class DownloadService : Service() {
 class DownloadDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.data?.lastPathSegment ?: return
-        (context.applicationContext as Application).get<DownloadStore>().dismiss(id)
+        val app = context.applicationContext as App
+        if (app.storageReady) app.get<DownloadStore>().dismiss(id)
     }
 }

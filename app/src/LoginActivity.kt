@@ -5,6 +5,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,6 +22,13 @@ class LoginActivity : ComponentActivity() {
         }
         val bars = WindowCompat.getInsetsController(window, window.decorView)
         val addingAccount = intent.getBooleanExtra(AddingAccountKey, false)
+        lifecycleScope.launch {
+            (application as App).awaitStorage()
+            if (!isFinishing) showLogin(addingAccount, bars)
+        }
+    }
+
+    private fun showLogin(addingAccount: Boolean, bars: WindowInsetsControllerCompat) {
         setContent {
             LoginRoot(
                 addingAccount = addingAccount,

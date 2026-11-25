@@ -19,9 +19,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.arkivanov.decompose.retainedComponent
 import io.github.neoruaa.glasmio.glass.render.configureGlassDynamicRange
+import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
@@ -31,22 +34,19 @@ class MainActivity : ComponentActivity() {
     private val settingsStore: SettingsStore by inject()
     private val tokens: TokenStore by inject()
     private var loginOpen by mutableStateOf(false)
+    private var startupLink: String? = null
     private val loginLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             loginOpen = false
-            if (result.resultCode != RESULT_OK && tokens.accessToken.value.isBlank()) finish()
+            if (result.resultCode != RESULT_OK) {
+                lifecycleScope.launch {
+                    (application as App).awaitStorage()
+                    if (tokens.accessToken.value.isBlank()) finish()
+                }
+            }
         }
 
-    // 保留组件跨配置重建持有返回栈与当前标签；栈不序列化，进程重启回首页。
-    private val navigationComponent: GithubAppNavigationComponent by lazy {
-        retainedComponent { componentContext ->
-            GithubAppNavigationComponent(
-                componentContext = componentContext,
-                predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
-                predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,
-            )
-        }
-    }
+    private lateinit var navigationComponent: GithubAppNavigationComponent
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -56,21 +56,35 @@ class MainActivity : ComponentActivity() {
         loginOpen = savedInstanceState?.getBoolean(LoginOpenKey) == true
         // Configure the window before composition; Compose updates insets after view dispatch.
         WindowCompat.enableEdgeToEdge(window)
+        startupLink =
+            if (savedInstanceState?.getBoolean(LinkHandledKey) == true) {
+                savedInstanceState.getString(PendingLinkKey)
+            } else intent?.viewLink()
+        lifecycleScope.launch {
+            (application as App).awaitStorage()
+            lifecycle.withStarted {
+                if (!isFinishing) setUpContent { firstCompositionReady = true }
+            }
+        }
+    }
+
+    private fun setUpContent(onFirstComposition: () -> Unit) {
         val initialHdrOutput =
             settingsStore.glassHdrEnabled.state.value &&
                 settingsStore.liquidGlassEnabled.state.value &&
                 !settingsStore.reduceTransparency.state.value
         configureGlassDynamicRange(window, hdrEnabled = initialHdrOutput)
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        // 必须在 setContent 之前创建：Decompose 的出栈回调要先于页面级返回处理注册。
-        val navigationComponent = this.navigationComponent
-        val link =
-            if (savedInstanceState?.getBoolean(LinkHandledKey) == true) {
-                savedInstanceState.getString(PendingLinkKey)
-            } else {
-                intent?.viewLink()
-            }
-        navigationComponent.initializeLink(link)
+        // Decompose registers its back callback before Compose registers page handlers.
+        navigationComponent = retainedComponent { componentContext ->
+            GithubAppNavigationComponent(
+                componentContext = componentContext,
+                predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
+                predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,
+            )
+        }
+        navigationComponent.initializeLink(startupLink)
+        startupLink = null
         setContent {
             var initialInsetsReady by remember { mutableStateOf(false) }
             // Compose may initially report zero system bar insets, causing Scaffold to measure the
@@ -85,7 +99,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 SideEffect {
                     initialInsetsReady = true
-                    firstCompositionReady = true
+                    onFirstComposition()
                 }
                 CompositionLocalProvider(
                     LocalNavigationEventDispatcherOwner provides this@MainActivity,
@@ -110,13 +124,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.viewLink()?.let(navigationComponent::receiveLink)
+        intent.viewLink()?.let { link ->
+            if (::navigationComponent.isInitialized) navigationComponent.receiveLink(link)
+            else startupLink = link
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(LoginOpenKey, loginOpen)
         outState.putBoolean(LinkHandledKey, true)
-        outState.putString(PendingLinkKey, navigationComponent.pendingLink)
+        outState.putString(
+            PendingLinkKey,
+            if (::navigationComponent.isInitialized) navigationComponent.pendingLink else startupLink,
+        )
         super.onSaveInstanceState(outState)
     }
 

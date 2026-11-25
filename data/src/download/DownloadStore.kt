@@ -2,13 +2,16 @@ package moe.yumeyuka.yumehub.data.download
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.webkit.MimeTypeMap
-import com.tencent.mmkv.MMKV
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,44 +24,73 @@ import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.repository.WorkflowArtifact
 import moe.yumeyuka.yumehub.data.repository.WorkflowArtifactExpired
 import moe.yumeyuka.yumehub.data.repository.WorkflowRepository
+import moe.yumeyuka.yumehub.data.storage.mmkv.MMKVProvider
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import okhttp3.Call
 import okhttp3.OkHttpClient
 
 class DownloadStore(
     context: Context,
-    private val storage: MMKV,
+    provider: MMKVProvider,
     private val tokens: TokenStore,
     private val workflows: WorkflowRepository,
     private val starter: DownloadStarter,
     client: OkHttpClient,
 ) {
+    private val storage by lazy { provider.getMMKV("downloads") }
+    private val historyLock = Any()
+    private val restoredDirectory = CompletableDeferred<String?>()
+    private var historyWriteQueued = false
+    private val storageOperations = Channel<() -> Unit>(Channel.UNLIMITED)
+    private val storageScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        storageScope.launch {
+            for (operation in storageOperations) {
+                try {
+                    operation()
+                } catch (error: RuntimeException) {
+                    Log.w("DownloadStore", "Unable to persist download state", error)
+                }
+            }
+        }
+    }
     private val destination = DownloadDestination(context)
     private val transfer = DownloadTransfer(client, destination)
     private val queue = LinkedHashMap<String, Entry>()
-    private val current = MutableStateFlow(restore())
+    private val current = MutableStateFlow<List<DownloadTask>>(emptyList())
     val tasks = current.asStateFlow()
-    private val folder = MutableStateFlow(storage.decodeString("directory"))
+    private val folder = MutableStateFlow<String?>(null)
     val directory = folder.asStateFlow()
+    private var directoryChanged = false
 
     init {
-        // 回收上个进程遗留的半成品，不触碰已发布的文件。
-        val incomplete =
-            current.value.filter {
-                !it.active && it.status != DownloadStatus.COMPLETED && it.uri != null
+        storageOperations.trySend {
+            try {
+                val restored = restore()
+                val savedDirectory = storage.decodeString("directory")
+                synchronized(this@DownloadStore) {
+                    if (restored.isNotEmpty()) current.value = current.value + restored
+                    if (!directoryChanged) folder.value = savedDirectory
+                }
+                restoredDirectory.complete(savedDirectory)
+                if (restored.isNotEmpty()) {
+                    storageScope.launch { restored.forEach { discard(it.id, Uri.parse(it.uri)) } }
+                }
+            } finally {
+                restoredDirectory.complete(null)
             }
-        if (incomplete.isNotEmpty())
-            CoroutineScope(Dispatchers.IO).launch {
-                incomplete.forEach { discard(it.id, Uri.parse(it.uri)) }
-            }
+        }
     }
 
     private class Entry(
         val generation: Long,
         val tree: String?,
+        val useRestoredDirectory: Boolean,
         val resolve: suspend () -> String,
         var call: Call? = null,
         var worker: Job? = null,
+        var publishing: Boolean = false,
     )
 
     private fun restore(): List<DownloadTask> =
@@ -66,9 +98,12 @@ class DownloadStore(
 
     @Synchronized
     fun setDirectory(value: String?) {
-        if (value == null) storage.removeValueForKey("directory")
-        else check(storage.encode("directory", value))
+        directoryChanged = true
         folder.value = value
+        storageOperations.trySend {
+            if (value == null) storage.removeValueForKey("directory")
+            else check(storage.encode("directory", value))
+        }
     }
 
     fun enqueueRelease(
@@ -114,7 +149,7 @@ class DownloadStore(
                 size,
                 sourceArchive = sourceArchive,
             )
-        queue[task.id] = Entry(generation, directory.value, resolve)
+        queue[task.id] = Entry(generation, directory.value, !directoryChanged, resolve)
         current.value = listOf(task) + current.value
         persist()
         try {
@@ -134,7 +169,10 @@ class DownloadStore(
     @Synchronized
     private fun cancel(account: String, id: String) {
         if (current.value.none { it.id == id && it.account == account && it.active }) return
-        queue.remove(id)?.worker?.cancel()
+        val entry = queue[id] ?: return
+        if (entry.publishing) return
+        queue.remove(id)
+        entry.worker?.cancel()
         finish(id, DownloadStatus.CANCELLED)
     }
 
@@ -160,11 +198,14 @@ class DownloadStore(
 
     @Synchronized
     fun interruptActive() {
-        queue.forEach { (id, entry) ->
-            entry.worker?.cancel()
-            finish(id, DownloadStatus.FAILED, DownloadError.INTERRUPTED)
+        queue.entries.removeAll { (id, entry) ->
+            if (entry.publishing) false
+            else {
+                entry.worker?.cancel()
+                finish(id, DownloadStatus.FAILED, DownloadError.INTERRUPTED)
+                true
+            }
         }
-        queue.clear()
     }
 
     @Synchronized
@@ -184,6 +225,7 @@ class DownloadStore(
 
     suspend fun download(id: String): DownloadTask? =
         withContext(Dispatchers.IO) {
+            val savedDirectory = restoredDirectory.await()
             val worker = currentCoroutineContext().job
             val (task, entry) =
                 synchronized(this@DownloadStore) {
@@ -195,10 +237,11 @@ class DownloadStore(
                     update(id) { it.copy(status = DownloadStatus.DOWNLOADING) }
                     task to entry
                 }
-            runTask(task, entry)
+            val tree = if (entry.useRestoredDirectory) savedDirectory else entry.tree
+            runTask(task, entry, tree)
         }
 
-    private suspend fun runTask(task: DownloadTask, entry: Entry): DownloadTask? {
+    private suspend fun runTask(task: DownloadTask, entry: Entry, tree: String?): DownloadTask? {
         val id = task.id
         var output: Uri? = null
         fun guard() {
@@ -230,12 +273,14 @@ class DownloadStore(
                     },
                     create = {
                         synchronized(this) { guard() }
-                        destination.create(task, entry.tree).also {
+                        destination.create(task, tree).also {
                             output = it
                             synchronized(this) {
                                 guard()
-                                update(id, true) { t -> t.copy(uri = it.toString()) }
+                                update(id) { t -> t.copy(uri = it.toString()) }
                             }
+                            // Record the partial URI before opening and writing its stream.
+                            writing { persistHistory() }
                         }
                     },
                     onProgress = { bytes, total, speed ->
@@ -259,7 +304,11 @@ class DownloadStore(
                 )
             synchronized(this) {
                 guard()
-                destination.publish(checkNotNull(output))
+                // Publication is irreversible; claim completion before calling the provider.
+                entry.publishing = true
+            }
+            destination.publish(checkNotNull(output))
+            val completed = synchronized(this) {
                 val completed =
                     current.value
                         .first { it.id == id }
@@ -269,10 +318,17 @@ class DownloadStore(
                             speed = 0,
                             completedAtMillis = System.currentTimeMillis(),
                         )
-                update(id, true) { completed }
+                update(id) { completed }
                 output = null
-                return completed
+                completed
             }
+            // Clear the cleanup record before returning a published file to the service.
+            try {
+                persistHistory()
+            } catch (error: RuntimeException) {
+                Log.w("DownloadStore", "Unable to clear published download record", error)
+            }
+            return completed
         } catch (e: CancellationException) {
             synchronized(this) { if (queue.containsKey(id)) finish(id, DownloadStatus.CANCELLED) }
             currentCoroutineContext().ensureActive()
@@ -318,5 +374,17 @@ class DownloadStore(
         if (save) persist()
     }
 
-    private fun persist() = check(storage.encode("history", Json.encodeToString(current.value)))
+    @Synchronized
+    private fun persist() {
+        if (historyWriteQueued) return
+        historyWriteQueued = true
+        storageOperations.trySend {
+            synchronized(this@DownloadStore) { historyWriteQueued = false }
+            persistHistory()
+        }
+    }
+
+    private fun persistHistory() = synchronized(historyLock) {
+        check(storage.encode("history", Json.encodeToString(current.value)))
+    }
 }

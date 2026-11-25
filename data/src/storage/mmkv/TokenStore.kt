@@ -36,6 +36,10 @@ class TokenStore(private val externalMmkv: MMKV) : MMKVPreference(externalMmkv =
     val deviceKeyRegistered =
         field(SavedAccount::deviceKeyRegistered) { copy(deviceKeyRegistered = it) }
 
+    init {
+        prepareResponseCacheSession()
+    }
+
     private fun restoreAccounts(): List<SavedAccount> {
         val key = "savedAccounts.v1"
         val oldKeys =

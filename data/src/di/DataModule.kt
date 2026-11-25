@@ -59,8 +59,7 @@ val dataModule = module {
     single { CommentDraftStore(get()) }
     mmkv(AUTH_MMKV_ID)
     mmkv(SETTINGS_MMKV_ID)
-    mmkv("downloads")
-    single { DownloadStore(androidContext(), get(named("downloads")), get(), get(), get(), get()) }
+    single { DownloadStore(androidContext(), get(), get(), get(), get(), get()) }
 
     single { TokenStore(get(named(AUTH_MMKV_ID))) }
     single { SettingsStore(get(named(SETTINGS_MMKV_ID))) }

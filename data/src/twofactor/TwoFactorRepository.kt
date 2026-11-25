@@ -43,11 +43,14 @@ class GitHubTwoFactorRepository(
         generation: Long,
         force: Boolean,
     ) = registrationMutex.withLock {
-        synchronized(tokens.responseCacheSession.lock) {
-            tokens.requireSession(login, generation)
-            if (!force && tokens.deviceKeyRegistered.value) return@withLock
-            if (force) tokens.deviceKeyRegistered.set(false)
+        val registered = withContext(Dispatchers.IO) {
+            synchronized(tokens.responseCacheSession.lock) {
+                tokens.requireSession(login, generation)
+                if (force) tokens.deviceKeyRegistered.set(false)
+                !force && tokens.deviceKeyRegistered.value
+            }
         }
+        if (registered) return@withLock
         withContext(Dispatchers.IO) {
             val registration = deviceKeyManager.buildRegistration(login)
             try {

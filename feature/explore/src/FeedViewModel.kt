@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
@@ -56,11 +58,12 @@ internal class FeedViewModel(
     private var visible = emptyMap<String, FeedEventDto>()
     private val automaticReads = mutableMapOf<String, Job>()
     private val mutableCards = mutableStateMapOf<String, MutableState<FeedCardState>>()
-    private val mutableOptions = MutableStateFlow(FeedOptions(loadFilters(), loadSort()))
+    private val mutableOptions = MutableStateFlow<FeedOptions?>(null)
+    private var settingsWrite: Job? = null
     val cards: SnapshotStateMap<String, MutableState<FeedCardState>> = mutableCards
     val options = mutableOptions.asStateFlow()
     val events =
-        combine(auth.session.distinctUntilChanged(), mutableOptions) { session, options ->
+        combine(auth.session.distinctUntilChanged(), options.filterNotNull()) { session, options ->
                 FeedQuery(session, options)
             }
             .flatMapLatest { query ->
@@ -86,6 +89,9 @@ internal class FeedViewModel(
             .cachedIn(viewModelScope)
 
     init {
+        viewModelScope.launch {
+            mutableOptions.value = withContext(Dispatchers.IO) { FeedOptions(loadFilters(), loadSort()) }
+        }
         viewModelScope.launch {
             auth.session.collectLatest { session ->
                 if (session == null) return@collectLatest
@@ -113,12 +119,19 @@ internal class FeedViewModel(
     }
 
     fun applyOptions(options: FeedOptions) {
-        val current = mutableOptions.value
-        if (options.filters != current.filters) {
-            settings.exploreFeedFilters.set(options.filters.mapTo(linkedSetOf()) { it.name })
-        }
-        if (options.sort != current.sort) settings.exploreFeedSort.set(options.sort.name)
+        val current = mutableOptions.value ?: return
+        if (options == current) return
         mutableOptions.value = options
+        val previous = settingsWrite
+        settingsWrite = viewModelScope.launch {
+            previous?.join()
+            withContext(Dispatchers.IO) {
+                if (options.filters != current.filters) {
+                    settings.exploreFeedFilters.set(options.filters.mapTo(linkedSetOf()) { it.name })
+                }
+                if (options.sort != current.sort) settings.exploreFeedSort.set(options.sort.name)
+            }
+        }
     }
 
     private fun loadFilters(): Set<FeedFilter> {

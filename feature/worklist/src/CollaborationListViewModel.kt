@@ -73,6 +73,8 @@ internal class CollaborationListViewModel(
     val filter = mutableFilter.asStateFlow()
     private val mutableOptions = MutableStateFlow(CollaborationFilterOptions())
     val filterOptions = mutableOptions.asStateFlow()
+    private val mutableOptionsFailed = MutableStateFlow(false)
+    val optionsFailed = mutableOptionsFailed.asStateFlow()
     private val mutableBranchPicker = MutableStateFlow(BranchPickerState())
     internal val branchPicker = mutableBranchPicker.asStateFlow()
     private val mutableAssigneePicker = MutableStateFlow(AssigneePickerState())
@@ -160,16 +162,24 @@ internal class CollaborationListViewModel(
         loadFilterOptions()
     }
 
+    fun retryFilterOptions() {
+        optionsRequested = false
+        loadFilterOptions()
+    }
+
     fun loadFilterOptions() {
         if (optionsRequested) return
         optionsRequested = true
         viewModelScope.launch {
             try {
                 mutableOptions.value = source.filterOptions(login, owner, repo)
+                mutableOptionsFailed.value = false
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                // 筛选选项失败时保留空列表，列表本身仍可正常加载。
+                // Keep the collaboration list usable and expose a retry for filter options.
+                optionsRequested = false
+                mutableOptionsFailed.value = true
             }
         }
     }

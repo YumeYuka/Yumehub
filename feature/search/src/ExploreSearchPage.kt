@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.feature.search
 
+import androidx.paging.LoadState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +16,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.ExploreCategory
 import moe.yumeyuka.yumehub.core.model.WorkTarget
@@ -147,6 +150,17 @@ fun ExploreSearchPage(
                     onOpenUser,
                     onOpenFile,
                 )
+                if (results.loadState.refresh is LoadState.Error ||
+                    results.loadState.append is LoadState.Error) {
+                    item(key = "explore-search-retry") {
+                        GlasmioGroupedList {
+                            GlasmioListRow(
+                                title = strings.Common.Retry,
+                                onClick = results::retry,
+                            )
+                        }
+                    }
+                }
                 pageSearchClearance(visible = true)
             }
         }

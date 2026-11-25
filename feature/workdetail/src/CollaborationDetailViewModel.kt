@@ -138,6 +138,7 @@ internal data class CollaborationDetailUiState(
     val canCommentOnLines: Boolean = false,
     val commentDraft: String = "",
     val reviewDraft: String = "",
+    val reviewDraftReady: Boolean = false,
     val reviewEvent: PullRequestReviewEvent = PullRequestReviewEvent.Comment,
     val editingComment: CommentEditTarget? = null,
     val deleteComment: CollaborationCommentDto? = null,
@@ -167,6 +168,7 @@ internal data class CollaborationDetailUiState(
     val canSubmitReview: Boolean
         get() =
             canReview &&
+                reviewDraftReady &&
                 !loading &&
                 !submitting &&
                 !submissionUncertain &&
@@ -206,18 +208,27 @@ internal class CollaborationDetailViewModel(
     private var toggleUnknownSubscription = false
     private var subscriptionNodeId: String? = null
     private var subscriptionGeneration = 0L
+    private var composerDraftJob: Job? = null
+    private var commentDraftEdited = false
     private val mutableUiState =
-        MutableStateFlow(
-            CollaborationDetailUiState(
-                    commentDraft = draftStore.load(viewerLogin, "$draftPrefix/comment"),
-                    reviewDraft = draftStore.load(viewerLogin, "$draftPrefix/review"),
-                )
-                .withDetail(detail.state.value),
-        )
+        MutableStateFlow(CollaborationDetailUiState().withDetail(detail.state.value))
     val uiState = mutableUiState.asStateFlow()
     val reactionUpdates = detail.reactionUpdates()
     private var branchJob: Job? = null
     private var branchGeneration = 0L
+    private val restoreCommentDraft = viewModelScope.launch {
+        val draft = draftStore.load(viewerLogin, "$draftPrefix/comment")
+        if (!commentDraftEdited) mutableUiState.update { it.copy(commentDraft = draft) }
+    }
+
+    init {
+        viewModelScope.launch {
+            val draft = draftStore.load(viewerLogin, "$draftPrefix/review")
+            mutableUiState.update {
+                if (it.reviewDraftReady) it else it.copy(reviewDraft = draft, reviewDraftReady = true)
+            }
+        }
+    }
 
     fun openTitleEditor() {
         if (uiState.value.item?.viewerCanEdit == true && !uiState.value.submitting) {
@@ -341,7 +352,7 @@ internal class CollaborationDetailViewModel(
     fun loadMoreBaseBranches() {
         val state = uiState.value
         val cursor = state.branchCursor ?: return
-        if (state.branchLoading || state.submitting) return
+        if (state.branchLoading || state.submitting || branchJob?.isActive == true) return
         val generation = branchGeneration
         branchJob = viewModelScope.launch {
             try {
@@ -358,6 +369,7 @@ internal class CollaborationDetailViewModel(
                         it.copy(
                             branchChoices = (it.branchChoices + page.branches).distinct(),
                             branchCursor = page.endCursor,
+                            branchError = false,
                         )
                     }
             } catch (error: CancellationException) {
@@ -727,11 +739,22 @@ internal class CollaborationDetailViewModel(
 
     fun selectSection(section: CollaborationSection) {
         if (kind == CollaborationKind.PullRequest || section == CollaborationSection.Discussion) {
+            if (uiState.value.section != section) composerDraftJob?.cancel()
             mutableUiState.update { it.copy(section = section) }
         }
     }
 
     fun openComposer(target: CollaborationEditorTarget = CollaborationEditorTarget.Comment) {
+        composerDraftJob?.cancel()
+        if (target == CollaborationEditorTarget.Comment && !restoreCommentDraft.isCompleted) {
+            composerDraftJob = viewModelScope.launch {
+                restoreCommentDraft.join()
+                showComposer(target)
+            }
+        } else showComposer(target)
+    }
+
+    private fun showComposer(target: CollaborationEditorTarget) {
         val state = uiState.value
         if (
             state.submitting ||
@@ -761,6 +784,7 @@ internal class CollaborationDetailViewModel(
     }
 
     fun showStatusPanel(panel: WorkStatusPanel?) {
+        if (panel != null) composerDraftJob?.cancel()
         mutableUiState.update {
             if (it.composerTarget == null) it.copy(statusPanel = panel) else it
         }
@@ -768,13 +792,14 @@ internal class CollaborationDetailViewModel(
 
     fun changeCommentDraft(draft: String) {
         if (uiState.value.submitting) return
+        commentDraftEdited = true
         mutableUiState.update { it.copy(commentDraft = draft) }
         draftWrites.schedule("comment", draft)
     }
 
     fun changeReviewDraft(draft: String) {
         if (uiState.value.submitting) return
-        mutableUiState.update { it.copy(reviewDraft = draft) }
+        mutableUiState.update { it.copy(reviewDraft = draft, reviewDraftReady = true) }
         draftWrites.schedule("review", draft)
     }
 
@@ -858,14 +883,18 @@ internal class CollaborationDetailViewModel(
     fun editComment(comment: CollaborationCommentDto) {
         if (!canManageComment(comment)) return
         uiState.value.editingComment?.let { draftWrites.flush("edit/${it.comment.id}") }
-        val restored = draftStore.loadOrNull(viewerLogin, "$draftPrefix/edit/${comment.id}")
-        mutableUiState.update {
-            it.copy(
-                editingComment = CommentEditTarget(comment, restored ?: comment.body.orEmpty()),
-                composerTarget = CollaborationEditorTarget.EditedComment,
-                section = CollaborationSection.Discussion,
-                submissionError = null,
-            )
+        composerDraftJob?.cancel()
+        composerDraftJob = viewModelScope.launch {
+            val restored = draftStore.loadOrNull(viewerLogin, "$draftPrefix/edit/${comment.id}")
+            if (!canManageComment(comment)) return@launch
+            mutableUiState.update {
+                it.copy(
+                    editingComment = CommentEditTarget(comment, restored ?: comment.body.orEmpty()),
+                    composerTarget = CollaborationEditorTarget.EditedComment,
+                    section = CollaborationSection.Discussion,
+                    submissionError = null,
+                )
+            }
         }
     }
 
@@ -898,6 +927,14 @@ internal class CollaborationDetailViewModel(
     fun quoteComment(comment: CollaborationCommentDto) = quoteBody(comment.user?.login, comment.body)
 
     fun quoteBody(author: String?, body: String?) {
+        composerDraftJob?.cancel()
+        composerDraftJob = viewModelScope.launch {
+            restoreCommentDraft.join()
+            appendQuote(author, body)
+        }
+    }
+
+    private fun appendQuote(author: String?, body: String?) {
         val state = uiState.value
         if (!state.canComment || state.loading || state.submitting || state.submissionUncertain)
             return
@@ -914,6 +951,7 @@ internal class CollaborationDetailViewModel(
             if (quote.isNotBlank()) append(quote).append("\n\n")
             append(state.commentDraft)
         }
+        commentDraftEdited = true
         mutableUiState.update {
             it.copy(
                 commentDraft = draft,
@@ -989,15 +1027,26 @@ internal class CollaborationDetailViewModel(
         val target = ReviewLineTarget(path, line, side, commit, patch)
         if (state.reviewLine == target) return
         state.reviewLine?.let { draftWrites.flush(lineDraftKey(it)) }
-        mutableUiState.update {
-            it.copy(
-                reviewLine = target,
-                composerTarget = CollaborationEditorTarget.LineComment,
-                lineCommentDraft =
-                    draftStore.load(viewerLogin, "$draftPrefix/${lineDraftKey(target)}"),
-                lastLineComment = null,
-                submissionError = null,
+        composerDraftJob?.cancel()
+        composerDraftJob = viewModelScope.launch {
+            val draft = draftStore.load(viewerLogin, "$draftPrefix/${lineDraftKey(target)}")
+            val current = uiState.value
+            if (
+                current.item?.head?.sha != commit ||
+                    !current.canCommentOnLines ||
+                    current.submitting ||
+                    current.submissionUncertain
             )
+                return@launch
+            mutableUiState.update {
+                it.copy(
+                    reviewLine = target,
+                    composerTarget = CollaborationEditorTarget.LineComment,
+                    lineCommentDraft = draft,
+                    lastLineComment = null,
+                    submissionError = null,
+                )
+            }
         }
     }
 

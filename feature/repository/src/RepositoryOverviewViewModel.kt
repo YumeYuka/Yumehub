@@ -64,6 +64,7 @@ internal class RepositoryOverviewViewModel(
     val uiState = mutableState.asStateFlow()
     private val mutableEvents = Channel<RepositoryOverviewEvent>(Channel.BUFFERED)
     val events = mutableEvents.receiveAsFlow()
+    private var pinnedJob: Job? = null
     private var sheetJob: Job? = null
     private val subscriptionMutex = Mutex()
 
@@ -90,10 +91,14 @@ internal class RepositoryOverviewViewModel(
 
     /** 读取首页 pin 状态；已获取或进行中时不重复请求。 */
     fun loadPinned() {
-        if (!active() || mutableState.value.busy || mutableState.value.pinned != null) return
+        if (
+            !active() ||
+                mutableState.value.busy ||
+                mutableState.value.pinned != null ||
+                pinnedJob?.isActive == true
+        ) return
         val overview = mutableState.value.overview ?: return
-        sheetJob?.cancel()
-        sheetJob = viewModelScope.launch {
+        pinnedJob = viewModelScope.launch {
             try {
                 val pinned = source.isPinned(account, overview.id)
                 if (active()) mutableState.value = mutableState.value.copy(pinned = pinned)

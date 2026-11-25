@@ -31,6 +31,7 @@ import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.GithubPagingRetryAction
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.placeholders.DetailToolbarPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkDetailHeaderPlaceholder
@@ -256,6 +257,7 @@ fun WorkDetailPage(
             )
         },
         actions = {
+            if (entries != null) GithubPagingRetryAction(entries)
             GlasmioIconButton(
                 onClick = {
                     if (host.navigationEnabled && presentation.interactive) infoVisible = true

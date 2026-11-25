@@ -1,7 +1,12 @@
 package moe.yumeyuka.yumehub.data.storage.mmkv
 
+import android.util.Log
 import com.tencent.mmkv.MMKV
 import kotlin.properties.ReadOnlyProperty
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 
 enum class ThemeMode {
     System,
@@ -18,6 +23,31 @@ const val MinPredictiveBackProgress: Float = 1f
 const val MaxPredictiveBackProgress: Float = 100f
 
 class SettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = externalMmkv) {
+    private val pendingWrites = mutableMapOf<String, () -> Unit>()
+    private val writeSignal = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        CoroutineScope(Dispatchers.IO).launch {
+            for (signal in writeSignal) {
+                val writes = synchronized(pendingWrites) {
+                    pendingWrites.values.toList().also { pendingWrites.clear() }
+                }
+                for (write in writes) {
+                    try {
+                        write()
+                    } catch (error: RuntimeException) {
+                        Log.w("SettingsStore", "Unable to persist setting", error)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun persistPreference(key: String, write: () -> Unit) {
+        synchronized(pendingWrites) { pendingWrites[key] = write }
+        writeSignal.trySend(Unit)
+    }
+
     val themeMode by enumFlow(ThemeMode.System)
     val accentColor by intFlow(DefaultAccentColorArgb)
     val liquidGlassEnabled by boolFlow(false)
@@ -48,6 +78,20 @@ class SettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = external
         )
     val homeWorkLayout by stringListFlow()
 
+    /** 预读首帧及设置页所需的偏好；由应用启动任务在 IO 调度器调用。 */
+    fun loadUiPreferences() {
+        themeMode
+        accentColor
+        liquidGlassEnabled
+        reduceTransparency
+        topBarBlurEnabled
+        predictiveBackEnabled
+        predictiveBackMaxProgress
+        keepBottomBarExpanded
+        glassHdrEnabled
+        fpsCounter
+    }
+
     private fun normalizedFloatFlow(default: Float, normalize: (Float) -> Float) =
         normalizedFlow(
             default = default,
@@ -62,7 +106,7 @@ class SettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = external
         getter: (String, T) -> T,
         setter: (String, T) -> Unit,
         normalize: (T) -> T,
-    ): ReadOnlyProperty<Any?, Preference<T>> {
+    ): ReadOnlyProperty<MMKVPreference, Preference<T>> {
         val delegate =
             MMKVFlowProperty(
                 default = default,

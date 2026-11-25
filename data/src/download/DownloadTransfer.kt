@@ -5,6 +5,7 @@ import android.os.SystemClock
 import java.io.IOException
 import java.io.OutputStream
 import java.security.MessageDigest
+import java.time.Duration
 import moe.yumeyuka.yumehub.data.network.useResponse
 import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -15,8 +16,8 @@ internal class DownloadTransfer(
     client: OkHttpClient,
     private val destination: DownloadDestination,
 ) {
-    // 仅获取已有下载链接，不使用会注入 API 令牌的 Retrofit Call.Factory。
-    private val http = client.newBuilder().followSslRedirects(false).build()
+    // 下载不使用注入 API 令牌的 Call.Factory；长传输只受连接和读写超时限制。
+    private val http = client.newBuilder().callTimeout(Duration.ZERO).followSslRedirects(false).build()
 
     suspend fun receive(
         task: DownloadTask,

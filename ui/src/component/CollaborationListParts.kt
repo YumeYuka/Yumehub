@@ -5,11 +5,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.FileText
 import io.github.yumeyucca.lucide.Lucide
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.listRowSkeletons
 import retrofit2.HttpException
 
@@ -45,6 +48,17 @@ fun LazyListScope.collaborationPagingStatus(
                     )
                 }
             }
+    }
+
+    if (items.loadState.refresh is LoadState.Error || items.loadState.append is LoadState.Error) {
+        item(key = "collaboration-page-retry") {
+            GlasmioGroupedList {
+                GlasmioListRow(
+                    title = LocalGithubStrings.current.Common.Retry,
+                    onClick = items::retry,
+                )
+            }
+        }
     }
 }
 

@@ -129,6 +129,7 @@ internal fun WorkBaseBranchSheet(
     onDismiss: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
+    val common = LocalGithubStrings.current.Common
     val current = state.item?.baseRefName
     var selected by remember(viewModel, current) { mutableStateOf(current) }
     val branchChoices = if (state.branchLoading) emptyList() else state.branchChoices
@@ -160,9 +161,15 @@ internal fun WorkBaseBranchSheet(
         confirmEnabled = canChangeBase && selected != null && selected != current,
     ) { _ ->
         when {
-            state.branchError -> Unit
-            !state.branchLoading && state.branchChoices.isEmpty() ->
-                item { GlasmioGroupedList { GlasmioListRow(title = strings.NoPropertyOptions) } }
+            state.branchError ->
+                item(key = "base-branch-retry") {
+                    GlasmioGroupedList {
+                        GlasmioListRow(
+                            title = common.Retry,
+                            onClick = { viewModel.searchBaseBranches(state.branchQuery) },
+                        )
+                    }
+                }
             else -> {
                 itemsIndexed(
                     branchKeys,

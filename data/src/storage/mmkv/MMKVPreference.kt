@@ -21,6 +21,8 @@ abstract class MMKVPreference(
         encodeDefaults = true
     }
 
+    protected open fun persistPreference(key: String, write: () -> Unit) = write()
+
     protected fun bool(default: Boolean = false) =
         MMKVProperty(
             default = default,
@@ -134,10 +136,11 @@ abstract class MMKVPreference(
         private val getter: (key: String, default: T) -> T,
         private val setter: (key: String, value: T) -> Unit,
         private val skipEqualityCheck: Boolean = false,
-    ) : ReadOnlyProperty<Any?, Preference<T>> {
+    ) : ReadOnlyProperty<MMKVPreference, Preference<T>> {
         private var cached: Preference<T>? = null
 
-        override fun getValue(thisRef: Any?, property: KProperty<*>): Preference<T> =
+        @Synchronized
+        override fun getValue(thisRef: MMKVPreference, property: KProperty<*>): Preference<T> =
             cached
                 ?: run {
                     val key = property.name
@@ -146,12 +149,14 @@ abstract class MMKVPreference(
                     Preference(
                             state = flow.asStateFlow(),
                             update = { value ->
-                                if (skipEqualityCheck || value != flow.value) {
-                                    setter(key, value)
-                                    flow.value = value
+                                synchronized(this) {
+                                    if (skipEqualityCheck || value != flow.value) {
+                                        thisRef.persistPreference(key) { setter(key, value) }
+                                        flow.value = value
+                                    }
                                 }
                             },
-                            get = { getter(key, default) },
+                            get = { flow.value },
                             refreshState = {
                                 val latest = getter(key, default)
                                 if (skipEqualityCheck || latest != flow.value) flow.value = latest
