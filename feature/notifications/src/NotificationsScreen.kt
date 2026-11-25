@@ -40,6 +40,8 @@ internal fun LazyListScope.NotificationsScreen(
     onOpenNotification: (NotificationDto) -> Unit,
     onThreadActions: (NotificationDto) -> Unit,
     onRetryAction: () -> Unit,
+    onRetryLoad: () -> Unit,
+    retryLabel: String,
     onToggleSelection: (String) -> Unit,
     rowKeys: List<String>,
 ) {
@@ -49,6 +51,14 @@ internal fun LazyListScope.NotificationsScreen(
             strings.ActionFailed,
             message,
             onRetryAction,
+        )
+    }
+    state.loadError?.let { message ->
+        notificationStatus(
+            "notifications-load-error",
+            retryLabel,
+            message,
+            onRetryLoad.takeUnless { state.isProcessing || state.isSelecting },
         )
     }
     if (
@@ -112,7 +122,15 @@ internal fun LazyListScope.NotificationsScreen(
                 },
         )
     }
-    if (state.hasMore && !state.isLoadingMore) {
+    val appendError = state.appendError
+    if (appendError != null) {
+        notificationStatus(
+            "notifications-next-page-error",
+            retryLabel,
+            appendError,
+            onLoadMore.takeUnless { state.isProcessing || state.isLoadingMore },
+        )
+    } else if (state.hasMore && !state.isLoadingMore) {
         notificationStatus(
             "notifications-next-page",
             strings.More,

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
@@ -51,16 +52,18 @@ fun HomePage(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     GithubRefreshEffect(viewModel, DataDomain.Repositories, onRefresh = viewModel::refresh)
     val work: HomeWorkViewModel = koinViewModel()
-    val workLayout by work.layout.collectAsStateWithLifecycle()
-    var draftOrder by rememberSaveable(login) { mutableStateOf(workLayout.encode()) }
-    val workDraft = HomeWorkLayout.decode(draftOrder, emptyList())
+    val currentLayout by work.layout.collectAsStateWithLifecycle()
+    var draftOrder by rememberSaveable(login) { mutableStateOf(emptyList<String>()) }
+    val workDraft = remember(draftOrder) { HomeWorkLayout.decode(draftOrder, emptyList()) }
     val strings = LocalGithubStrings.current.Home
     val profileTitle = LocalGithubStrings.current.Profile.Title
     val retry = LocalGithubStrings.current.Common.Retry
     var editingWork by rememberSaveable(login) { mutableStateOf(false) }
-    val onEditWork = {
-        draftOrder = workLayout.encode()
-        editingWork = true
+    val onEditWork: () -> Unit = {
+        currentLayout?.let {
+            draftOrder = it.encode()
+            editingWork = true
+        }
     }
     if (
         state == HomeFavoritesState.Error ||
@@ -79,23 +82,25 @@ fun HomePage(
                         contentDescription = LocalGithubStrings.current.Common.Search,
                     )
                 }
-                GlasmioIconButton(onClick = onEditWork) {
+                GlasmioIconButton(onClick = onEditWork, enabled = currentLayout != null) {
                     GithubIcon(Lucide.Pencil, contentDescription = strings.EditHome)
                 }
             }
         },
     ) {
-        HomeScreen(
-            items = workLayout.shown,
-            strings = strings,
-            onEdit = onEditWork,
-            onOpenRepositories = onOpenRepositories,
-            onOpenWork = onOpenWork,
-            onOpenStarred = onOpenStarred,
-            onOpenOrganizations = onOpenOrganizations,
-            onOpenProjects = onOpenProjects,
-            onOpenDiscussions = onOpenDiscussions,
-        )
+        currentLayout?.let { layout ->
+            HomeScreen(
+                items = layout.shown,
+                strings = strings,
+                onEdit = onEditWork,
+                onOpenRepositories = onOpenRepositories,
+                onOpenWork = onOpenWork,
+                onOpenStarred = onOpenStarred,
+                onOpenOrganizations = onOpenOrganizations,
+                onOpenProjects = onOpenProjects,
+                onOpenDiscussions = onOpenDiscussions,
+            )
+        }
         val favorites = state as? HomeFavoritesState.Content
         if (onOpenProfile != null) {
             item(key = "home-profile") {

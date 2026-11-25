@@ -36,7 +36,6 @@ import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubListTransition
@@ -123,8 +122,6 @@ fun NotificationsPage(
         }
     }
 
-    val failure = state.loadError ?: state.appendError
-    GithubLoadFailureToast(failure, failure.orEmpty())
     GithubPage(
         title = strings.Title,
         listState = listState,
@@ -220,6 +217,8 @@ fun NotificationsPage(
             onOpenNotification = viewModel::markOpened,
             onThreadActions = { threadActions = it },
             onRetryAction = viewModel::retryAction,
+            onRetryLoad = viewModel::revalidate,
+            retryLabel = common.Retry,
             onToggleSelection = viewModel::toggleSelection,
             rowKeys = rowKeys,
         )

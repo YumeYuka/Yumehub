@@ -2,9 +2,16 @@ package moe.yumeyuka.yumehub.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 
 internal enum class HomeWorkItem {
@@ -53,20 +60,24 @@ internal data class HomeWorkLayout(
 
 /** 确认后一次保存两组顺序；编辑草稿由面板持有，取消不写设置。 */
 internal class HomeWorkViewModel(private val settings: SettingsStore) : ViewModel() {
+    private val preferences = viewModelScope.async(Dispatchers.IO) {
+        settings.homeWorkLayout to settings.homeWorkItems
+    }
+    private var saveJob: Job? = null
+
     val layout =
-        combine(settings.homeWorkLayout.state, settings.homeWorkItems.state) { stored, legacy ->
-                HomeWorkLayout.decode(stored, legacy)
-            }
-            .stateIn(
-                viewModelScope,
-                SharingStarted.Eagerly,
-                HomeWorkLayout.decode(
-                    settings.homeWorkLayout.state.value,
-                    settings.homeWorkItems.state.value,
-                ),
-            )
+        flow {
+            val (layout, legacyItems) = preferences.await()
+            emitAll(combine(layout.state, legacyItems.state, HomeWorkLayout::decode))
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun save(layout: HomeWorkLayout) {
-        settings.homeWorkLayout.set(HomeWorkLayout.decode(layout.encode(), emptyList()).encode())
+        val previous = saveJob
+        saveJob = viewModelScope.launch {
+            previous?.join()
+            withContext(Dispatchers.IO) {
+                preferences.await().first.set(layout.encode())
+            }
+        }
     }
 }

@@ -13,11 +13,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.NotificationThreadAction as ThreadActionKind
 import moe.yumeyuka.yumehub.data.repository.NotificationsQuery
 import moe.yumeyuka.yumehub.data.repository.NotificationsRepository
@@ -97,17 +100,19 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         // 首次进入由 GithubRefreshEffect 统一触发，避免 init 与首次激活各请求一次第一页。
         observeQuery(refresh = false)
         viewModelScope.launch {
-            repository.changes(account).versions.collect {
-                mutableUiState.value =
-                    mutableUiState.value.let { state ->
-                        state.copy(
-                            previews =
-                                state.previews.mapValues { (notification, preview) ->
-                                    repository.confirmedPreview(account, notification, preview)
-                                },
+            repository.changes(account).versions
+                .map { it[DataDomain.Work] }
+                .distinctUntilChanged()
+                .collect {
+                    val state = mutableUiState.value
+                    if (state.previews.isNotEmpty()) {
+                        mutableUiState.value = state.copy(
+                            previews = state.previews.mapValues { (notification, preview) ->
+                                repository.confirmedPreview(account, notification, preview)
+                            },
                         )
                     }
-            }
+                }
         }
     }
 
