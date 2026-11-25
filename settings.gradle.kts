@@ -113,7 +113,6 @@ include(":feature:workspaces")
 
 include(":markdown:core")
 include(":markdown:compose")
-include(":markdown:sample")
 
 include(":pack")
 include(":app")
