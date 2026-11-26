@@ -96,6 +96,10 @@ fun ExplorePage(
             back = false,
             listState = paging.listState,
             listTransition = paging.transition,
+            // Keep the fixed entry outside feed transitions so filter/sort changes cannot replay it.
+            contentHeader = {
+                ExploreDiscoverSection(onOpenTrending, onOpenFeatured)
+            },
             itemSpacing = 12.dp,
             actions = {
                 GlasmioIconButton(onClick = onOpenSearch) {
@@ -109,9 +113,6 @@ fun ExplorePage(
                 }
             },
         ) {
-            item(key = "explore-discover") {
-                ExploreDiscoverSection(onOpenTrending, onOpenFeatured)
-            }
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
             if (settingsFailed) item { GlasmioListRow(title = strings.Common.Retry, onClick = feed::restoreOptions) }
             if (phase != WritePhase.IDLE || (options != null && remote != null && remote != filters)) item {
