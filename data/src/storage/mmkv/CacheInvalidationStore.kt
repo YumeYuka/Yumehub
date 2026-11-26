@@ -12,7 +12,6 @@ import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.diskDigest
 import moe.yumeyuka.yumehub.data.cache.diskDomain
 import moe.yumeyuka.yumehub.data.cache.diskIsGlobal
-import moe.yumeyuka.yumehub.data.cache.tagDigest
 import moe.yumeyuka.yumehub.data.cache.diskValue
 
 /**
@@ -77,11 +76,10 @@ internal class CacheInvalidationStore(provider: MMKVProvider, private val json: 
 
     suspend fun revision(account: String, diskTags: List<String>): Long =
         withContext(Dispatchers.IO) {
-            val current =
-                mutex.withLock {
-                    val key = accountKey(account)
-                    marks[key] ?: load(key).also { marks[key] = it }
-                }
+            val current = mutex.withLock {
+                val key = accountKey(account)
+                marks[key] ?: load(key).also { marks[key] = it }
+            }
             diskTags.maxOfOrNull { value ->
                 val domain = diskDomain(value)
                 val digest = diskDigest(value)
@@ -106,16 +104,15 @@ internal class CacheInvalidationStore(provider: MMKVProvider, private val json: 
 
     private fun load(key: String): Marks =
         try {
-            storage.decodeString(key)?.let { json.decodeFromString(Marks.serializer(), it) } ?: Marks()
+            storage.decodeString(key)?.let { json.decodeFromString(Marks.serializer(), it) }
+                ?: Marks()
         } catch (_: IllegalArgumentException) {
             Marks()
         }
-
 
     private fun accountKey(account: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(account.trim().lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8))
         return "marks:${digest.digest().toHexString()}"
     }
-
 }

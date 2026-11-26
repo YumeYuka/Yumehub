@@ -17,7 +17,8 @@ internal class DownloadTransfer(
     private val destination: DownloadDestination,
 ) {
     // 下载不使用注入 API 令牌的 Call.Factory；长传输只受连接和读写超时限制。
-    private val http = client.newBuilder().callTimeout(Duration.ZERO).followSslRedirects(false).build()
+    private val http =
+        client.newBuilder().callTimeout(Duration.ZERO).followSslRedirects(false).build()
 
     suspend fun receive(
         task: DownloadTask,

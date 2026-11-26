@@ -32,11 +32,8 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
-import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import org.koin.androidx.compose.koinViewModel
 
@@ -68,10 +65,14 @@ fun ExplorePage(
     GithubPagingContent(
         source = eventsWhileVisible,
         contentKey = session to feedKey,
-        revalidation = remember(feed, session, feedKey) {
-            if (login != null && feedKey != null) feed.revalidation(login, feedKey) else IdleGithubPagingRevalidation
-        },
-        onRetryRevalidation = if (login != null && feedKey != null) ({ feed.retryRevalidation(login, feedKey) }) else null,
+        revalidation =
+            remember(feed, session, feedKey) {
+                if (login != null && feedKey != null) feed.revalidation(login, feedKey)
+                else IdleGithubPagingRevalidation
+            },
+        onRetryRevalidation =
+            if (login != null && feedKey != null) ({ feed.retryRevalidation(login, feedKey) })
+            else null,
         showLoadErrors = false,
     ) { paging ->
         val events = paging.items
@@ -117,9 +118,11 @@ fun ExplorePage(
         ) {
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
             // The feed explicitly uses “No activity yet” for an unavailable first page.
-            val coldFailure = slots.snapshot.isEmpty() && events.loadState.refresh is LoadState.Error
-            val showEmpty = settingsFailed || (options != null &&
-                (filters.isEmpty() || slots.isEmptyResult || coldFailure))
+            val coldFailure =
+                slots.snapshot.isEmpty() && events.loadState.refresh is LoadState.Error
+            val showEmpty =
+                settingsFailed ||
+                    (options != null && (filters.isEmpty() || slots.isEmptyResult || coldFailure))
             if (showEmpty) {
                 item(key = "explore-feed-empty") {
                     GithubEmptyState(
@@ -128,11 +131,6 @@ fun ExplorePage(
                         modifier = Modifier.fillParentMaxHeight(),
                         verticalBias = -0.1f,
                     )
-                }
-            }
-            if (settingsFailed) {
-                item(key = "feed-options-retry") {
-                    GlasmioGroupedList { GlasmioListRow(title = strings.Common.Retry, onClick = feed::restoreOptions) }
                 }
             }
             if (options == null || filters.isEmpty()) return@GithubPage
@@ -146,7 +144,6 @@ fun ExplorePage(
                 onOpenWork = onOpenWork,
                 onOpenUser = onOpenUser,
             )
-            collaborationPagingStatus(slots, strings.Explore.Title, emptyPlaceholder = false)
         }
     }
     if (options != null) {

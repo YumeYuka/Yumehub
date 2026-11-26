@@ -226,7 +226,8 @@ fun GlasmioEditableText(
     outputTransformation: OutputTransformation? = null,
     password: Boolean = false,
     keyboardOptions: KeyboardOptions =
-        if (password) KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false)
+        if (password)
+            KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false)
         else KeyboardOptions.Default,
     onKeyboardAction: KeyboardActionHandler? = null,
     cursorBrush: Brush = SolidColor(LocalGlassColors.current.accent),
@@ -245,20 +246,25 @@ fun GlasmioEditableText(
 ) {
     require(maxLines > 0) { "maxLines must be positive." }
     require(!password || singleLine) { "Secure fields must be single-line." }
-    require(!password || outputTransformation == null) { "Secure fields own their output transformation." }
+    require(!password || outputTransformation == null) {
+        "Secure fields own their output transformation."
+    }
     val inputModifier = modifier.swipeBackExcluded(enabled)
     val host = LocalGlasmioTextEditingHost.current
     val view = LocalView.current
     val source = value.text
     val latestSource by rememberUpdatedState(source)
     val visibleCallback by rememberUpdatedState(onVisibleTextRange)
-    val formatter = remember(outputTransformation, singleLine) {
-        outputTransformation?.let { EditorOutputFormatter(it, singleLine) }
-    }
-    val plainPresentation = remember(source, password, singleLine) {
-        EditorTextPresentation(source, password, singleLine)
-    }
-    var measuredPresentation by remember(formatter) { mutableStateOf<EditorTextPresentation?>(null) }
+    val formatter =
+        remember(outputTransformation, singleLine) {
+            outputTransformation?.let { EditorOutputFormatter(it, singleLine) }
+        }
+    val plainPresentation =
+        remember(source, password, singleLine) {
+            EditorTextPresentation(source, password, singleLine)
+        }
+    var measuredPresentation by
+        remember(formatter) { mutableStateOf<EditorTextPresentation?>(null) }
     val presentation = measuredPresentation?.takeIf { it.source == source } ?: plainPresentation
     var visibleLayout by remember { mutableStateOf<VisibleTextLayout?>(null) }
     // 不换行且无文本变换时，Compose 布局的视觉行就是逻辑行，行号直接读布局，
@@ -317,14 +323,16 @@ fun GlasmioEditableText(
         NativeEditorField(
             value = value,
             onValueChange = onValueChange,
-            modifier = if (onVisibleTextRange != null) inputModifier.onSizeChanged { fallbackSize = it }
+            modifier =
+                if (onVisibleTextRange != null) inputModifier.onSizeChanged { fallbackSize = it }
                 else inputModifier,
             enabled = enabled,
             readOnly = readOnly,
             textStyle = textStyle,
             keyboardOptions = keyboardOptions,
             onKeyboardAction = onKeyboardAction,
-            lineLimits = if (singleLine) TextFieldLineLimits.SingleLine
+            lineLimits =
+                if (singleLine) TextFieldLineLimits.SingleLine
                 else TextFieldLineLimits.MultiLine(maxHeightInLines = maxLines),
             password = password,
             formatter = formatter,
@@ -663,14 +671,15 @@ fun GlasmioEditableText(
                 }
                 onValueChange(next)
             },
-            inputTransformation = remember(editor) {
-                InputTransformation {
-                    val preserved = editor.preservedTapSelection
-                    if (preserved != null && changes.changeCount == 0 && selection.collapsed) {
-                        selection = preserved
+            inputTransformation =
+                remember(editor) {
+                    InputTransformation {
+                        val preserved = editor.preservedTapSelection
+                        if (preserved != null && changes.changeCount == 0 && selection.collapsed) {
+                            selection = preserved
+                        }
                     }
-                }
-            },
+                },
             modifier = fieldModifier,
             enabled = enabled,
             readOnly = readOnly,
@@ -678,7 +687,8 @@ fun GlasmioEditableText(
             keyboardOptions = keyboardOptions,
             onKeyboardAction = onKeyboardAction,
             // The decoration owns scrolling and must see the entire text layout.
-            lineLimits = if (singleLine) TextFieldLineLimits.SingleLine else TextFieldLineLimits.Default,
+            lineLimits =
+                if (singleLine) TextFieldLineLimits.SingleLine else TextFieldLineLimits.Default,
             password = password,
             formatter = formatter,
             onTextLayout = { result, formatted ->
@@ -710,8 +720,16 @@ fun GlasmioEditableText(
                         remember(editor, password, wordWrap, textStyle) {
                             mutableStateOf<TextGutterSnapshot?>(null)
                         }
+                    // 首帧还没有布局快照；先按原文行数定栏宽，否则进场后行号栏从 1 位展开，
+                    // 正文会整体向右跳一帧。
+                    val initialGutterDigits =
+                        remember(editor) {
+                            if (needsLineNumbers)
+                                (source.count { it == '\n' } + 1).toString().length
+                            else 1
+                        }
                     // 栏宽沿用最近一份与正文匹配的完整快照；重建期间不缩回 1 位。
-                    var gutterDigits by remember(editor) { mutableIntStateOf(1) }
+                    var gutterDigits by remember(editor) { mutableIntStateOf(initialGutterDigits) }
                     val gutterLayout = editor.layout
                     SideEffect {
                         if (!needsLineNumbers) {
@@ -993,7 +1011,8 @@ fun GlasmioEditableText(
                                                     if (
                                                         syntaxPainter != null &&
                                                             !singleLine &&
-                                                            formatter == null && !password &&
+                                                            formatter == null &&
+                                                            !password &&
                                                             result != null &&
                                                             result.layoutInput.text.text ==
                                                                 value.text

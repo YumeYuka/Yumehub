@@ -38,19 +38,21 @@ fun GithubSearchSelectionSheet(
     val common = LocalGithubStrings.current.Common
     val listState = rememberLazyListState()
     val edgeDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
-    val edgeProgress by remember(listState, edgeDistancePx) {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) 1f
-            else (listState.firstVisibleItemScrollOffset / edgeDistancePx).coerceIn(0f, 1f)
+    val edgeProgress by
+        remember(listState, edgeDistancePx) {
+            derivedStateOf {
+                if (listState.firstVisibleItemIndex > 0) 1f
+                else (listState.firstVisibleItemScrollOffset / edgeDistancePx).coerceIn(0f, 1f)
+            }
         }
-    }
     var query by remember { mutableStateOf(TextFieldValue()) }
     var searching by remember { mutableStateOf(false) }
     var toolbarHeight by remember { mutableIntStateOf(0) }
     val canDismiss by rememberUpdatedState(!visible || enabled)
-    val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = false) {
-        it != GlasmioSheetValue.Hidden || canDismiss
-    }
+    val sheetState =
+        rememberGlasmioSheetState(skipPartiallyExpanded = false) {
+            it != GlasmioSheetValue.Hidden || canDismiss
+        }
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
@@ -92,7 +94,13 @@ fun GithubSearchSelectionSheet(
                 actions = {
                     GithubToolbarActions(
                         if (!searching)
-                            toolbarIcon(Lucide.Search, common.Search, visible && enabled && !requestClose) { searching = true }
+                            toolbarIcon(
+                                Lucide.Search,
+                                common.Search,
+                                visible && enabled && !requestClose,
+                            ) {
+                                searching = true
+                            }
                         else null,
                         if (showConfirm)
                             toolbarIcon(
@@ -130,7 +138,8 @@ fun GithubSearchSelectionSheet(
                 contentPadding =
                     PaddingValues(
                         bottom =
-                            if (searching) with(contentDensity) { toolbarHeight.toDp() + 12.dp } else 0.dp,
+                            if (searching) with(contentDensity) { toolbarHeight.toDp() + 12.dp }
+                            else 0.dp,
                     ),
             ) {
                 content(finish)

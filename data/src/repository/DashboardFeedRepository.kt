@@ -11,10 +11,7 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.*
-import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
-import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
@@ -26,20 +23,28 @@ class DashboardFeedRepository(
     private val tokens: TokenStore,
     private val cache: CachedDataRepository,
 ) {
-    private fun pages(account: String) = cache.sessionResource(account, "feed-filters") { DashboardFeedLoader() }
+    private fun pages(account: String) =
+        cache.sessionResource(account, "feed-filters") { DashboardFeedLoader() }
+
     fun mutations(account: String) = cache.mutations(account)
-    fun trackStar(account: String, slug: String, row: RepositoryDto?) = cache.starredRows(account).track(slug, row)
+
+    fun trackStar(account: String, slug: String, row: RepositoryDto?) =
+        cache.starredRows(account).track(slug, row)
+
     fun effectiveFilters(account: String) = pages(account).filters
+
     fun filterCommand(account: String) = mutations(account).observeCommand(pages(account).filterKey)
+
     fun applyFilters(account: String, groups: Set<String>): Boolean {
         val generation = tokens.responseCacheSession.generation
-        return pages(account).apply(groups, mutations(account)) { request, write -> execute(account, generation, request, write) }
+        return pages(account).apply(groups, mutations(account)) { request, write ->
+            execute(account, generation, request, write)
+        }
     }
 
     suspend fun page(
         account: String,
         after: String?,
-        filterGroups: Set<String>,
     ): DashboardFeedPage {
         val session = tokens.responseCacheSession
         val generation =
@@ -48,7 +53,7 @@ class DashboardFeedRepository(
                 session.generation
             }
         val response =
-            pages(account).load(after, filterGroups) { request ->
+            pages(account).load(after) { request ->
                 execute(account, generation, request)
             }
         // 节点映射与 HTML 文本转换不占用服务器筛选锁，也不在主线程执行。
@@ -236,20 +241,31 @@ class DashboardFeedRepository(
             else relationshipCacheTag(event.repo?.name.orEmpty())
         if (user == null) {
             val slug = requireNotNull(resolved.repo?.name)
-            val stars = (result["stargazerCount"] as? JsonPrimitive)?.intOrNull ?: throw DashboardFeedException()
-            val overview = synchronized(tokens.responseCacheSession.lock) {
-                tokens.requireSession(account, generation)
-                cache.overviewResource(account, slug.substringBefore('/'), slug.substringAfter('/'))
-            }
+            val stars =
+                (result["stargazerCount"] as? JsonPrimitive)?.intOrNull
+                    ?: throw DashboardFeedException()
+            val overview =
+                synchronized(tokens.responseCacheSession.lock) {
+                    tokens.requireSession(account, generation)
+                    cache.overviewResource(
+                        account,
+                        slug.substringBefore('/'),
+                        slug.substringAfter('/'),
+                    )
+                }
             if (overview.cached == null) overview.restore()
             synchronized(tokens.responseCacheSession.lock) {
                 tokens.requireSession(account, generation)
-                overview.cached?.takeIf { it.id == id }?.let { overview.update(it.copy(starred = actual, stars = stars)) }
+                overview.cached
+                    ?.takeIf { it.id == id }
+                    ?.let { overview.update(it.copy(starred = actual, stars = stars)) }
             }
         }
         synchronized(tokens.responseCacheSession.lock) {
             tokens.requireSession(account, generation)
-            cache.resource(account, key, Boolean.serializer(), tags = setOf(stateTag)).update(actual)
+            cache
+                .resource(account, key, Boolean.serializer(), tags = setOf(stateTag))
+                .update(actual)
         }
         return actual
     }
@@ -336,7 +352,8 @@ class DashboardFeedRepository(
             (updated.data as? JsonObject)?.obj(field)?.obj("organization")
                 ?: throw DashboardFeedException(updated.errors)
         if (result.text("id") != id) throw DashboardFeedException(updated.errors)
-        val actual = result.flag("viewerIsFollowing") ?: throw DashboardFeedException(updated.errors)
+        val actual =
+            result.flag("viewerIsFollowing") ?: throw DashboardFeedException(updated.errors)
         synchronized(tokens.responseCacheSession.lock) {
             tokens.requireSession(account, generation)
             cache
@@ -428,9 +445,10 @@ internal fun dashboardFeedEvent(node: JsonObject): FeedEventDto? {
                             name = it.text("name"),
                             tagName = it.text("tagName"),
                             htmlUrl = it.text("url"),
-                            body = it.text("shortDescriptionHTML")?.let { html ->
-                                Jsoup.parseBodyFragment(html).body().text()
-                            },
+                            body =
+                                it.text("shortDescriptionHTML")?.let { html ->
+                                    Jsoup.parseBodyFragment(html).body().text()
+                                },
                             socialPreviewImageUrl = it.obj("repository")?.text("openGraphImageUrl"),
                             usesCustomOpenGraphImage =
                                 it.obj("repository")?.flag("usesCustomOpenGraphImage") == true,

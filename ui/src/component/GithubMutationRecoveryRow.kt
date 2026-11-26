@@ -12,19 +12,39 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 
 @Composable
-fun GithubMutationRecoveryRow(operationId: String, subtitle: String? = null, onAcknowledge: (String) -> Unit) {
+fun GithubMutationRecoveryRow(
+    operationId: String,
+    subtitle: String? = null,
+    onAcknowledge: (String) -> Unit,
+) {
     val strings = LocalGithubStrings.current.Common
     var confirming by remember(operationId) { mutableStateOf(false) }
-    GlasmioListRow(title = strings.MutationAcknowledged, subtitle = subtitle, onClick = { confirming = true })
+    GlasmioListRow(
+        title = strings.MutationAcknowledged,
+        subtitle = subtitle,
+        onClick = { confirming = true },
+    )
     if (confirming) {
         GlasmioAlertDialog(
             visible = true,
             title = strings.MutationUncertain,
             message = strings.MutationAcknowledgeWarning,
-            buttons = listOf(
-                GlasmioAlertButtonSpec(strings.Cancel, { confirming = false }, GlasmioAlertButtonRole.Cancel),
-                GlasmioAlertButtonSpec(strings.MutationAcknowledged, { confirming = false; onAcknowledge(operationId) }, GlasmioAlertButtonRole.Default),
-            ),
+            buttons =
+                listOf(
+                    GlasmioAlertButtonSpec(
+                        strings.Cancel,
+                        { confirming = false },
+                        GlasmioAlertButtonRole.Cancel,
+                    ),
+                    GlasmioAlertButtonSpec(
+                        strings.MutationAcknowledged,
+                        {
+                            confirming = false
+                            onAcknowledge(operationId)
+                        },
+                        GlasmioAlertButtonRole.Default,
+                    ),
+                ),
             onDismissRequest = { confirming = false },
         )
     }

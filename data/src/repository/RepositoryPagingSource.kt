@@ -43,12 +43,14 @@ class RepositoryPagingSource(
             }
             val result =
                 initial
-                    ?: pageRead { requestPage(
-                        page,
-                        force =
-                            params !is LoadParams.Refresh ||
-                                snapshot?.context?.forceRefresh != false,
-                    ) }
+                    ?: pageRead {
+                        requestPage(
+                            page,
+                            force =
+                                params !is LoadParams.Refresh ||
+                                    snapshot?.context?.forceRefresh != false,
+                        )
+                    }
             currentCoroutineContext().ensureActive()
             val uniqueRepositories =
                 synchronized(repositoryPages) {
@@ -94,8 +96,7 @@ class RepositoryPagingSource(
             var hasMoreMatches = false
             val batch =
                 if (usesLocalSort) {
-                    val existing =
-                        matchingRepositories.takeIf { record && !(refresh && page == 1) }
+                    val existing = matchingRepositories.takeIf { record && !(refresh && page == 1) }
                     val matches =
                         existing
                             ?: repositories
@@ -134,13 +135,14 @@ class RepositoryPagingSource(
         val context = snapshot?.context
         val result =
             try {
-                if (context == null) load() else
-                context.await(
-                    key = "page:$page:size:$pageSize:after=${after.orEmpty()}",
-                    serializer = PagingSnapshotPage.serializer(RepositoryDto.serializer()),
-                    force = force,
-                    loader = load,
-                )
+                if (context == null) load()
+                else
+                    context.await(
+                        key = "page:$page:size:$pageSize:after=${after.orEmpty()}",
+                        serializer = PagingSnapshotPage.serializer(RepositoryDto.serializer()),
+                        force = force,
+                        loader = load,
+                    )
             } catch (error: Exception) {
                 snapshot?.discardDenied(error)
                 throw error

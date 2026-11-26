@@ -8,8 +8,8 @@ import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 
 internal class WorkPropertiesController(
     private val detail: WorkDetailRepository.Detail,
@@ -33,17 +33,28 @@ internal class WorkPropertiesController(
                     val editor = current.editor
                     val active = editor?.property == property
                     val uncertain = write.phase == WritePhase.UNCERTAIN
-                    val changed = write.confirmed != null && editor != null && active &&
-                        editor.original != write.confirmed && !editor.reviewRequestsChanged()
+                    val changed =
+                        write.confirmed != null &&
+                            editor != null &&
+                            active &&
+                            editor.original != write.confirmed &&
+                            !editor.reviewRequestsChanged()
                     current.copy(
                         writes = current.writes + (property to write),
-                        editor = if (!active || editor == null) editor else editor.copy(
-                            original = if (changed) write.confirmed!! else editor.original,
-                            selected = if (changed) write.visible ?: editor.selected else editor.selected,
-                            needsReconcile = uncertain,
-                        ),
+                        editor =
+                            if (!active || editor == null) editor
+                            else
+                                editor.copy(
+                                    original = if (changed) write.confirmed!! else editor.original,
+                                    selected =
+                                        if (changed) write.visible ?: editor.selected
+                                        else editor.selected,
+                                    needsReconcile = uncertain,
+                                ),
                         uncertain = if (active) uncertain else current.uncertain,
-                        uncertainOperationId = if (active) coord.findUncertainOperationId(key.kind, key.target) else current.uncertainOperationId,
+                        uncertainOperationId =
+                            if (active) coord.findUncertainOperationId(key.kind, key.target)
+                            else current.uncertainOperationId,
                         saveFailed = current.saveFailed || write.phase == WritePhase.REJECTED,
                     )
                 }
@@ -54,8 +65,19 @@ internal class WorkPropertiesController(
     fun load() {
         val current = state()
         if (current.value == null && !current.failed && !current.loading) refresh()
-        if (current.references == null && !current.referencesFailed && referencesJob?.isActive != true) loadReferences()
-        if (loadIssueFields && current.issueFields == null && !current.fieldsFailed && fieldsJob?.isActive != true) loadFields()
+        if (
+            current.references == null &&
+                !current.referencesFailed &&
+                referencesJob?.isActive != true
+        )
+            loadReferences()
+        if (
+            loadIssueFields &&
+                current.issueFields == null &&
+                !current.fieldsFailed &&
+                fieldsJob?.isActive != true
+        )
+            loadFields()
     }
 
     fun refresh() {
@@ -69,7 +91,13 @@ internal class WorkPropertiesController(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                update { it.copy(value = it.value.takeUnless { error.invalidatesCachedContent() }, loading = false, failed = true) }
+                update {
+                    it.copy(
+                        value = it.value.takeUnless { error.invalidatesCachedContent() },
+                        loading = false,
+                        failed = true,
+                    )
+                }
             }
         }
     }
@@ -81,9 +109,15 @@ internal class WorkPropertiesController(
             try {
                 val references = detail.crossReferences()
                 update { it.copy(references = references) }
-            } catch (error: CancellationException) { throw error }
-            catch (error: Exception) {
-                update { it.copy(references = it.references.takeUnless { error.invalidatesCachedContent() }, referencesFailed = true) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                update {
+                    it.copy(
+                        references = it.references.takeUnless { error.invalidatesCachedContent() },
+                        referencesFailed = true,
+                    )
+                }
             }
         }
     }
@@ -97,12 +131,21 @@ internal class WorkPropertiesController(
                 fieldObserver?.cancel()
                 update { it.copy(issueFields = fields) }
                 fieldObserver = scope.launch {
-                    detail.projectedFields(fields).collect { projected -> update { it.copy(issueFields = projected) } }
+                    detail.projectedFields(fields).collect { projected ->
+                        update { it.copy(issueFields = projected) }
+                    }
                 }
-            } catch (error: CancellationException) { throw error }
-            catch (error: Exception) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 if (error.invalidatesCachedContent()) fieldObserver?.cancel()
-                update { it.copy(issueFields = it.issueFields.takeUnless { error.invalidatesCachedContent() }, fieldsFailed = true) }
+                update {
+                    it.copy(
+                        issueFields =
+                            it.issueFields.takeUnless { error.invalidatesCachedContent() },
+                        fieldsFailed = true,
+                    )
+                }
             }
         }
     }
@@ -129,19 +172,19 @@ internal class WorkPropertiesController(
                 saveFailed = false,
                 uncertain = write.phase == WritePhase.UNCERTAIN,
                 uncertainOperationId = coord.findUncertainOperationId(key.kind, key.target),
-                editor = WorkPropertyEditor(
-                    property,
-                    original,
-                    selected,
-                    needsReconcile = write.phase == WritePhase.UNCERTAIN,
-                    loading = editable,
-                    editable = editable,
-                )
+                editor =
+                    WorkPropertyEditor(
+                        property,
+                        original,
+                        selected,
+                        needsReconcile = write.phase == WritePhase.UNCERTAIN,
+                        loading = editable,
+                        editable = editable,
+                    ),
             )
         }
         if (editable) loadOptions(property)
     }
-
 
     fun closeEditor() {
         editorJob?.cancel()
@@ -172,20 +215,27 @@ internal class WorkPropertiesController(
                 val choices = (data.reviewed + editor.selected).distinctBy { it.id }
                 val selected =
                     (data.requested.filterNot { it.editable && it.id in removed } +
-                            choices.filter { it.editable && it.id in added && !it.title.equals(data.authorLogin, true) })
+                            choices.filter {
+                                it.editable &&
+                                    it.id in added &&
+                                    !it.title.equals(data.authorLogin, true)
+                            })
                         .distinctBy { it.id }
                 val key = detail.keys.property(WorkProperty.Reviewers)
                 val write = coord.current(key)
                 update { current ->
-                    val active = current.editor?.takeIf { it.property == WorkProperty.Reviewers }
-                        ?: return@update current
+                    val active =
+                        current.editor?.takeIf { it.property == WorkProperty.Reviewers }
+                            ?: return@update current
                     current.copy(
                         uncertain = write.phase == WritePhase.UNCERTAIN,
                         uncertainOperationId = coord.findUncertainOperationId(key.kind, key.target),
                         editor =
                             active.copy(
                                 original = write.confirmed ?: data.requested,
-                                selected = if (write.phase == WritePhase.PENDING) write.visible ?: selected else if (data.editable) selected else data.requested,
+                                selected =
+                                    if (write.phase == WritePhase.PENDING) write.visible ?: selected
+                                    else if (data.editable) selected else data.requested,
                                 options = emptyList(),
                                 nextCursor = null,
                                 loadingMore = false,
@@ -204,8 +254,9 @@ internal class WorkPropertiesController(
                 throw error
             } catch (error: Exception) {
                 update { current ->
-                    val active = current.editor?.takeIf { it.property == WorkProperty.Reviewers }
-                        ?: return@update current
+                    val active =
+                        current.editor?.takeIf { it.property == WorkProperty.Reviewers }
+                            ?: return@update current
                     current.copy(editor = active.copy(loading = false, failed = true))
                 }
             }
@@ -253,8 +304,17 @@ internal class WorkPropertiesController(
             if (query == editor.query) return
             if (!editor.loading && !editor.needsReconcile) editorJob?.cancel()
             update { current ->
-                current.copy(editor = current.editor?.copy(query = query, options = emptyList(),
-                    nextCursor = null, loadingMore = false, moreFailed = false, hasReviewerCandidates = false))
+                current.copy(
+                    editor =
+                        current.editor?.copy(
+                            query = query,
+                            options = emptyList(),
+                            nextCursor = null,
+                            loadingMore = false,
+                            moreFailed = false,
+                            hasReviewerCandidates = false,
+                        ),
+                )
             }
             return
         }
@@ -319,15 +379,26 @@ internal class WorkPropertiesController(
         val reviewers = editor.property == WorkProperty.Reviewers
         val cursor = editor.nextCursor
         if (cursor == null && (!reviewers || editor.hasReviewerCandidates)) return
-        if (state().submitting || editor.loading || editor.loadingMore || editor.needsReconcile || editor.failed) return
+        if (
+            state().submitting ||
+                editor.loading ||
+                editor.loadingMore ||
+                editor.needsReconcile ||
+                editor.failed
+        )
+            return
         update { it.copy(editor = editor.copy(loadingMore = true, moreFailed = false)) }
         editorJob = scope.launch {
             try {
-                val page = if (reviewers) {
-                    if (cursor == null && editor.query.isNotBlank()) delay(250)
-                    detail.reviewerCandidates(editor.query, cursor)
-                } else itemSearchPage(editor.property, editor.query, cursor)
-                val items = if (reviewers) page.items.filterNot { it.title.equals(editor.reviewerAuthorLogin, true) } else page.items
+                val page =
+                    if (reviewers) {
+                        if (cursor == null && editor.query.isNotBlank()) delay(250)
+                        detail.reviewerCandidates(editor.query, cursor)
+                    } else itemSearchPage(editor.property, editor.query, cursor)
+                val items =
+                    if (reviewers)
+                        page.items.filterNot { it.title.equals(editor.reviewerAuthorLogin, true) }
+                    else page.items
                 update { current ->
                     val active = current.editor ?: return@update current
                     if (active.query != editor.query) return@update current
@@ -372,7 +443,11 @@ internal class WorkPropertiesController(
         }
     }
 
-    private fun submit(property: WorkProperty, original: List<WorkPropertyOption>, selected: List<WorkPropertyOption>): Boolean {
+    private fun submit(
+        property: WorkProperty,
+        original: List<WorkPropertyOption>,
+        selected: List<WorkPropertyOption>,
+    ): Boolean {
         val key = detail.keys.property(property)
         val write = coord.current(key)
         if (write.phase == WritePhase.PENDING || write.phase == WritePhase.UNCERTAIN) return false
@@ -383,12 +458,23 @@ internal class WorkPropertiesController(
         val current = state()
         val editor = current.editor ?: return
         if (
-            current.submitting || !editor.editable || editor.loading || editor.failed ||
+            current.submitting ||
+                !editor.editable ||
+                editor.loading ||
+                editor.failed ||
                 editor.needsReconcile
-        ) return
+        )
+            return
         val property = editor.property
-        if (saveImmediately || property == WorkProperty.Milestone || property == WorkProperty.Reviewers) {
-            if (editor.reviewRequestsChanged() && !submit(property, editor.original, editor.selected)) {
+        if (
+            saveImmediately ||
+                property == WorkProperty.Milestone ||
+                property == WorkProperty.Reviewers
+        ) {
+            if (
+                editor.reviewRequestsChanged() &&
+                    !submit(property, editor.original, editor.selected)
+            ) {
                 update { it.copy(saveFailed = true) }
                 return
             }
@@ -396,7 +482,9 @@ internal class WorkPropertiesController(
             update { it.copy(editor = null, drafts = it.drafts - property, saveFailed = false) }
             return
         }
-        val actual = coord.current(detail.keys.property(property)).confirmed ?: current.value?.values?.get(property).orEmpty()
+        val actual =
+            coord.current(detail.keys.property(property)).confirmed
+                ?: current.value?.values?.get(property).orEmpty()
         val drafts = current.drafts.toMutableMap()
         if (editor.selected.map { it.id }.toSet() == actual.map { it.id }.toSet()) {
             drafts.remove(property)
@@ -413,12 +501,23 @@ internal class WorkPropertiesController(
         if (current.editor != null) return
         val remaining = current.drafts.toMutableMap()
         for ((property, selected) in current.drafts) {
-            val actual = coord.current(detail.keys.property(property)).confirmed ?: value.values[property].orEmpty()
-            if (actual.map { it.id }.toSet() == selected.map { it.id }.toSet() || submit(property, actual, selected)) {
+            val actual =
+                coord.current(detail.keys.property(property)).confirmed
+                    ?: value.values[property].orEmpty()
+            if (
+                actual.map { it.id }.toSet() == selected.map { it.id }.toSet() ||
+                    submit(property, actual, selected)
+            ) {
                 remaining.remove(property)
             }
         }
-        update { it.copy(drafts = remaining, saved = remaining.isEmpty(), saveFailed = remaining.isNotEmpty()) }
+        update {
+            it.copy(
+                drafts = remaining,
+                saved = remaining.isEmpty(),
+                saveFailed = remaining.isNotEmpty(),
+            )
+        }
     }
 
     fun acknowledgeUncertain() {
@@ -426,7 +525,11 @@ internal class WorkPropertiesController(
         scope.launch {
             val coord = detail.mutations()
             coord.acknowledge(opId).join()
-            if (coord.pending.value.any { it.operationId == opId } || state().uncertainOperationId != opId) return@launch
+            if (
+                coord.pending.value.any { it.operationId == opId } ||
+                    state().uncertainOperationId != opId
+            )
+                return@launch
             update {
                 it.copy(
                     uncertain = false,

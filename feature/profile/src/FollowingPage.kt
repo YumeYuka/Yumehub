@@ -11,8 +11,8 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.GithubUserCard
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -48,7 +48,8 @@ fun FollowingPage(
             ) {
                 it.id?.let { id -> "id:$id" } ?: it.login?.let { login -> "login:$login" }
             }
-        val sectionTitle = if (following) strings.Profile.FollowingTab else strings.Profile.FollowersTab
+        val sectionTitle =
+            if (following) strings.Profile.FollowingTab else strings.Profile.FollowersTab
         GithubPage(
             title = strings.Profile.FollowingTitle,
             listState = paging.listState,
@@ -80,7 +81,11 @@ fun FollowingPage(
                         } else null,
                 )
             }
-            collaborationPagingStatus(slots, sectionTitle, emptyMessage = strings.Profile.CollectionEmpty(sectionTitle))
+            collaborationPagingStatus(
+                slots,
+                sectionTitle,
+                emptyMessage = strings.Profile.CollectionEmpty(sectionTitle),
+            )
         }
     }
 }

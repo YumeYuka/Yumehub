@@ -65,25 +65,27 @@ fun UserProfilePage(
         showTitle = false,
         itemSpacing = 12.dp,
         actions = {
-                UserProfileActions(
-                    visible = !viewModel.isSelf && !state.unavailable && targetLogin.isNotBlank(),
-                    state = state,
-                    strings = strings.Profile,
-                    onToggleFollowing = viewModel::toggleFollowing,
-                    onReport = {
-                        openExternal(
-                            Uri.parse("https://github.com/contact/report-abuse")
-                                .buildUpon()
-                                .appendQueryParameter("report", targetLogin)
-                                .toString(),
-                        )
-                    },
-                )
+            UserProfileActions(
+                visible = !viewModel.isSelf && !state.unavailable && targetLogin.isNotBlank(),
+                state = state,
+                strings = strings.Profile,
+                onToggleFollowing = viewModel::toggleFollowing,
+                onReport = {
+                    openExternal(
+                        Uri.parse("https://github.com/contact/report-abuse")
+                            .buildUpon()
+                            .appendQueryParameter("report", targetLogin)
+                            .toString(),
+                    )
+                },
+            )
         },
     ) {
         val current = state.profile
         if (state.failed || state.unavailable) {
-            item(key = "profile-error") { ProfileRetryRow(strings.Profile.LoadFailed, viewModel::load) }
+            item(key = "profile-error") {
+                ProfileRetryRow(strings.Profile.LoadFailed, viewModel::load)
+            }
         }
         if (current != null || !state.failed && !state.unavailable) {
             item(key = "profile-header") {
@@ -100,9 +102,15 @@ fun UserProfilePage(
             }
             item(key = "profile-details") { ProfileDetailsSection(current, strings.Profile) }
             item(key = "profile-collections") {
-                ProfileCollectionsCard(current, strings.Profile, onOpenRepositories, onOpenStarred, onOpenOrganizations)
+                ProfileCollectionsCard(
+                    current,
+                    strings.Profile,
+                    onOpenRepositories,
+                    onOpenStarred,
+                    onOpenOrganizations,
+                )
             }
-            readingItem(key = "profile-readme") { ProfileReadmeContent(current, viewModel::retryReadme) }
+            readingItem(key = "profile-readme") { ProfileReadmeContent(current) }
         }
     }
 }

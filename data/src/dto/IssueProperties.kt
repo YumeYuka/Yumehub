@@ -9,20 +9,25 @@ data class IssuePropertyChoices(
     val editable: Boolean,
 )
 
-enum class IssueFieldKind { Date, Number, Text, SingleSelect, MultiSelect }
+enum class IssueFieldKind {
+    Date,
+    Number,
+    Text,
+    SingleSelect,
+    MultiSelect,
+}
 
 @Serializable
 sealed interface IssueFieldValue {
-    @Serializable
-    data class Date(val value: String) : IssueFieldValue
-    @Serializable
-    data class Number(val value: Double) : IssueFieldValue
-    @Serializable
-    data class Text(val value: String) : IssueFieldValue
-    @Serializable
-    data class SingleSelect(val id: String) : IssueFieldValue
-    @Serializable
-    data class MultiSelect(val ids: Set<String>) : IssueFieldValue
+    @Serializable data class Date(val value: String) : IssueFieldValue
+
+    @Serializable data class Number(val value: Double) : IssueFieldValue
+
+    @Serializable data class Text(val value: String) : IssueFieldValue
+
+    @Serializable data class SingleSelect(val id: String) : IssueFieldValue
+
+    @Serializable data class MultiSelect(val ids: Set<String>) : IssueFieldValue
 }
 
 data class IssueField(

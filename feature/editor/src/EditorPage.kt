@@ -1,5 +1,7 @@
 package moe.yumeyuka.yumehub.feature.editor
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,7 +37,8 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorBackdropSource
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorContentInsets
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorHeaderHeight
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
+
+private val FileReadFade = tween<Float>(220)
 
 @Composable
 fun EditorPage(session: GithubEditorSession) {
@@ -164,22 +167,28 @@ internal fun EditorFileReadContent(
     content: @Composable () -> Unit,
 ) {
     val contentInsets = LocalGithubEditorContentInsets.current
-    Box(modifier) {
-        when {
-            status is GithubFileReadStatus.Failed -> {
+    Crossfade(
+        targetState = status,
+        modifier = modifier,
+        animationSpec = FileReadFade,
+        label = "editor-file-read",
+    ) { displayedStatus ->
+        when (displayedStatus) {
+            GithubFileReadStatus.Loading ->
+                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
+            is GithubFileReadStatus.Failed -> {
                 GlasmioGroupedList(Modifier.padding(contentInsets).padding(16.dp)) {
-                    GlasmioListRow(title = status.message, systemName = null)
-                    status.retry?.let { retry ->
-                        GlasmioListRow(title = LocalGithubStrings.current.Common.Retry, onClick = retry)
+                    GlasmioListRow(title = displayedStatus.message, systemName = null)
+                    displayedStatus.retry?.let { retry ->
+                        GlasmioListRow(
+                            title = LocalGithubStrings.current.Common.Retry,
+                            enabled = status === displayedStatus,
+                            onClick = retry,
+                        )
                     }
                 }
             }
-            status == GithubFileReadStatus.Loading ->
-                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
-            !showEditor -> Unit // Preview owns both its renderer and its first-draw placeholder.
-            !LocalGithubRouteEntryReady.current ->
-                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
-            else -> content()
+            else -> if (showEditor) content() else Unit
         }
     }
 }

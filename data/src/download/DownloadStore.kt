@@ -55,6 +55,7 @@ class DownloadStore(
             }
         }
     }
+
     private val destination = DownloadDestination(context)
     private val transfer = DownloadTransfer(client, destination)
     private val queue = LinkedHashMap<String, Entry>()
@@ -308,20 +309,21 @@ class DownloadStore(
                 entry.publishing = true
             }
             destination.publish(checkNotNull(output))
-            val completed = synchronized(this) {
-                val completed =
-                    current.value
-                        .first { it.id == id }
-                        .copy(
-                            status = DownloadStatus.COMPLETED,
-                            sha256 = result,
-                            speed = 0,
-                            completedAtMillis = System.currentTimeMillis(),
-                        )
-                update(id) { completed }
-                output = null
-                completed
-            }
+            val completed =
+                synchronized(this) {
+                    val completed =
+                        current.value
+                            .first { it.id == id }
+                            .copy(
+                                status = DownloadStatus.COMPLETED,
+                                sha256 = result,
+                                speed = 0,
+                                completedAtMillis = System.currentTimeMillis(),
+                            )
+                    update(id) { completed }
+                    output = null
+                    completed
+                }
             // Clear the cleanup record before returning a published file to the service.
             try {
                 persistHistory()
@@ -384,7 +386,8 @@ class DownloadStore(
         }
     }
 
-    private fun persistHistory() = synchronized(historyLock) {
-        check(storage.encode("history", Json.encodeToString(current.value)))
-    }
+    private fun persistHistory() =
+        synchronized(historyLock) {
+            check(storage.encode("history", Json.encodeToString(current.value)))
+        }
 }

@@ -29,7 +29,10 @@ import moe.yumeyuka.yumehub.feature.workspaces.CommitHistoryRoute
 import moe.yumeyuka.yumehub.feature.workspaces.WorkspacesRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 
-/** Activity state contains route identifiers only. A live editor or an in-memory commit group restores its parent. */
+/**
+ * Activity state contains route identifiers only. A live editor or an in-memory commit group
+ * restores its parent.
+ */
 private fun GithubRoute.arguments(): Bundle? {
     fun repo(type: String, owner: String, name: String, vararg args: Pair<String, Any?>) =
         bundleOf("type" to type, "owner" to owner, "name" to name, *args)
@@ -41,23 +44,84 @@ private fun GithubRoute.arguments(): Bundle? {
         ExploreSearchRoute -> bundleOf("type" to "search")
         is DiscoveryRoute -> bundleOf("type" to "discovery", "kind" to name)
         is IssueSearchRoute -> bundleOf("type" to "issue-search", "kind" to kind.name)
-        is FollowingRoute -> bundleOf("type" to "following", "login" to login, "following" to initialFollowing, "instance" to instance)
-        is UserProfileRoute -> bundleOf("type" to "user", "login" to login, "node" to nodeId, "org" to organization, "instance" to instance)
-        is ProfileCollectionsRoute -> bundleOf("type" to "collection", "login" to login, "kind" to kind.name, "org" to organization, "instance" to instance)
-        is RepositoryRoute -> repo("repository", owner, name, "readme" to (readme != null), "anchor" to readme?.anchor)
+        is FollowingRoute ->
+            bundleOf(
+                "type" to "following",
+                "login" to login,
+                "following" to initialFollowing,
+                "instance" to instance,
+            )
+        is UserProfileRoute ->
+            bundleOf(
+                "type" to "user",
+                "login" to login,
+                "node" to nodeId,
+                "org" to organization,
+                "instance" to instance,
+            )
+        is ProfileCollectionsRoute ->
+            bundleOf(
+                "type" to "collection",
+                "login" to login,
+                "kind" to kind.name,
+                "org" to organization,
+                "instance" to instance,
+            )
+        is RepositoryRoute ->
+            repo(
+                "repository",
+                owner,
+                name,
+                "readme" to (readme != null),
+                "anchor" to readme?.anchor,
+            )
         is WorkListRoute -> repo("work-list", owner, name, "kind" to kind.name)
-        is WorkDetailRoute -> repo("work", owner, name, "kind" to kind.name, "number" to number)
+        is WorkDetailRoute ->
+            repo("work", owner, name, "kind" to kind.name, "number" to number, "title" to title)
         is CommitDetailRoute -> repo("commit", owner, name, "oid" to oid)
         is CommitHistoryRoute -> repo("history", owner, name, "ref" to ref)
-        is DiscussionDetailRoute -> repo("discussion", owner, name, "number" to number, "parent" to parentId)
+        is DiscussionDetailRoute ->
+            repo("discussion", owner, name, "number" to number, "parent" to parentId)
         is PullRequestDiffRoute -> repo("diff", owner, name, "number" to number)
-        is PullRequestCommitsRoute -> if (activityCommits == null) repo("commits", owner, name, "number" to number) else null
+        is PullRequestCommitsRoute ->
+            if (activityCommits == null) repo("commits", owner, name, "number" to number) else null
         is ReleasesRoute -> repo("release", owner, name, "tag" to tag)
-        is ActionsRoute -> repo("actions", owner, name, "run" to run, "suite" to suite, "workflow" to workflowName, "runNumber" to runNumber)
-        is RepositoryActivityRoute -> repo("activity", owner, name, "kind" to kind.name, "node" to nodeId, "heading" to heading, "project" to projectNumber, "org" to organization)
-        is WorkspacesRoute -> repo("workspace", owner, name, "ref" to ref, "path" to path, "file" to file,
-            "anchor" to anchor, "object" to gitObject?.refAndPath, "directory" to gitObject?.directory,
-            "objectAnchor" to gitObject?.anchor, "link" to linkUrl, "license" to license)
+        is ActionsRoute ->
+            repo(
+                "actions",
+                owner,
+                name,
+                "run" to run,
+                "suite" to suite,
+                "workflow" to workflowName,
+                "runNumber" to runNumber,
+            )
+        is RepositoryActivityRoute ->
+            repo(
+                "activity",
+                owner,
+                name,
+                "kind" to kind.name,
+                "node" to nodeId,
+                "heading" to heading,
+                "project" to projectNumber,
+                "org" to organization,
+            )
+        is WorkspacesRoute ->
+            repo(
+                "workspace",
+                owner,
+                name,
+                "ref" to ref,
+                "path" to path,
+                "file" to file,
+                "anchor" to anchor,
+                "object" to gitObject?.refAndPath,
+                "directory" to gitObject?.directory,
+                "objectAnchor" to gitObject?.anchor,
+                "link" to linkUrl,
+                "license" to license,
+            )
         else -> null
     }
 }
@@ -77,21 +141,72 @@ private fun Bundle.route(): GithubRoute? {
         "discovery" -> DiscoveryRoute.valueOf(text("kind"))
         "issue-search" -> IssueSearchRoute(kind())
         "following" -> FollowingRoute(text("login"), text("instance"), getBoolean("following"))
-        "user" -> UserProfileRoute(text("login"), nodeId = getString("node"), instance = text("instance"), organization = getBoolean("org"))
-        "collection" -> ProfileCollectionsRoute(text("login"), ProfileCollectionsRoute.Kind.valueOf(text("kind")), getBoolean("org"), text("instance"))
-        "repository" -> RepositoryRoute(owner(), name(), if (getBoolean("readme")) GithubRepositoryLocation.Readme(getString("anchor")) else null)
+        "user" ->
+            UserProfileRoute(
+                text("login"),
+                nodeId = getString("node"),
+                instance = text("instance"),
+                organization = getBoolean("org"),
+            )
+        "collection" ->
+            ProfileCollectionsRoute(
+                text("login"),
+                ProfileCollectionsRoute.Kind.valueOf(text("kind")),
+                getBoolean("org"),
+                text("instance"),
+            )
+        "repository" ->
+            RepositoryRoute(
+                owner(),
+                name(),
+                if (getBoolean("readme")) GithubRepositoryLocation.Readme(getString("anchor"))
+                else null,
+            )
         "work-list" -> WorkListRoute(owner(), name(), kind())
-        "work" -> WorkDetailRoute(owner(), name(), kind(), number())
+        "work" -> WorkDetailRoute(owner(), name(), kind(), number(), getString("title"))
         "commit" -> CommitDetailRoute(owner(), name(), text("oid"))
         "history" -> CommitHistoryRoute(owner(), name(), text("ref"))
         "discussion" -> DiscussionDetailRoute(owner(), name(), number(), getString("parent"))
         "diff" -> PullRequestDiffRoute(owner(), name(), number())
         "commits" -> PullRequestCommitsRoute(owner(), name(), number())
         "release" -> ReleasesRoute(owner(), name(), getString("tag"))
-        "actions" -> ActionsRoute(owner(), name(), getLong("run", -1L).takeIf { it >= 0 }, getString("suite"), getString("workflow"), getInt("runNumber", -1).takeIf { it >= 0 })
-        "activity" -> RepositoryActivityRoute(owner(), name(), RepositoryActivityKind.valueOf(text("kind")), getString("node"), getString("heading"), getInt("project", -1).takeIf { it >= 0 }, getBoolean("org"))
-        "workspace" -> WorkspacesRoute(owner(), name(), getString("ref"), text("path"), getBoolean("file"), getString("anchor"),
-            getString("object")?.let { GithubRepositoryLocation.GitObject(it, getBoolean("directory"), getString("objectAnchor")) }, getString("link"), getBoolean("license"))
+        "actions" ->
+            ActionsRoute(
+                owner(),
+                name(),
+                getLong("run", -1L).takeIf { it >= 0 },
+                getString("suite"),
+                getString("workflow"),
+                getInt("runNumber", -1).takeIf { it >= 0 },
+            )
+        "activity" ->
+            RepositoryActivityRoute(
+                owner(),
+                name(),
+                RepositoryActivityKind.valueOf(text("kind")),
+                getString("node"),
+                getString("heading"),
+                getInt("project", -1).takeIf { it >= 0 },
+                getBoolean("org"),
+            )
+        "workspace" ->
+            WorkspacesRoute(
+                owner(),
+                name(),
+                getString("ref"),
+                text("path"),
+                getBoolean("file"),
+                getString("anchor"),
+                getString("object")?.let {
+                    GithubRepositoryLocation.GitObject(
+                        it,
+                        getBoolean("directory"),
+                        getString("objectAnchor"),
+                    )
+                },
+                getString("link"),
+                getBoolean("license"),
+            )
         else -> null
     }
 }
@@ -105,14 +220,22 @@ internal fun GithubAppNavigationComponent.saveNavigation(session: String): Bundl
         val args = entry.instance.route.arguments() ?: break
         entries.add(args)
     }
-    return bundleOf("session" to session, "tab" to mainTab.name).apply { putParcelableArrayList("routes", entries) }
+    return bundleOf("session" to session, "tab" to mainTab.name).apply {
+        putParcelableArrayList("routes", entries)
+    }
 }
 
 internal fun Bundle.restoreNavigation(session: String): RestoredNavigation? {
     if (session != getString("session")) return null
     val routes = ArrayList<GithubRoute>()
     for (entry in getParcelableArrayList("routes", Bundle::class.java).orEmpty()) {
-        routes.add(try { entry.route() } catch (_: IllegalArgumentException) { null } ?: break)
+        routes.add(
+            try {
+                entry.route()
+            } catch (_: IllegalArgumentException) {
+                null
+            } ?: break,
+        )
     }
     val tab = GithubTab.entries.firstOrNull { it.name == getString("tab") } ?: GithubTab.Home
     return RestoredNavigation(tab, routes)

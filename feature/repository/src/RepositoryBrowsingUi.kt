@@ -117,7 +117,6 @@ private fun RepositoryRefField(
             )
             GithubLoadingContent(
                 loading = refs is RepositoryLoad.Loading,
-                deferUntilEntry = false,
                 placeholder = { GlasmioGroupedList { repeat(3) { TitleRowPlaceholder(it > 0) } } },
             ) {
                 if (refs is RepositoryLoad.Ready) {

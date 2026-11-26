@@ -7,13 +7,12 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.serialization.json.Json
-import moe.yumeyuka.yumehub.data.api.dto.ForkRepositoryRequest
-import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import moe.yumeyuka.yumehub.data.api.dto.ForkRepositoryRequest
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.DataDomain
@@ -22,6 +21,7 @@ import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.RepositoryForkRepository
+import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
 import retrofit2.HttpException
 
@@ -49,12 +49,20 @@ internal data class RepositoryForkState(
     val draftReady: Boolean = false,
 ) {
     val canCreate: Boolean
-        get() = visible && draftReady && !submitting && !uncertain && nameStatus == ForkNameStatus.Available
+        get() =
+            visible &&
+                draftReady &&
+                !submitting &&
+                !uncertain &&
+                nameStatus == ForkNameStatus.Available
 }
 
 private class ForkNameTakenException : MutationRejectedException()
 
-internal class RepositoryForkViewModel(private val source: RepositoryForkRepository, private val drafts: CommentDraftStore) : ViewModel() {
+internal class RepositoryForkViewModel(
+    private val source: RepositoryForkRepository,
+    private val drafts: CommentDraftStore,
+) : ViewModel() {
     private val mutableState = MutableStateFlow<RepositoryForkState?>(null)
     val uiState = mutableState.asStateFlow()
     private var session: RepositoryForkRepository.Session? = null
@@ -63,7 +71,8 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
     private var formGeneration = 0L
     val created = MutableSharedFlow<RepositoryDto>(extraBufferCapacity = 1)
 
-    private fun draftKey(state: RepositoryForkState): String = "fork/${(state.parent.fullName ?: "${state.parent.owner?.login}/${state.parent.name}").lowercase(Locale.ROOT)}"
+    private fun draftKey(state: RepositoryForkState): String =
+        "fork/${(state.parent.fullName ?: "${state.parent.owner?.login}/${state.parent.name}").lowercase(Locale.ROOT)}"
 
     private fun saveDraft(state: RepositoryForkState) {
         val request = ForkRepositoryRequest(state.name, state.defaultBranchOnly)
@@ -72,7 +81,11 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
 
     fun open(parent: RepositoryDto) {
         val previous = mutableState.value
-        if (previous != null && previous.parent.fullName == parent.fullName && (previous.submitting || previous.uncertain)) {
+        if (
+            previous != null &&
+                previous.parent.fullName == parent.fullName &&
+                (previous.submitting || previous.uncertain)
+        ) {
             mutableState.value = previous.copy(visible = true)
             return
         }
@@ -89,10 +102,18 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
         viewModelScope.launch {
             val encoded = drafts.loadOrNull(currentSession.account, draftKey(initial))
             if (generation != formGeneration || !source.isActive(currentSession)) return@launch
-            val draft = try { encoded?.let { Json.decodeFromString<ForkRepositoryRequest>(it) } }
-                catch (_: kotlinx.serialization.SerializationException) { null }
-            mutableState.value = initial.copy(name = draft?.name ?: initial.name,
-                defaultBranchOnly = draft?.defaultBranchOnly ?: initial.defaultBranchOnly, draftReady = true)
+            val draft =
+                try {
+                    encoded?.let { Json.decodeFromString<ForkRepositoryRequest>(it) }
+                } catch (_: kotlinx.serialization.SerializationException) {
+                    null
+                }
+            mutableState.value =
+                initial.copy(
+                    name = draft?.name ?: initial.name,
+                    defaultBranchOnly = draft?.defaultBranchOnly ?: initial.defaultBranchOnly,
+                    draftReady = true,
+                )
             checkName()
         }
     }
@@ -107,7 +128,13 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
 
     fun name(value: String) {
         val state = mutableState.value ?: return
-        if (!state.draftReady || state.submitting || state.uncertain || value.length > ForkNameMaxLength) return
+        if (
+            !state.draftReady ||
+                state.submitting ||
+                state.uncertain ||
+                value.length > ForkNameMaxLength
+        )
+            return
         mutableState.value = state.copy(name = value, error = null).also(::saveDraft)
         checkName()
     }
@@ -115,7 +142,8 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
     fun defaultBranchOnly(value: Boolean) {
         val state = mutableState.value ?: return
         if (state.draftReady && !state.submitting && !state.uncertain)
-            mutableState.value = state.copy(defaultBranchOnly = value, error = null).also(::saveDraft)
+            mutableState.value =
+                state.copy(defaultBranchOnly = value, error = null).also(::saveDraft)
     }
 
     fun checkName() {
@@ -185,9 +213,14 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
             val store = drafts
             val storedKey = draftKey(state)
             val account = currentSession.account
-            val encoded = Json.encodeToString(ForkRepositoryRequest(state.name, state.defaultBranchOnly))
+            val encoded =
+                Json.encodeToString(ForkRepositoryRequest(state.name, state.defaultBranchOnly))
             if (!store.saveConfirmed(account, storedKey, encoded)) {
-                mutableState.value = mutableState.value?.copy(submitting = false, error = GithubTxt.current.Common.MutationNotSubmitted)
+                mutableState.value =
+                    mutableState.value?.copy(
+                        submitting = false,
+                        error = GithubTxt.current.Common.MutationNotSubmitted,
+                    )
                 return@launch
             }
             val coord = source.mutations(currentSession.account)
@@ -222,16 +255,35 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
             val latest = mutableState.value ?: return@launch
             if (latest.parent.fullName != state.parent.fullName) return@launch
             val result = cmd.result
-            val navigate = receipt != null && cmd.phase == WritePhase.IDLE && result != null && latest.visible && generation == formGeneration
-            mutableState.value = latest.copy(submitting = false, visible = latest.visible && !navigate,
-                uncertain = cmd.phase == WritePhase.UNCERTAIN, uncertainOperationId = cmd.submissionId.takeIf { cmd.phase == WritePhase.UNCERTAIN },
-                nameStatus = if (capturedError is ForkNameTakenException) ForkNameStatus.Taken else latest.nameStatus,
-                error = when {
-                    cmd.phase == WritePhase.UNCERTAIN -> GithubTxt.current.Repository.ForkOutcomeUnknown
-                    cmd.phase == WritePhase.REJECTED || receipt == null -> capturedError?.takeUnless { it is ForkNameTakenException }
-                        ?.let { message(it, submitting = true) } ?: cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted
-                    else -> null
-                })
+            val navigate =
+                receipt != null &&
+                    cmd.phase == WritePhase.IDLE &&
+                    result != null &&
+                    latest.visible &&
+                    generation == formGeneration
+            mutableState.value =
+                latest.copy(
+                    submitting = false,
+                    visible = latest.visible && !navigate,
+                    uncertain = cmd.phase == WritePhase.UNCERTAIN,
+                    uncertainOperationId =
+                        cmd.submissionId.takeIf { cmd.phase == WritePhase.UNCERTAIN },
+                    nameStatus =
+                        if (capturedError is ForkNameTakenException) ForkNameStatus.Taken
+                        else latest.nameStatus,
+                    error =
+                        when {
+                            cmd.phase == WritePhase.UNCERTAIN ->
+                                GithubTxt.current.Repository.ForkOutcomeUnknown
+                            cmd.phase == WritePhase.REJECTED || receipt == null ->
+                                capturedError
+                                    ?.takeUnless { it is ForkNameTakenException }
+                                    ?.let { message(it, submitting = true) }
+                                    ?: cmd.message
+                                    ?: GithubTxt.current.Common.MutationNotSubmitted
+                            else -> null
+                        },
+                )
             if (navigate && result != null) created.tryEmit(result)
         }
     }
@@ -263,7 +315,6 @@ internal class RepositoryForkViewModel(private val source: RepositoryForkReposit
                 )
         }
     }
-
 
     private fun message(error: Exception, submitting: Boolean = false): String {
         val strings = GithubTxt.current.Repository

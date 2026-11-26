@@ -153,7 +153,11 @@ class GitHubAuthRepository(
             if (accessToken == rejectedToken)
                 throw AuthException("GitHub did not renew the access token")
             withContext(Dispatchers.IO) {
-                tokenStore.updateTokens(accessToken, tokenResponse.refreshToken, tokenResponse.scope)
+                tokenStore.updateTokens(
+                    accessToken,
+                    tokenResponse.refreshToken,
+                    tokenResponse.scope,
+                )
             }
             SessionRecovery.Refreshed
         }
@@ -173,10 +177,11 @@ class GitHubAuthRepository(
     }
 
     /** 会话失效时连同该账号的收藏快照一起清理，避免私有仓库信息残留。 */
-    private suspend fun clearSessionData() = withContext(Dispatchers.IO) {
-        tokenStore.accountLogin.value.takeIf { it.isNotBlank() }?.let(favoritesStore::clear)
-        tokenStore.removeActiveAccount()
-    }
+    private suspend fun clearSessionData() =
+        withContext(Dispatchers.IO) {
+            tokenStore.accountLogin.value.takeIf { it.isNotBlank() }?.let(favoritesStore::clear)
+            tokenStore.removeActiveAccount()
+        }
 
     private fun createAuthorizationRequest(): AuthorizationRequest {
         val verifier = generateRandomUrlSafeValue(PKCE_VERIFIER_BYTES)
@@ -330,7 +335,8 @@ class GitHubAuthRepository(
                 )
                 .header("Accept", "application/vnd.github+json")
                 .build()
-        NetworkModule.singleSubmissionClient(okHttpClient).newCall(request).useResponse { response ->
+        NetworkModule.singleSubmissionClient(okHttpClient).newCall(request).useResponse { response
+            ->
             if (!response.isSuccessful) throw AuthException("Failed to revoke the access token")
         }
     }

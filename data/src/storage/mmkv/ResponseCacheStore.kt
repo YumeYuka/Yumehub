@@ -23,18 +23,25 @@ internal class ResponseCacheStore(
     private var totalBytes = 0L
 
     internal data class Response(
-        val payload: String, val updatedAt: Long, val etag: String?, val checkedAt: Long,
-        val tags: List<String>, val bytes: Int,
+        val payload: String,
+        val updatedAt: Long,
+        val etag: String?,
+        val checkedAt: Long,
+        val tags: List<String>,
+        val bytes: Int,
     )
 
     @Serializable
     private data class Metadata(
-        val body: String, val bytes: Int, val updatedAt: Long, val checkedAt: Long,
-        val etag: String?, val tags: List<String>,
+        val body: String,
+        val bytes: Int,
+        val updatedAt: Long,
+        val checkedAt: Long,
+        val etag: String?,
+        val tags: List<String>,
     )
 
-    @Serializable
-    private data class Index(val session: String, val records: Map<String, Metadata>)
+    @Serializable private data class Index(val session: String, val records: Map<String, Metadata>)
 
     suspend fun load(session: String, key: String, valid: () -> Boolean): Response? =
         withContext(Dispatchers.IO) {
@@ -49,8 +56,15 @@ internal class ResponseCacheStore(
         }
 
     suspend fun save(
-        session: String, key: String, payload: String, bytes: Long, updatedAt: Long,
-        checkedAt: Long, etag: String?, tags: List<String>, valid: () -> Boolean,
+        session: String,
+        key: String,
+        payload: String,
+        bytes: Long,
+        updatedAt: Long,
+        checkedAt: Long,
+        etag: String?,
+        tags: List<String>,
+        valid: () -> Boolean,
     ) = mutex.withLock {
         if (!valid()) return@withLock
         prepare(session)
@@ -62,8 +76,12 @@ internal class ResponseCacheStore(
             return@withLock
         }
         val retired = ArrayList<String>()
-        old?.let { totalBytes -= it.bytes; retired.add(it.body) }
-        if (body == null) entries.remove(key) else {
+        old?.let {
+            totalBytes -= it.bytes
+            retired.add(it.body)
+        }
+        if (body == null) entries.remove(key)
+        else {
             entries[key] = Metadata(body, bytes.toInt(), updatedAt, checkedAt, etag, tags)
             totalBytes += bytes
         }
@@ -83,7 +101,13 @@ internal class ResponseCacheStore(
         retired.forEach(storage::removeValueForKey)
     }
 
-    suspend fun touch(session: String, key: String, checkedAt: Long, etag: String?, valid: () -> Boolean): Boolean = mutex.withLock {
+    suspend fun touch(
+        session: String,
+        key: String,
+        checkedAt: Long,
+        etag: String?,
+        valid: () -> Boolean,
+    ): Boolean = mutex.withLock {
         if (!valid()) return@withLock true
         prepare(session)
         val old = entries[key] ?: return@withLock false
@@ -102,14 +126,15 @@ internal class ResponseCacheStore(
         commit(session)
     }
 
-    internal suspend fun remove(session: String, key: String, valid: () -> Boolean) = mutex.withLock {
-        if (!valid()) return@withLock
-        prepare(session)
-        val old = entries.remove(key) ?: return@withLock
-        totalBytes -= old.bytes
-        storage.removeValueForKey(old.body)
-        commit(session)
-    }
+    internal suspend fun remove(session: String, key: String, valid: () -> Boolean) =
+        mutex.withLock {
+            if (!valid()) return@withLock
+            prepare(session)
+            val old = entries.remove(key) ?: return@withLock
+            totalBytes -= old.bytes
+            storage.removeValueForKey(old.body)
+            commit(session)
+        }
 
     suspend fun clearOtherSessions(session: String, valid: () -> Boolean) = mutex.withLock {
         if (valid()) prepare(session)
@@ -119,26 +144,43 @@ internal class ResponseCacheStore(
 
     private fun prepare(session: String) {
         if (indexedSession == session) return
-        val index = storage.decodeString(IndexKey)?.let { raw ->
-            try { json.decodeFromString(Index.serializer(), raw) } catch (_: IllegalArgumentException) { null }
-        }
+        val index =
+            storage.decodeString(IndexKey)?.let { raw ->
+                try {
+                    json.decodeFromString(Index.serializer(), raw)
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
+            }
         entries.clear()
         totalBytes = 0L
-        if (index?.session == session) index.records.forEach { (key, meta) ->
-            if (meta.body.startsWith("$key:") && meta.bytes in 1..MaxEntryBytes && storage.getValueActualSize(meta.body) > 0) {
-                entries[key] = meta
-                totalBytes += meta.bytes
+        if (index?.session == session)
+            index.records.forEach { (key, meta) ->
+                if (
+                    meta.body.startsWith("$key:") &&
+                        meta.bytes in 1..MaxEntryBytes &&
+                        storage.getValueActualSize(meta.body) > 0
+                ) {
+                    entries[key] = meta
+                    totalBytes += meta.bytes
+                }
             }
-        }
         val kept = entries.values.mapTo(HashSet()) { it.body }
         // Never adopt orphaned bodies (including the old random-namespace format).
-        storage.allKeys()?.forEach { if (it != IndexKey && it !in kept) storage.removeValueForKey(it) }
+        storage.allKeys()?.forEach {
+            if (it != IndexKey && it !in kept) storage.removeValueForKey(it)
+        }
         indexedSession = session
     }
 
     private fun commit(session: String) {
         try {
-            check(storage.encode(IndexKey, json.encodeToString(Index.serializer(), Index(session, entries)))) {
+            check(
+                storage.encode(
+                    IndexKey,
+                    json.encodeToString(Index.serializer(), Index(session, entries)),
+                ),
+            ) {
                 "Snapshot index write failed"
             }
         } catch (error: Exception) {
@@ -147,6 +189,7 @@ internal class ResponseCacheStore(
             throw error
         }
     }
+
     companion object {
         private const val IndexKey = "snapshot-index-v3"
         private const val MaxEntries = 128

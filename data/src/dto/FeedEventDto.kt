@@ -26,10 +26,14 @@ fun FeedEventDto.workItem(): FeedWorkDto? =
     payload.pullRequest
         ?: payload.issue
         ?: payload.discussion
-        ?: payload.number?.takeIf { type.startsWith("PullRequest") }?.let { FeedWorkDto(number = it) }
+        ?: payload.number
+            ?.takeIf { type.startsWith("PullRequest") }
+            ?.let { FeedWorkDto(number = it) }
 
 fun FeedEventDto.isPullRequestWork(): Boolean =
-    type.startsWith("PullRequest") || payload.pullRequest != null || payload.issue?.pullRequest != null
+    type.startsWith("PullRequest") ||
+        payload.pullRequest != null ||
+        payload.issue?.pullRequest != null
 
 @Serializable
 data class FeedPayloadDto(

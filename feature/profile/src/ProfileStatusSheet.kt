@@ -187,9 +187,10 @@ private fun StatusEditorContent(
                     Spacer(Modifier.width(12.dp))
                     BasicTextField(
                         state = message,
-                        inputTransformation = InputTransformation {
-                            if (length > StatusMaxLength) revertAllChanges()
-                        },
+                        inputTransformation =
+                            InputTransformation {
+                                if (length > StatusMaxLength) revertAllChanges()
+                            },
                         modifier = Modifier.weight(1f),
                         enabled = !isBusy,
                         textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),

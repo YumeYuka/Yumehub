@@ -61,7 +61,9 @@ class RepositoryDetailViewModel(
 ) : ViewModel() {
     private var activeAccount = currentAccount()
     private val mutableUiState =
-        MutableStateFlow(RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage))
+        MutableStateFlow(
+            RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage),
+        )
     private var repositoryObserver: Job? = null
     private var readmeObserver: Job? = null
     private var refsJob: Job? = null
@@ -111,21 +113,27 @@ class RepositoryDetailViewModel(
 
     fun retryReadme() = loadReadme(force = true)
 
-    private fun loadReadme(force: Boolean = false, selectedRef: String? = mutableUiState.value.selectedRef) {
+    private fun loadReadme(
+        force: Boolean = false,
+        selectedRef: String? = mutableUiState.value.selectedRef,
+    ) {
         if (currentRepository() == null) return
         val account = activeAccount
         val session = accountGeneration
         val ref = selectedRef ?: currentRepository()?.defaultBranch?.let { "refs/heads/$it" }
         val resource = contentRepository.readme(account, owner, repository, ref)
         readmeObserver?.cancel()
-        mutableUiState.value = mutableUiState.value.copy(selectedRef = selectedRef, readme = resource.state.value.toLoad())
+        mutableUiState.value =
+            mutableUiState.value.copy(
+                selectedRef = selectedRef,
+                readme = resource.state.value.toLoad(),
+            )
         readmeObserver = viewModelScope.launch {
             resource.state.collect { snapshot ->
                 if (
                     session == accountGeneration && isCurrentAccount(account) && ref == currentRef()
                 ) {
-                    mutableUiState.value =
-                        mutableUiState.value.copy(readme = snapshot.toLoad())
+                    mutableUiState.value = mutableUiState.value.copy(readme = snapshot.toLoad())
                 }
             }
         }
@@ -178,13 +186,18 @@ class RepositoryDetailViewModel(
         if (current == null) {
             readmeObserver?.cancel()
             readmeObserver = null
-            mutableUiState.value = mutableUiState.value.copy(repository = repositoryState, readme = RepositoryLoad.Loading)
+            mutableUiState.value =
+                mutableUiState.value.copy(
+                    repository = repositoryState,
+                    readme = RepositoryLoad.Loading,
+                )
             return
         }
         mutableUiState.value = mutableUiState.value.copy(repository = repositoryState)
         if (
             readmeObserver == null ||
-                (previous?.defaultBranch != current.defaultBranch && mutableUiState.value.selectedRef == null)
+                (previous?.defaultBranch != current.defaultBranch &&
+                    mutableUiState.value.selectedRef == null)
         ) {
             loadReadme()
         }
@@ -205,7 +218,6 @@ class RepositoryDetailViewModel(
         mutableUiState.value = mutableUiState.value.copy(page = page)
     }
 
-
     private fun currentAccount(): String =
         tokenStore.accountLogin.value.trim().lowercase(Locale.ROOT)
 
@@ -221,7 +233,8 @@ class RepositoryDetailViewModel(
         repositoryObserver?.cancel()
         readmeObserver?.cancel()
         readmeObserver = null
-        mutableUiState.value = RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage)
+        mutableUiState.value =
+            RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage)
         loadRepository()
     }
 
@@ -232,7 +245,10 @@ class RepositoryDetailViewModel(
         val content = data
         val failure = error?.takeUnless { it is CancellationException }
         val message = failure?.readErrorMessage()
-        if (failure is HttpException && (failure.code() == 401 || failure.code() == 403 || failure.code() == 404)) {
+        if (
+            failure is HttpException &&
+                (failure.code() == 401 || failure.code() == 403 || failure.code() == 404)
+        ) {
             return RepositoryLoad.Error(requireNotNull(message))
         }
         return when {

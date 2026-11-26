@@ -6,8 +6,8 @@ import java.util.Locale
 /**
  * 缓存失效标签。[subject] 是规范化的稳定业务 ID；null 表示该 domain 的全域视图。
  *
- * 磁盘只保存 domain、subject 类型标记和 SHA-256 摘要，不保存 token、URL 或原始业务 key。 subject 失效会同时影响该 subject
- * 和该 domain 的全域视图；null 失效影响整个 domain。
+ * 磁盘只保存 domain、subject 类型标记和 SHA-256 摘要，不保存 token、URL 或原始业务 key。 subject 失效会同时影响该 subject 和该 domain
+ * 的全域视图；null 失效影响整个 domain。
  */
 data class CacheTag(val domain: DataDomain, val subject: String? = null) {
     init {
@@ -34,17 +34,24 @@ internal fun diskDomain(value: String): String = value.substringBefore('|')
 
 internal fun diskDigest(value: String): String = value.substringAfterLast('|')
 
-internal fun diskIsGlobal(value: String): Boolean = value.substringBeforeLast('|').endsWith("|$NullSubject")
+internal fun diskIsGlobal(value: String): Boolean =
+    value.substringBeforeLast('|').endsWith("|$NullSubject")
 
 private const val NullSubject = "0"
 private const val Subject = "1"
 
 /** 仓库视图使用小写 `owner/repo`。 */
 fun repositoryCacheTag(owner: String, name: String): CacheTag =
-    CacheTag(DataDomain.Repositories, "${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}")
+    CacheTag(
+        DataDomain.Repositories,
+        "${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
+    )
 
 fun workListCacheTag(owner: String, repository: String): CacheTag =
-    CacheTag(DataDomain.Work, "${owner.lowercase(Locale.ROOT)}/${repository.lowercase(Locale.ROOT)}")
+    CacheTag(
+        DataDomain.Work,
+        "${owner.lowercase(Locale.ROOT)}/${repository.lowercase(Locale.ROOT)}",
+    )
 
 /** 关系状态（star/follow）按具体对象区分。 */
 fun relationshipCacheTag(subject: String): CacheTag =
@@ -60,5 +67,4 @@ fun workCacheTag(kind: String, owner: String, repository: String, number: Int): 
 
 /** 一个失效标签是否覆盖另一个（资源自身）标签。 */
 internal fun CacheTag.covers(other: CacheTag): Boolean =
-    domain == other.domain &&
-        (subject == null || other.subject == null || subject == other.subject)
+    domain == other.domain && (subject == null || other.subject == null || subject == other.subject)

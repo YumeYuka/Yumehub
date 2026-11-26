@@ -21,7 +21,10 @@ internal class PullRequestCommitsViewModel(
             route.number,
         )
     val state = detail.state
-    fun commits(head: String?) = if (head != null) detail.commits(head) else flowOf(PagingData.empty<RepositoryActivityEntry>())
+
+    fun commits(head: String?) =
+        if (head != null) detail.commits(head)
+        else flowOf(PagingData.empty<RepositoryActivityEntry>())
 
     fun revalidation(head: String) = detail.revalidation(detail.commitsPagingKey(head))
 

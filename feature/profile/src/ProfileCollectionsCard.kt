@@ -35,7 +35,6 @@ internal fun ProfileCollectionsCard(
 ) {
     GithubLoadingCard(
         loading = profile == null,
-        deferUntilEntry = false,
         modifier = modifier,
         placeholder = { ProfileCollectionsPlaceholder() },
     ) {

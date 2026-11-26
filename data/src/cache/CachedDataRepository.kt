@@ -11,7 +11,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.storage.mmkv.CacheInvalidationStore
@@ -91,7 +90,11 @@ class CachedDataRepository(
         resource
     }
 
-    private fun rememberRecent(identity: ResourceKey, resource: CachedResource<*>, bytes: Long = 0L) {
+    private fun rememberRecent(
+        identity: ResourceKey,
+        resource: CachedResource<*>,
+        bytes: Long = 0L,
+    ) {
         if (bytes > MaxRecentBytes) {
             recent.remove(identity)?.let { recentBytes -= it.second }
             return
@@ -109,7 +112,12 @@ class CachedDataRepository(
         }
     }
 
-    internal fun recordRecentSize(account: String, key: String, resource: CachedResource<*>, bytes: Long) {
+    internal fun recordRecentSize(
+        account: String,
+        key: String,
+        resource: CachedResource<*>,
+        bytes: Long,
+    ) {
         locked {
             if (closed) return@locked
             val identity = ResourceKey(normalizeAccount(account), key)
@@ -206,7 +214,11 @@ class CachedDataRepository(
     private suspend fun clearOldSnapshots() {
         val stamp = locked { session.id?.let { it to session.generation } } ?: return
         try {
-            val valid = { locked { !closed && session.id == stamp.first && session.generation == stamp.second } }
+            val valid = {
+                locked {
+                    !closed && session.id == stamp.first && session.generation == stamp.second
+                }
+            }
             writeQueue.run {
                 store.clearOtherSessions(stamp.first, valid)
                 pagingStore.disk.clearOtherSessions(stamp.first, valid)
@@ -224,12 +236,18 @@ class CachedDataRepository(
     /** 每账号一个会话级写协调器；页面只订阅其状态，不创建第二套队列。 */
     fun mutations(account: String): MutationCoordinator =
         sessionResource(account, "mutation-coordinator-v1") { scope ->
-            MutationCoordinator(normalizeAccount(account), session.generation, this, pendingMutations, json, scope)
+            MutationCoordinator(
+                normalizeAccount(account),
+                session.generation,
+                this,
+                pendingMutations,
+                json,
+                scope,
+            )
         }
 
     /**
-     * 立即推进相关资源的会话内版本并取消旧读；磁盘正文保留，供过期显示和下次强制校验。
-     * 具体 subject 失效同时影响该 domain 的全域视图；null 失效影响整个 domain。
+     * 立即推进相关资源的会话内版本并取消旧读；磁盘正文保留，供过期显示和下次强制校验。 具体 subject 失效同时影响该 domain 的全域视图；null 失效影响整个 domain。
      */
     fun invalidate(account: String, tags: Set<CacheTag>) {
         invalidate(account, tags, notifyListeners = true)
@@ -237,16 +255,15 @@ class CachedDataRepository(
 
     private fun invalidate(account: String, tags: Set<CacheTag>, notifyListeners: Boolean) {
         if (tags.isEmpty()) return
-        val listeners =
-            locked {
-                val normalized = normalizeAccount(account)
-                resources.entries.toList().forEach { (key, reference) ->
-                    if (key.account != normalized) return@forEach
-                    val resource = reference.get() ?: return@forEach
-                    if (resource.matches(tags)) resource.invalidate()
-                }
-                if (notifyListeners) invalidationListeners.toList() else emptyList()
+        val listeners = locked {
+            val normalized = normalizeAccount(account)
+            resources.entries.toList().forEach { (key, reference) ->
+                if (key.account != normalized) return@forEach
+                val resource = reference.get() ?: return@forEach
+                if (resource.matches(tags)) resource.invalidate()
             }
+            if (notifyListeners) invalidationListeners.toList() else emptyList()
+        }
         listeners.forEach { listener ->
             runCatching { listener(account, tags) }
         }
@@ -280,7 +297,9 @@ class CachedDataRepository(
         if (tags.isEmpty()) return
         val at = System.currentTimeMillis().coerceAtLeast(1L)
         invalidate(account, tags)
-        scope.launch { runCatching { writeQueue.run { invalidationStore.mark(account, tags, at) } } }
+        scope.launch {
+            runCatching { writeQueue.run { invalidationStore.mark(account, tags, at) } }
+        }
     }
 
     internal suspend fun stale(account: String, diskTags: List<String>, checkedAt: Long): Boolean =

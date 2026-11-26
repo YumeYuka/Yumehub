@@ -1,7 +1,6 @@
 package moe.yumeyuka.yumehub.ui.component
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +26,9 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
 
-/** Matches the real author header and the renderer's pending body inside the same reading surface. */
+/**
+ * Matches the real author header and the renderer's pending body inside the same reading surface.
+ */
 @Composable
 fun GithubThreadContentPlaceholder(showTitle: Boolean = false) {
     Column {
@@ -49,14 +50,17 @@ fun GithubThreadContentPlaceholder(showTitle: Boolean = false) {
                 fraction = 0.78f,
             )
         }
-        GithubMarkdownPlaceholder(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), compact = true)
+        GithubMarkdownPlaceholder(
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            compact = true,
+        )
     }
 }
 
 /** The pending thread occupies one passive reading slot. */
 fun LazyListScope.githubThreadPlaceholder(placeholder: @Composable () -> Unit) {
     readingItem(key = "thread-initial") {
-        Box(Modifier.clearAndSetSemantics {}) { placeholder() }
+        Column(Modifier.clearAndSetSemantics {}) { placeholder() }
     }
 }
 
@@ -72,8 +76,15 @@ fun <T> LazyListScope.githubThreadItems(
     content: @Composable (T, Int) -> Unit,
 ) {
     githubThreadRows(
-        state, state.items.size, { "thread:${key(state.items[it])}" }, load, placeholder, pageControl,
-    ) { index -> content(state.items[index], index) }
+        state,
+        state.items.size,
+        { "thread:${key(state.items[it])}" },
+        load,
+        placeholder,
+        pageControl,
+    ) { index ->
+        content(state.items[index], index)
+    }
 }
 
 /** 保留线程游标与重试边界，同时按调用方提供的连续分组虚拟化条目。 */
@@ -85,7 +96,14 @@ fun <T, G> LazyListScope.githubThreadGroupedItems(
     placeholder: @Composable () -> Unit,
     content: @Composable (G) -> Unit,
 ) {
-    githubThreadRows(state, groups.size, { "thread-group:${key(groups[it])}" }, load, placeholder, null) {
+    githubThreadRows(
+        state,
+        groups.size,
+        { "thread-group:${key(groups[it])}" },
+        load,
+        placeholder,
+        null,
+    ) {
         content(groups[it])
     }
 }
@@ -116,7 +134,6 @@ private fun LazyListScope.githubThreadRows(
             GlasmioButton(enabled = enabled, onClick = onClick) {
                 GithubLoadingContent(
                     loading = loading,
-                    deferUntilEntry = false,
                     placeholder = {
                         TextLinePlaceholder(
                             GlasmioTheme.textStyles.body,
@@ -135,6 +152,8 @@ private fun LazyListScope.githubThreadRows(
     if (count == 0 && !state.ready && state.error == null) {
         githubThreadPlaceholder(placeholder)
     }
-    readingItems(count = count, key = key, contentType = { "thread-item" }) { index -> content(index) }
+    readingItems(count = count, key = key, contentType = { "thread-item" }) { index ->
+        content(index)
+    }
     if (state.after != null) boundary(ThreadDirection.Newer)
 }

@@ -230,19 +230,29 @@ class ProfileRepository(
     suspend fun loadProfileReadme(expected: String, profile: ProfileDto): ProfileDto {
         val session = GithubGraphQlSession(graphQlApi, tokenStore, expected)
         val query = if (profile.isOrganization) OrganizationReadmeQuery else UserReadmeQuery
-        val owner = session.execute(query, buildJsonObject { put("login", profile.login) })
-            .graphObject(if (profile.isOrganization) "organization" else "user")
+        val owner =
+            session
+                .execute(query, buildJsonObject { put("login", profile.login) })
+                .graphObject(if (profile.isOrganization) "organization" else "user")
         check(owner.graphRequiredText("login").equals(profile.login, ignoreCase = true))
         if (profile.nodeId != null) check(owner.graphRequiredText("id") == profile.nodeId)
         val readme = owner["readme"]
-        if (readme == JsonNull || owner["showProfileReadme"]?.jsonPrimitive?.contentOrNull == "false") {
+        if (
+            readme == JsonNull ||
+                owner["showProfileReadme"]?.jsonPrimitive?.contentOrNull == "false"
+        ) {
             return profile.copy(readmeHtml = null, readmePath = null, readmeResolved = true)
         }
         val payload = readme as? JsonObject ?: throw ProfileException()
         val html = payload.graphText("contentHTML") ?: throw ProfileException()
         val path = payload.graphRequiredText("path")
-        if (html.length > 4 * 1024 * 1024 || !isRepositoryContentPath(path)) throw ProfileException()
-        return profile.copy(readmeHtml = html.takeIf(String::isNotBlank), readmePath = path, readmeResolved = true)
+        if (html.length > 4 * 1024 * 1024 || !isRepositoryContentPath(path))
+            throw ProfileException()
+        return profile.copy(
+            readmeHtml = html.takeIf(String::isNotBlank),
+            readmePath = path,
+            readmeResolved = true,
+        )
     }
 
     suspend fun setFollowing(expected: String, userId: String, selected: Boolean): Boolean {
@@ -450,7 +460,8 @@ private val UserReadmeQuery =
             id login showProfileReadme readme: profileReadme { contentHTML path }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun userProfileQuery(
     includePrivateFields: Boolean,

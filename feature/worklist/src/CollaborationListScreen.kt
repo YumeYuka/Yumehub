@@ -18,7 +18,7 @@ import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 internal fun LazyListScope.CollaborationListScreen(
     kind: CollaborationKind,
     slots: GithubPagingSlots<CollaborationItemDto>,
-    onOpenItem: (Int) -> Unit,
+    onOpenItem: (Int, String?) -> Unit,
     card: (CollaborationItemDto) -> WorkCardContent,
 ) {
     githubPagingItems(
@@ -31,7 +31,11 @@ internal fun LazyListScope.CollaborationListScreen(
                 content.updates.collectAsStateWithLifecycle(content.initial).value
             }
         }
-        GithubWorkItemCard(rich, kind, onClick = entry?.let { { onOpenItem(it.number) } })
+        GithubWorkItemCard(
+            rich,
+            kind,
+            onClick = entry?.let { { onOpenItem(it.number, rich?.title) } },
+        )
     }
     collaborationPagingStatus(
         slots = slots,

@@ -13,6 +13,7 @@ import moe.yumeyuka.yumehub.data.cache.CacheSession
 class TokenStore internal constructor(private val externalStorage: KeyValueStorage) :
     MMKVPreference(mmkv = externalStorage) {
     constructor(externalMmkv: MMKV) : this(RealMMKVStorage(externalMmkv))
+
     internal val responseCacheSession = CacheSession()
     private val mutableSessionGeneration = MutableStateFlow(0L)
     val sessionGeneration = mutableSessionGeneration.asStateFlow()
@@ -20,9 +21,12 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
     private val current
         get() = records.value.firstOrNull() ?: SavedAccount()
 
-    /** Opaque scope for restoring navigation after process recreation. Rotated on reauthorization. */
+    /**
+     * Opaque scope for restoring navigation after process recreation. Rotated on reauthorization.
+     */
     val navigationSessionId: String?
-        get() = current.takeIf { it.login.isNotBlank() && it.accessToken.isNotBlank() }?.cacheSessionId
+        get() =
+            current.takeIf { it.login.isNotBlank() && it.accessToken.isNotBlank() }?.cacheSessionId
 
     private val mutableAccounts = MutableStateFlow(avatars(records.value))
     val accounts = mutableAccounts.asStateFlow()
@@ -69,12 +73,10 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
                     )
             }
         // 旧记录缺会话 ID 时生成并原子保存；保存失败保留认证，但本会话禁用持久缓存。
-        val migrated =
-            list.map { account ->
-                if (account.cacheSessionId.isBlank())
-                    account.copy(cacheSessionId = newSessionId())
-                else account
-            }
+        val migrated = list.map { account ->
+            if (account.cacheSessionId.isBlank()) account.copy(cacheSessionId = newSessionId())
+            else account
+        }
         if (stored == null || migrated != list) {
             try {
                 persist(migrated)
@@ -208,8 +210,7 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
         synchronized(responseCacheSession.lock) {
             if (responseCacheSession.id == null) {
                 val active = records.value.firstOrNull()
-                val id =
-                    active?.cacheSessionId?.takeIf(String::isNotBlank) ?: newSessionId()
+                val id = active?.cacheSessionId?.takeIf(String::isNotBlank) ?: newSessionId()
                 responseCacheSession.restore(active?.login.orEmpty(), id)
             }
         }
@@ -225,14 +226,13 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
             vararg accounts: Pair<String, String>,
         ): TokenStore {
             if (accounts.isNotEmpty()) {
-                val saved =
-                    accounts.map { (login, token) ->
-                        SavedAccount(
-                            login = login,
-                            accessToken = token,
-                            cacheSessionId = "session-${login.lowercase(Locale.ROOT)}",
-                        )
-                    }
+                val saved = accounts.map { (login, token) ->
+                    SavedAccount(
+                        login = login,
+                        accessToken = token,
+                        cacheSessionId = "session-${login.lowercase(Locale.ROOT)}",
+                    )
+                }
                 storage.encode(
                     "savedAccounts.v1",
                     Json.encodeToString(

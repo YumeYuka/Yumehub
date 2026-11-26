@@ -95,7 +95,8 @@ internal constructor(
                 if (error.invalidatesCachedContent()) {
                     olderCursors.clear()
                     newerCursors.clear()
-                    mutable.value = ThreadWindowState(failed = ThreadDirection.Latest, error = error)
+                    mutable.value =
+                        ThreadWindowState(failed = ThreadDirection.Latest, error = error)
                 } else mutable.value = old.copy(loading = null, failed = direction, error = error)
             }
         }

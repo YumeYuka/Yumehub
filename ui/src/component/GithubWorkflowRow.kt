@@ -31,18 +31,34 @@ fun GithubWorkflowStatusIcon(state: String?, contentDescription: String?, size: 
     val muted = GlasmioTheme.colors.secondaryContent
     val icon =
         when (state?.uppercase()) {
-            "ACTIVE", "IN_PROGRESS" -> Lucide.CirclePlay
-            "SUCCESS", "COMPLETED" -> Lucide.CircleCheck
-            "FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED" -> Lucide.CircleX
-            "QUEUED", "REQUESTED", "PENDING", "WAITING", "EXPECTED" -> Lucide.Clock
-            "CANCELLED", "SKIPPED", "STALE", "DELETED", "DISABLED_FORK",
-            "DISABLED_INACTIVITY", "DISABLED_MANUALLY" -> Lucide.CircleSlash
+            "ACTIVE",
+            "IN_PROGRESS" -> Lucide.CirclePlay
+            "SUCCESS",
+            "COMPLETED" -> Lucide.CircleCheck
+            "FAILURE",
+            "ERROR",
+            "TIMED_OUT",
+            "STARTUP_FAILURE",
+            "ACTION_REQUIRED" -> Lucide.CircleX
+            "QUEUED",
+            "REQUESTED",
+            "PENDING",
+            "WAITING",
+            "EXPECTED" -> Lucide.Clock
+            "CANCELLED",
+            "SKIPPED",
+            "STALE",
+            "DELETED",
+            "DISABLED_FORK",
+            "DISABLED_INACTIVITY",
+            "DISABLED_MANUALLY" -> Lucide.CircleSlash
             else -> Lucide.Circle
         }
     val color =
         when (icon) {
             Lucide.CircleX -> GithubWorkColors.closed
-            Lucide.CircleCheck -> if (state.equals("SUCCESS", true)) GithubWorkColors.open else muted
+            Lucide.CircleCheck ->
+                if (state.equals("SUCCESS", true)) GithubWorkColors.open else muted
             Lucide.CirclePlay ->
                 if (state.equals("IN_PROGRESS", true)) GlasmioTheme.colors.accent
                 else GlasmioTheme.colors.content

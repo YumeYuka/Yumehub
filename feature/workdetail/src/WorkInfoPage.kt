@@ -41,15 +41,15 @@ import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
+import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
-import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
+import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -110,7 +110,10 @@ internal fun WorkInfoSheet(
                 },
                 actions = {
                     if (state.value != null) {
-                        GlasmioIconButton(onClick = { viewModel.saveAll() }, enabled = !state.submitting) {
+                        GlasmioIconButton(
+                            onClick = { viewModel.saveAll() },
+                            enabled = !state.submitting,
+                        ) {
                             GithubIcon(Lucide.Check, contentDescription = strings.SaveChanges)
                         }
                     }
@@ -125,15 +128,29 @@ internal fun WorkInfoSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            WorkInfoSections(state, viewModel, kind, item, "$owner/$name", onOpenWork, onOpenBaseBranch, onOpenIssueFields)
+            WorkInfoSections(
+                state,
+                viewModel,
+                kind,
+                item,
+                "$owner/$name",
+                onOpenWork,
+                onOpenBaseBranch,
+                onOpenIssueFields,
+            )
         }
     }
     if (visible) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
 }
 
-
 @Composable
-private fun workInfoViewModel(owner: String, name: String, kind: CollaborationKind, number: Int, login: String): WorkInfoViewModel =
+private fun workInfoViewModel(
+    owner: String,
+    name: String,
+    kind: CollaborationKind,
+    number: Int,
+    login: String,
+): WorkInfoViewModel =
     koinViewModel(
         key = "work-info-$login-$owner-$name-${kind.name}-$number",
         parameters = { parametersOf(owner, name, kind, number, login) },
@@ -178,7 +195,6 @@ internal fun WorkPropertySheet(
     )
 }
 
-
 @Composable
 private fun WorkInfoSections(
     state: WorkPropertiesState,
@@ -211,7 +227,9 @@ private fun WorkInfoSections(
                 fields.forEachIndexed { index, field ->
                     GlasmioListRow(
                         title = field.name,
-                        detail = field.value?.let { field.displayValue(it) } ?: strings.NoIssueFieldValue,
+                        detail =
+                            field.value?.let { field.displayValue(it) }
+                                ?: strings.NoIssueFieldValue,
                         showTopSeparator = index > 0,
                         showDisclosure = false,
                     )
@@ -222,7 +240,9 @@ private fun WorkInfoSections(
     if (state.referencesFailed || !state.references.isNullOrEmpty()) {
         GithubSection(strings.ReferencedItems) {
             if (state.referencesFailed) WorkSheetRetry(viewModel::retryReferences)
-            state.references?.forEachIndexed { index, option -> WorkLinkedItemRow(option, repo, index > 0, onOpenWork) }
+            state.references?.forEachIndexed { index, option ->
+                WorkLinkedItemRow(option, repo, index > 0, onOpenWork)
+            }
         }
     }
     val value = state.value
@@ -285,7 +305,11 @@ private fun WorkInfoSections(
 
 @Composable
 private fun WorkSheetRetry(onRetry: () -> Unit) {
-    GlasmioListRow(title = LocalGithubStrings.current.Common.Retry, subtitle = LocalGithubStrings.current.WorkDetail.PropertyLoadFailed, onClick = onRetry)
+    GlasmioListRow(
+        title = LocalGithubStrings.current.Common.Retry,
+        subtitle = LocalGithubStrings.current.WorkDetail.PropertyLoadFailed,
+        onClick = onRetry,
+    )
 }
 
 @Composable
@@ -300,8 +324,9 @@ private fun WorkInfoStatusSection(
     val checks = item.requiredStatusChecks
     val passed = checks.count { it.state == "SUCCESS" }
     val failed = checks.any { it.state == "FAILURE" || it.state == "ERROR" }
-    val pending =
-        checks.any { it.state == "PENDING" || it.state == "EXPECTED" || it.state == "IN_PROGRESS" }
+    val pending = checks.any {
+        it.state == "PENDING" || it.state == "EXPECTED" || it.state == "IN_PROGRESS"
+    }
     val checksColor =
         when {
             item.allStatusChecksPassed -> GithubWorkColors.open
@@ -390,7 +415,14 @@ private fun WorkInfoDetailsSection(item: CollaborationItemDto) {
     GlasmioGroupedList {
         GlasmioListRow(
             title = all.WorkDetail.Author,
-            leading = { GithubIcon(Lucide.AtSign, contentDescription = null, size = 20.dp, tint = GlasmioTheme.colors.secondaryContent) },
+            leading = {
+                GithubIcon(
+                    Lucide.AtSign,
+                    contentDescription = null,
+                    size = 20.dp,
+                    tint = GlasmioTheme.colors.secondaryContent,
+                )
+            },
             showTopSeparator = false,
             showDisclosure = false,
             trailing = {
@@ -486,8 +518,7 @@ private fun WorkLinkedItemRow(
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
 ) {
     val kind =
-        if (option.kind == "PullRequest") CollaborationKind.PullRequest
-        else CollaborationKind.Issue
+        if (option.kind == "PullRequest") CollaborationKind.PullRequest else CollaborationKind.Issue
     val number = option.number
     val owner = option.subtitle?.takeIf { it.contains('/') }?.substringBefore('/')
     val name = option.subtitle?.takeIf { it.contains('/') }?.substringAfter('/')
@@ -587,7 +618,8 @@ private fun WorkPropertySelectionSheet(
     saveImmediately: Boolean = false,
     requestedProperty: WorkProperty? = null,
 ) {
-    val live = state.editor?.takeIf { requestedProperty == null || it.property == requestedProperty }
+    val live =
+        state.editor?.takeIf { requestedProperty == null || it.property == requestedProperty }
     // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
     var retained by remember(requestedProperty) { mutableStateOf<WorkPropertyEditor?>(null) }
     SideEffect { if (live != null) retained = live }
@@ -616,7 +648,10 @@ private fun WorkPropertySelectionSheet(
         onConfirm = { viewModel?.applyEditor(saveImmediately) },
         showConfirm = editor?.editable == true,
         confirmEnabled =
-            live != null && !live.loading && !live.failed && !live.needsReconcile &&
+            live != null &&
+                !live.loading &&
+                !live.failed &&
+                !live.needsReconcile &&
                 !state.submitting,
         requestClose = live == null && retained != null,
     ) {

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,7 +84,8 @@ class MainActivity : ComponentActivity() {
                 componentContext = componentContext,
                 predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
                 predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,
-                restored = tokens.navigationSessionId?.let { savedNavigation?.restoreNavigation(it) },
+                restored =
+                    tokens.navigationSessionId?.let { savedNavigation?.restoreNavigation(it) },
             )
         }
         savedNavigation = null
@@ -101,7 +101,8 @@ class MainActivity : ComponentActivity() {
                 initialInsetsReady ||
                     WindowInsets.systemBars.getTop(LocalDensity.current) ==
                         windowManager.currentWindowMetrics.windowInsets
-                            .getInsets(AndroidWindowInsets.Type.systemBars()).top
+                            .getInsets(AndroidWindowInsets.Type.systemBars())
+                            .top
             ) {
                 SideEffect {
                     initialInsetsReady = true
@@ -139,12 +140,15 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(LoginOpenKey, loginOpen)
         if (::navigationComponent.isInitialized) {
-            tokens.navigationSessionId?.let { outState.putBundle(NavigationKey, navigationComponent.saveNavigation(it)) }
+            tokens.navigationSessionId?.let {
+                outState.putBundle(NavigationKey, navigationComponent.saveNavigation(it))
+            }
         } else savedNavigation?.let { outState.putBundle(NavigationKey, it) }
         outState.putBoolean(LinkHandledKey, true)
         outState.putString(
             PendingLinkKey,
-            if (::navigationComponent.isInitialized) navigationComponent.pendingLink else startupLink,
+            if (::navigationComponent.isInitialized) navigationComponent.pendingLink
+            else startupLink,
         )
         super.onSaveInstanceState(outState)
     }

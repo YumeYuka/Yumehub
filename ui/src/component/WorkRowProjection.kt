@@ -24,14 +24,17 @@ fun rememberWorkRowProjection(target: WorkTarget?): WorkRowProjection {
     if (account.isBlank()) return NoWorkWrite
     val repo: WorkDetailRepository = koinInject()
     return key(account, generation, target) {
-        val overlay by remember(repo) { repo.rowProjection(account, target) }.collectAsStateWithLifecycle(NoWorkWrite)
+        val overlay by
+            remember(repo) { repo.rowProjection(account, target) }
+                .collectAsStateWithLifecycle(NoWorkWrite)
         overlay
     }
 }
 
 @Composable
-fun workMergeProgress(phase: WritePhase): String? = when (phase) {
-    WritePhase.PENDING -> LocalGithubStrings.current.WorkDetail.Merging
-    WritePhase.UNCERTAIN -> LocalGithubStrings.current.Common.MutationUncertain
-    else -> null
-}
+fun workMergeProgress(phase: WritePhase): String? =
+    when (phase) {
+        WritePhase.PENDING -> LocalGithubStrings.current.WorkDetail.Merging
+        WritePhase.UNCERTAIN -> LocalGithubStrings.current.Common.MutationUncertain
+        else -> null
+    }

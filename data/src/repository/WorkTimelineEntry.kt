@@ -28,7 +28,6 @@ public sealed interface WorkTimelineEntry {
     ) : WorkTimelineEntry {
         override val key: String = "event-$id"
     }
-
 }
 
 public enum class WorkTimelineEventKind {

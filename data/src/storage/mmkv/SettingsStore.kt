@@ -29,15 +29,17 @@ class SettingsStore internal constructor(storage: KeyValueStorage) :
     companion object {
         fun forTesting(storage: KeyValueStorage): SettingsStore = SettingsStore(storage)
     }
+
     private val pendingWrites = mutableMapOf<String, () -> Unit>()
     private val writeSignal = Channel<Unit>(Channel.CONFLATED)
 
     init {
         CoroutineScope(Dispatchers.IO).launch {
             for (signal in writeSignal) {
-                val writes = synchronized(pendingWrites) {
-                    pendingWrites.values.toList().also { pendingWrites.clear() }
-                }
+                val writes =
+                    synchronized(pendingWrites) {
+                        pendingWrites.values.toList().also { pendingWrites.clear() }
+                    }
                 for (write in writes) {
                     try {
                         write()

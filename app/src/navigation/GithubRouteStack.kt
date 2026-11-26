@@ -36,11 +36,11 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.feature.editor.EditorRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 
 /** 以条目引用区分每次入栈；路由参数相同的页面也拥有独立子组件和页面状态。 */
@@ -107,20 +107,34 @@ internal class RouteChild(
             LocalGithubCardMotionEnabled provides (top && LocalGithubCardMotionEnabled.current),
             LocalGithubPageState provides pageState,
         ) {
-            val input = if (top) Modifier else Modifier.clearAndSetSemantics {}.pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
-                }
-            }
-            Box(Modifier.fillMaxSize().clipToBounds().background(GlasmioTheme.colors.groupedBackground)
-                .focusProperties { onEnter = { if (!top) cancelFocusChange() } }.focusGroup().then(input)) {
+            val input =
+                if (top) Modifier
+                else
+                    Modifier.clearAndSetSemantics {}
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) awaitPointerEvent(PointerEventPass.Initial)
+                                    .changes
+                                    .forEach { it.consume() }
+                            }
+                        }
+            Box(
+                Modifier.fillMaxSize()
+                    .clipToBounds()
+                    .background(GlasmioTheme.colors.groupedBackground)
+                    .focusProperties { onEnter = { if (!top) cancelFocusChange() } }
+                    .focusGroup()
+                    .then(input),
+            ) {
                 if (route is MainTabsRoute) GithubMainScreen(navigator)
                 else {
                     val backdrop = rememberLayerBackdrop()
                     CompositionLocalProvider(
                         LocalGithubPageBackdrop provides backdrop,
                         LocalBlurBackdrop provides backdrop,
-                    ) { GithubRouteContent(route, navigator) }
+                    ) {
+                        GithubRouteContent(route, navigator)
+                    }
                 }
             }
         }
@@ -160,7 +174,8 @@ internal fun GithubRouteStackHost(
     val childStack by stack.value.subscribeAsState()
     // 内容 lambda 不能捕获任何外壳状态：预测返回以它为 key 记住 movableContent，实例一变整棵页面树就会重建。
     // 页面需要的环境都经 CompositionLocal 读取。
-    Children(stack = childStack, modifier = modifier.fillMaxSize(), animation = animation) { child ->
+    Children(stack = childStack, modifier = modifier.fillMaxSize(), animation = animation) { child
+        ->
         child.instance.Content()
     }
 }

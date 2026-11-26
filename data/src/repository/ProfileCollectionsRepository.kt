@@ -1,14 +1,12 @@
 package moe.yumeyuka.yumehub.data.repository
 
-import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import androidx.paging.PagingData
 import java.util.Locale
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.builtins.ListSerializer
-import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -20,6 +18,8 @@ import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 class ProfileCollectionsRepository(
@@ -32,24 +32,44 @@ class ProfileCollectionsRepository(
         get() = tokenStore.accountLogin.value
 
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
     fun starredChanges(account: String) = cache.starredRows(account).changes { it }
 
-    fun listChanges(account: String, listId: String) = cache.listRows(account).changes(listId) { listId in it }
+    fun listChanges(account: String, listId: String) =
+        cache.listRows(account).changes(listId) { listId in it }
 
-    fun submitRepositoryLists(account: String, row: RepositoryDto, before: Set<String>, after: Set<String>): Boolean {
+    fun submitRepositoryLists(
+        account: String,
+        row: RepositoryDto,
+        before: Set<String>,
+        after: Set<String>,
+    ): Boolean {
         val id = row.nodeId ?: return false
         val added = after - before
         val removed = before - after
-        val accepted = cache.mutations(account).submit(repositoryListsKey(id), before.sorted(), after.sorted(),
-            setOf(CacheTag(DataDomain.Repositories, null)),
-            send = {
-                val remote = try { repositoryListIds(account, id) } catch (cancel: CancellationException) { throw cancel }
-                    catch (error: Exception) { throw MutationRejectedException(cause = error) }
-                val next = (remote - removed) + added
-                if (remote == next) remote.sorted() else updateRepositoryLists(account, id, next)
-            },
-            readBack = { repositoryListIds(account, id).sorted() },
-        )
+        val accepted =
+            cache
+                .mutations(account)
+                .submit(
+                    repositoryListsKey(id),
+                    before.sorted(),
+                    after.sorted(),
+                    setOf(CacheTag(DataDomain.Repositories, null)),
+                    send = {
+                        val remote =
+                            try {
+                                repositoryListIds(account, id)
+                            } catch (cancel: CancellationException) {
+                                throw cancel
+                            } catch (error: Exception) {
+                                throw MutationRejectedException(cause = error)
+                            }
+                        val next = (remote - removed) + added
+                        if (remote == next) remote.sorted()
+                        else updateRepositoryLists(account, id, next)
+                    },
+                    readBack = { repositoryListIds(account, id).sorted() },
+                )
         if (accepted) cache.listRows(account).track(id, row, added + removed)
         return accepted
     }
@@ -117,19 +137,33 @@ class ProfileCollectionsRepository(
             ::repositoryItem,
             query.trim().takeIf(String::isNotEmpty),
             serializer = RepositoryDto.serializer(),
-            tags = setOf(relationshipCacheTag(if (account.equals(login, true)) "viewer:starred" else "stars:${login.lowercase(Locale.ROOT)}")),
+            tags =
+                setOf(
+                    relationshipCacheTag(
+                        if (account.equals(login, true)) "viewer:starred"
+                        else "stars:${login.lowercase(Locale.ROOT)}",
+                    ),
+                ),
         )
 
-    fun userListsTag(login: String) = CacheTag(DataDomain.Repositories, "user-lists:${login.lowercase(Locale.ROOT)}")
+    fun userListsTag(login: String) =
+        CacheTag(DataDomain.Repositories, "user-lists:${login.lowercase(Locale.ROOT)}")
 
-    private fun catalog(account: String, login: String) = cache.resource(account,
-        "user-lists-v1:${login.lowercase(Locale.ROOT)}", ListSerializer(UserRepositoryList.serializer()), tags = setOf(userListsTag(login)))
+    private fun catalog(account: String, login: String) =
+        cache.resource(
+            account,
+            "user-lists-v1:${login.lowercase(Locale.ROOT)}",
+            ListSerializer(UserRepositoryList.serializer()),
+            tags = setOf(userListsTag(login)),
+        )
 
-    fun observeUserLists(account: String, login: String) = catalog(account, login).observe {
-        RemoteFetch.Fresh(fetchUserLists(account, login))
-    }
+    fun observeUserLists(account: String, login: String) =
+        catalog(account, login).observe {
+            RemoteFetch.Fresh(fetchUserLists(account, login))
+        }
 
-    fun refreshUserLists(account: String, login: String) = catalog(account, login).refresh(force = true) { fetchUserLists(account, login) }
+    fun refreshUserLists(account: String, login: String) =
+        catalog(account, login).refresh(force = true) { fetchUserLists(account, login) }
 
     private suspend fun fetchUserLists(account: String, login: String): List<UserRepositoryList> {
         val session = GithubGraphQlSession(api, tokenStore, account)
@@ -243,9 +277,15 @@ class ProfileCollectionsRepository(
                 .graphObject("item")
         if (item.graphRequiredText("id") != repositoryId) throw GithubPageException()
         val lists = item.graphObject("lists")
-        if (lists.graphCursor(null) == null) return lists.graphNodes().map { it.graphRequiredText("id") }.sorted()
-        return try { repositoryListIds(account, repositoryId).sorted() } catch (cancel: CancellationException) { throw cancel }
-            catch (error: Exception) { throw java.io.IOException("Could not read all lists after update", error) }
+        if (lists.graphCursor(null) == null)
+            return lists.graphNodes().map { it.graphRequiredText("id") }.sorted()
+        return try {
+            repositoryListIds(account, repositoryId).sorted()
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Exception) {
+            throw java.io.IOException("Could not read all lists after update", error)
+        }
     }
 
     fun listItems(
@@ -290,11 +330,14 @@ class ProfileCollectionsRepository(
                     if (cursor != null && !seenCursors.add(cursor)) throw GithubPageException()
                     matchingItems =
                         if (needle.isBlank()) repositories
-                        else repositories.filter { repository ->
-                            repository.fullName.orEmpty().contains(needle, ignoreCase = true) ||
-                                repository.name.orEmpty().contains(needle, ignoreCase = true) ||
-                                repository.description.orEmpty().contains(needle, ignoreCase = true)
-                        }
+                        else
+                            repositories.filter { repository ->
+                                repository.fullName.orEmpty().contains(needle, ignoreCase = true) ||
+                                    repository.name.orEmpty().contains(needle, ignoreCase = true) ||
+                                    repository.description
+                                        .orEmpty()
+                                        .contains(needle, ignoreCase = true)
+                            }
                 } while (matchingItems.isEmpty() && cursor != null)
                 GithubGraphQlPage(matchingItems, cursor)
             }

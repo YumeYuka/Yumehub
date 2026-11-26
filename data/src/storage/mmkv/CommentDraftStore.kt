@@ -13,7 +13,9 @@ import moe.yumeyuka.yumehub.data.cache.ConfirmedWrites
 /** 评论草稿与凭据分库存储，账号与目标共同决定隔离键。 */
 class CommentDraftStore(provider: MMKVProvider) {
     private val operations = Channel<() -> Unit>(Channel.UNLIMITED)
+
     private class Write(var encode: () -> String)
+
     private val queued = mutableMapOf<String, Write>()
 
     init {
@@ -25,7 +27,8 @@ class CommentDraftStore(provider: MMKVProvider) {
 
     private val storage by lazy { provider.getStorage("comment-drafts") }
 
-    suspend fun load(account: String, target: String): String = loadOrNull(account, target).orEmpty()
+    suspend fun load(account: String, target: String): String =
+        loadOrNull(account, target).orEmpty()
 
     suspend fun loadOrNull(account: String, target: String): String? =
         suspendCancellableCoroutine { result ->
@@ -42,11 +45,18 @@ class CommentDraftStore(provider: MMKVProvider) {
         val id = key(account, target)
         synchronized(queued) {
             val waiting = queued[id]
-            if (waiting != null) { waiting.encode = encode; return }
+            if (waiting != null) {
+                waiting.encode = encode
+                return
+            }
             val write = Write(encode)
             queued[id] = write
             operations.trySend {
-                val latest = synchronized(queued) { queued.remove(id, write); write.encode }
+                val latest =
+                    synchronized(queued) {
+                        queued.remove(id, write)
+                        write.encode
+                    }
                 access { storage.encode(id, latest()) }
             }
         }
@@ -71,7 +81,11 @@ class CommentDraftStore(provider: MMKVProvider) {
     /** A late response to a closed editor must not delete a subsequently edited draft. */
     fun removeIfUnchanged(account: String, target: String, submitted: String) {
         val id = key(account, target)
-        afterConfirmation { barrier(id) { access { if (storage.decodeString(id) == submitted) storage.removeValueForKey(id) } } }
+        afterConfirmation {
+            barrier(id) {
+                access { if (storage.decodeString(id) == submitted) storage.removeValueForKey(id) }
+            }
+        }
     }
 
     fun remove(account: String, target: String) {

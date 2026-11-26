@@ -21,7 +21,11 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import retrofit2.HttpException
 
-enum class GraphQlRequestStage { PREPARE, SEND, RESPONSE }
+enum class GraphQlRequestStage {
+    PREPARE,
+    SEND,
+    RESPONSE,
+}
 
 data class GithubGraphQlPage<T>(val items: List<T>, val nextCursor: String?)
 
@@ -78,9 +82,15 @@ internal class GithubGraphQlSession(
                         cause = error,
                     )
                 }
-                // A failed read, including read-back after a write, is not proof of a rejected mutation.
-                if (moe.yumeyuka.yumehub.data.cache.ConfirmedWrites.current.get() == null) throw error
-                throw GithubPageException(message = error.message(), stage = GraphQlRequestStage.RESPONSE, cause = error)
+                // A failed read, including read-back after a write, is not proof of a rejected
+                // mutation.
+                if (moe.yumeyuka.yumehub.data.cache.ConfirmedWrites.current.get() == null)
+                    throw error
+                throw GithubPageException(
+                    message = error.message(),
+                    stage = GraphQlRequestStage.RESPONSE,
+                    cause = error,
+                )
             }
         currentCoroutineContext().ensureActive()
         ensureCurrent()
@@ -108,21 +118,39 @@ internal class GithubGraphQlSession(
     }
 }
 
-private val rejectionTypes = setOf("FORBIDDEN", "UNPROCESSABLE", "BAD_USER_INPUT", "NOT_FOUND",
-    "UNAUTHORIZED", "UNAUTHENTICATED", "INSUFFICIENT_SCOPES", "VALIDATION_ERROR", "CONFLICT")
+private val rejectionTypes =
+    setOf(
+        "FORBIDDEN",
+        "UNPROCESSABLE",
+        "BAD_USER_INPUT",
+        "NOT_FOUND",
+        "UNAUTHORIZED",
+        "UNAUTHENTICATED",
+        "INSUFFICIENT_SCOPES",
+        "VALIDATION_ERROR",
+        "CONFLICT",
+    )
 
 internal fun GraphQlResponse.definitelyRejected(): Boolean {
-    if (errors.isEmpty() || !(data == null || data == JsonNull ||
-            (data is JsonObject && data.values.all { it == JsonNull }))) return false
+    if (
+        errors.isEmpty() ||
+            !(data == null ||
+                data == JsonNull ||
+                (data is JsonObject && data.values.all { it == JsonNull }))
+    )
+        return false
     return errors.all { error ->
-        (error.type ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
+        (error.type
+            ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
             ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
-            ?: (error.extensions?.get("classification") as? JsonPrimitive)?.contentOrNull) in rejectionTypes
+            ?: (error.extensions?.get("classification") as? JsonPrimitive)?.contentOrNull) in
+            rejectionTypes
     }
 }
 
 internal fun GraphQlResponse.checkWriteErrors() {
-    if (errors.isNotEmpty()) throw GithubPageException(errors = errors, definiteRejection = definitelyRejected())
+    if (errors.isNotEmpty())
+        throw GithubPageException(errors = errors, definiteRejection = definitelyRejected())
 }
 
 /** 页码仅作本地索引，网络翻页只使用真实 cursor；同一 Source 的加载串行化。 */
@@ -154,14 +182,20 @@ fun <T : Any> githubGraphQlPager(
             )
         }
         GithubGraphQlPagingSource(
-            config.pageSize, identity, mapItem, loader, context::ensureCurrent, firstPageCache,
+            config.pageSize,
+            identity,
+            mapItem,
+            loader,
+            context::ensureCurrent,
+            firstPageCache,
         )
     }
 
 internal class GithubGraphQlFirstPageCache<T : Any>(
     val restore: suspend () -> PagingSnapshotPage<T>?,
     val save: (PagingSnapshotPage<T>) -> Unit,
-    val revalidate: (PagingSource<Int, T>, suspend () -> Pair<PagingSnapshotPage<T>, Boolean>) -> Unit,
+    val revalidate:
+        (PagingSource<Int, T>, suspend () -> Pair<PagingSnapshotPage<T>, Boolean>) -> Unit,
     val discardDenied: suspend (Throwable) -> Unit,
 )
 
@@ -178,80 +212,82 @@ internal class GithubGraphQlPagingSource<T : Any>(
     private val seen = mutableMapOf<String, Int>()
     private val request by lazy(LazyThreadSafetyMode.NONE, loader)
 
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, T> =
-        mutex.withLock {
-            try {
-                ensureCurrent()
-                val page = params.key ?: 1
-                if (page !in cursors || page !in 1..1000) throw GithubPageException()
-                val cached =
-                    if (page == 1 && params is LoadParams.Refresh) {
-                        firstPageCache?.restore?.invoke()?.takeIf {
-                            it.page == 1 && it.requestCursor == null && it.nextCursor?.isBlank() != true
-                        }
-                    } else null
-                val result =
-                    if (cached == null) {
-                        pageRead { requestPage(cursors[page], request) }
-                    } else GithubGraphQlPage(cached.items, cached.nextCursor)
-                currentCoroutineContext().ensureActive()
-                ensureCurrent()
-                val next = result.nextCursor
-                if (
-                    next != null &&
-                        (page == 1000 ||
-                            cursors.any { (index, value) ->
-                                index != page + 1 && value == next
-                            })
-                )
-                    throw GithubPageException()
-                if (page + 1 in cursors && cursors[page + 1] != next)
-                    throw GithubPageException()
-                val local = mutableSetOf<String>()
-                val items =
-                    result.items.mapNotNull {
-                        val id =
-                            identity(it).takeIf(String::isNotBlank)
-                                ?: throw GithubPageException()
-                        if (local.add(id) && seen.getOrPut(id) { page } == page) mapItem(it)
-                        else null
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, T> = mutex.withLock {
+        try {
+            ensureCurrent()
+            val page = params.key ?: 1
+            if (page !in cursors || page !in 1..1000) throw GithubPageException()
+            val cached =
+                if (page == 1 && params is LoadParams.Refresh) {
+                    firstPageCache?.restore?.invoke()?.takeIf {
+                        it.page == 1 && it.requestCursor == null && it.nextCursor?.isBlank() != true
                     }
-                if (next != null) cursors[page + 1] = next
-                if (cached == null && page == 1) firstPageCache?.save?.invoke(firstPage(result))
-                if (cached != null && firstPageCache != null && !cached.isFresh()) {
-                    firstPageCache.revalidate(this) {
-                        // A validation read owns its loader, never the active cursor chain or its mutex.
-                        val updated = requestPage(null, loader())
-                        firstPage(updated) to (cached.boundaryInvalid || updated != result)
-                    }
+                } else null
+            val result =
+                if (cached == null) {
+                    pageRead { requestPage(cursors[page], request) }
+                } else GithubGraphQlPage(cached.items, cached.nextCursor)
+            currentCoroutineContext().ensureActive()
+            ensureCurrent()
+            val next = result.nextCursor
+            if (
+                next != null &&
+                    (page == 1000 ||
+                        cursors.any { (index, value) ->
+                            index != page + 1 && value == next
+                        })
+            )
+                throw GithubPageException()
+            if (page + 1 in cursors && cursors[page + 1] != next) throw GithubPageException()
+            val local = mutableSetOf<String>()
+            val items =
+                result.items.mapNotNull {
+                    val id = identity(it).takeIf(String::isNotBlank) ?: throw GithubPageException()
+                    if (local.add(id) && seen.getOrPut(id) { page } == page) mapItem(it) else null
                 }
-                LoadResult.Page(
-                    items,
-                    (page - 1).takeIf { it >= 1 },
-                    if (next == null) null else page + 1,
-                )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                currentCoroutineContext().ensureActive()
-                LoadResult.Error(error)
+            if (next != null) cursors[page + 1] = next
+            if (cached == null && page == 1) firstPageCache?.save?.invoke(firstPage(result))
+            if (cached != null && firstPageCache != null && !cached.isFresh()) {
+                firstPageCache.revalidate(this) {
+                    // A validation read owns its loader, never the active cursor chain or its
+                    // mutex.
+                    val updated = requestPage(null, loader())
+                    firstPage(updated) to (cached.boundaryInvalid || updated != result)
+                }
             }
-        }
-
-    private suspend fun requestPage(after: String?, load: suspend (String?) -> GithubGraphQlPage<T>): GithubGraphQlPage<T> {
-        ensureCurrent()
-        val page = try {
-            load(after)
-        } catch (error: Exception) {
-            firstPageCache?.discardDenied?.invoke(error)
+            LoadResult.Page(
+                items,
+                (page - 1).takeIf { it >= 1 },
+                if (next == null) null else page + 1,
+            )
+        } catch (error: CancellationException) {
             throw error
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            LoadResult.Error(error)
         }
+    }
+
+    private suspend fun requestPage(
+        after: String?,
+        load: suspend (String?) -> GithubGraphQlPage<T>,
+    ): GithubGraphQlPage<T> {
+        ensureCurrent()
+        val page =
+            try {
+                load(after)
+            } catch (error: Exception) {
+                firstPageCache?.discardDenied?.invoke(error)
+                throw error
+            }
         return page.also { result ->
             currentCoroutineContext().ensureActive()
             ensureCurrent()
-            if (result.nextCursor != null &&
-                (result.nextCursor.isBlank() || result.nextCursor == after)
-            ) throw GithubPageException()
+            if (
+                result.nextCursor != null &&
+                    (result.nextCursor.isBlank() || result.nextCursor == after)
+            )
+                throw GithubPageException()
             if (result.items.any { identity(it).isBlank() }) throw GithubPageException()
         }
     }
@@ -277,24 +313,40 @@ class GithubPageException(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
-/** A denied read invalidates its cached representation. Network and rate-limit failures retain it. */
-fun Throwable.invalidatesCachedContent(): Boolean = when (this) {
-    is HttpException -> when (code()) {
-        401, 404, 410 -> true
-        403 -> response()?.headers()?.let { it["Retry-After"] == null && it["X-RateLimit-Remaining"] != "0" } == true
+/**
+ * A denied read invalidates its cached representation. Network and rate-limit failures retain it.
+ */
+fun Throwable.invalidatesCachedContent(): Boolean =
+    when (this) {
+        is HttpException ->
+            when (code()) {
+                401,
+                404,
+                410 -> true
+                403 ->
+                    response()?.headers()?.let {
+                        it["Retry-After"] == null && it["X-RateLimit-Remaining"] != "0"
+                    } == true
+                else -> false
+            }
+        is ProfileUnavailableException,
+        is WorkDetailTypeMismatchException,
+        is WorkspacesFileNotFound -> true
+        is WorkspacesGraphQlException -> cause?.invalidatesCachedContent() == true
+        is GithubPageException ->
+            cause?.invalidatesCachedContent() == true ||
+                errors.any { error ->
+                    val type =
+                        error.type
+                            ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
+                            ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
+                    type in accessFailureTypes
+                }
         else -> false
     }
-    is ProfileUnavailableException, is WorkDetailTypeMismatchException, is WorkspacesFileNotFound -> true
-    is WorkspacesGraphQlException -> cause?.invalidatesCachedContent() == true
-    is GithubPageException -> cause?.invalidatesCachedContent() == true || errors.any { error ->
-        val type = error.type ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
-            ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
-        type in accessFailureTypes
-    }
-    else -> false
-}
 
-private val accessFailureTypes = setOf("FORBIDDEN", "UNAUTHORIZED", "UNAUTHENTICATED", "INSUFFICIENT_SCOPES", "NOT_FOUND")
+private val accessFailureTypes =
+    setOf("FORBIDDEN", "UNAUTHORIZED", "UNAUTHENTICATED", "INSUFFICIENT_SCOPES", "NOT_FOUND")
 
 internal fun JsonObject.graphObject(key: String): JsonObject =
     get(key) as? JsonObject ?: throw GithubPageException()

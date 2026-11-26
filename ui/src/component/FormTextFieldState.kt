@@ -19,23 +19,24 @@ fun rememberFormTextFieldState(value: String, onValueChange: (String) -> Unit): 
         var previousModel = model
         var pending: String? = null
         field.replaceFormText(previousModel)
-        snapshotFlow { model to field.text.toString() }.collect { (current, draft) ->
-            if (current != previousModel) {
-                previousModel = current
-                val externalEdit = current != pending
-                pending = null
-                if (externalEdit) {
-                    field.replaceFormText(current)
-                    return@collect
+        snapshotFlow { model to field.text.toString() }
+            .collect { (current, draft) ->
+                if (current != previousModel) {
+                    previousModel = current
+                    val externalEdit = current != pending
+                    pending = null
+                    if (externalEdit) {
+                        field.replaceFormText(current)
+                        return@collect
+                    }
+                }
+                // Wait for the owner's echo before sending another edit. A late echo must not
+                // replace newer typing or interrupt the IME's composing region.
+                if (pending == null && draft != current) {
+                    pending = draft
+                    onChange(draft)
                 }
             }
-            // Wait for the owner's echo before sending another edit. A late echo must not
-            // replace newer typing or interrupt the IME's composing region.
-            if (pending == null && draft != current) {
-                pending = draft
-                onChange(draft)
-            }
-        }
     }
     return field
 }
@@ -46,6 +47,7 @@ fun TextFieldState.replaceFormText(value: String) {
     edit {
         val previous = selection
         replace(0, length, value)
-        selection = TextRange(previous.start.coerceAtMost(length), previous.end.coerceAtMost(length))
+        selection =
+            TextRange(previous.start.coerceAtMost(length), previous.end.coerceAtMost(length))
     }
 }

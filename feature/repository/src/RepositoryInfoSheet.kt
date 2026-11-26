@@ -70,12 +70,13 @@ internal fun RepositoryInfoSheet(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding = PaddingValues(
-                start = 12.dp,
-                top = sheetPadding.calculateTopPadding() + 12.dp,
-                end = 12.dp,
-                bottom = sheetPadding.calculateBottomPadding() + 12.dp,
-            ),
+            contentPadding =
+                PaddingValues(
+                    start = 12.dp,
+                    top = sheetPadding.calculateTopPadding() + 12.dp,
+                    end = 12.dp,
+                    bottom = sheetPadding.calculateBottomPadding() + 12.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             repository?.description?.takeIf(String::isNotBlank)?.let { description ->
@@ -100,10 +101,13 @@ internal fun RepositoryInfoSheet(
                             GlasmioListRow(
                                 title = login,
                                 detail = info.Owner,
-                                leading = { GithubAvatar(owner.avatarUrl, login, owner.type, 24.dp) },
+                                leading = {
+                                    GithubAvatar(owner.avatarUrl, login, owner.type, 24.dp)
+                                },
                                 showTopSeparator = false,
                                 onClick = {
-                                    val path = if (owner.type == "Organization") "orgs/$login" else login
+                                    val path =
+                                        if (owner.type == "Organization") "orgs/$login" else login
                                     onOpenLink("https://github.com/$path")
                                 },
                             )
@@ -113,7 +117,12 @@ internal fun RepositoryInfoSheet(
                                 title = parent.login,
                                 detail = info.ForkedFrom,
                                 leading = {
-                                    GithubAvatar(parent.avatarUrl, parent.login, parent.ownerType, 24.dp)
+                                    GithubAvatar(
+                                        parent.avatarUrl,
+                                        parent.login,
+                                        parent.ownerType,
+                                        24.dp,
+                                    )
                                 },
                                 showTopSeparator = login != null,
                                 onClick = { onOpenLink(parent.url) },

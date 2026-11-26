@@ -26,7 +26,8 @@ internal fun LazyListScope.FeedScreen(
         contentType = "feed-activity",
         placeholder = { FeedActivityPlaceholder() },
     ) { event ->
-        val state = cards[event.cardKey()]?.value ?: remember(event, initialCard) { initialCard(event) }
+        val state =
+            cards[event.cardKey()]?.value ?: remember(event, initialCard) { initialCard(event) }
         val openUri = rememberGithubUriHandler()
         val repository = state?.repository
         val user = state?.user
@@ -37,18 +38,20 @@ internal fun LazyListScope.FeedScreen(
         val open: (() -> Unit)? =
             when {
                 url != null -> ({ openUri(url) })
-                work != null && number != null && fullName != null &&
+                work != null &&
+                    number != null &&
+                    fullName != null &&
                     event.payload.discussion == null -> ({
-                    onOpenWork(
-                        WorkTarget(
-                            fullName.substringBefore('/'),
-                            fullName.substringAfter('/'),
-                            number,
-                            if (event.isPullRequestWork()) CollaborationKind.PullRequest
-                            else CollaborationKind.Issue,
+                        onOpenWork(
+                            WorkTarget(
+                                fullName.substringBefore('/'),
+                                fullName.substringAfter('/'),
+                                number,
+                                if (event.isPullRequestWork()) CollaborationKind.PullRequest
+                                else CollaborationKind.Issue,
+                            ),
                         )
-                    )
-                })
+                    })
                 work != null || event.payload.release != null -> null
                 repository != null -> ({ onOpenRepository(repository) })
                 user != null -> ({ onOpenUser(user) })

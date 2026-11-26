@@ -43,8 +43,7 @@ data class WorkspaceCommit(
 @Serializable
 data class WorkspaceCommitDraft(val branch: String, val headline: String, val body: String = "")
 
-@Serializable
-data class WorkspaceFileDraft(val blob: String?, val text: String)
+@Serializable data class WorkspaceFileDraft(val blob: String?, val text: String)
 
 @Serializable
 data class WorkspaceCommitHistoryPage(
@@ -73,8 +72,11 @@ data class WorkspaceEntry(
 data class WorkspaceLinkTarget(val gitObject: GithubGitObject, val repositoryUrl: String)
 
 class WorkspacesGraphQlException(errors: List<GraphQlError>) :
-    Exception(errors.firstNotNullOfOrNull { it.message?.takeIf(String::isNotBlank) }
-        ?: "Workspaces GraphQL request failed", GithubPageException(errors = errors))
+    Exception(
+        errors.firstNotNullOfOrNull { it.message?.takeIf(String::isNotBlank) }
+            ?: "Workspaces GraphQL request failed",
+        GithubPageException(errors = errors),
+    )
 
 class WorkspacesTimeoutException : IOException("Workspaces request timed out")
 
@@ -93,6 +95,7 @@ class WorkspacesRepository(
     private val cache: CachedDataRepository,
 ) {
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
     /** 在同一个目标提交上检查原始 blob，再通过 expectedHeadOid 拒绝并发推送。 */
     suspend fun commitFile(
         account: String,
@@ -311,8 +314,7 @@ class WorkspacesRepository(
                 )
             // 探测不存在的候选可能得到 NOT_FOUND，不能因此丢弃同批里的有效对象。
             val errors = response.errors.filterNot { it.type == "NOT_FOUND" }
-            if (errors.isNotEmpty())
-                throw WorkspacesGraphQlException(errors)
+            if (errors.isNotEmpty()) throw WorkspacesGraphQlException(errors)
             val repository = (response.data as? JsonObject)?.nested("repository") ?: return null
             val url =
                 repository.string("url") ?: throw SerializationException("Missing repository URL")

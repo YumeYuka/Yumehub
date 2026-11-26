@@ -174,7 +174,8 @@ fun GithubFeedActivity(
         }
         when {
             event.workItem() != null -> FeedWorkCard(event, state, onOpen)
-            event.payload.release != null -> FeedReleaseCard(event, state?.repository ?: event.repositoryDetails, onOpen)
+            event.payload.release != null ->
+                FeedReleaseCard(event, state?.repository ?: event.repositoryDetails, onOpen)
             state?.repository != null ->
                 RepositoryRow(
                     repository = state.repository,
@@ -209,7 +210,12 @@ private fun FeedUserDetails(user: UserDto) {
             Column(Modifier.weight(1f)) {
                 Text(
                     user.name?.takeIf(String::isNotBlank) ?: user.login.orEmpty(),
-                    style = styles.body.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium),
+                    style =
+                        styles.body.copy(
+                            fontSize = 18.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
                     color = colors.content,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -227,7 +233,12 @@ private fun FeedUserDetails(user: UserDto) {
             Text(
                 bio,
                 modifier = Modifier.padding(top = 14.dp),
-                style = styles.body.copy(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+                style =
+                    styles.body.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Normal,
+                    ),
                 color = colors.secondaryContent,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -236,9 +247,10 @@ private fun FeedUserDetails(user: UserDto) {
         GithubCardField(user.takeIf { it.publicRepos != null || it.followers != null }) { profile ->
             Text(
                 listOfNotNull(
-                    profile.publicRepos?.let(strings.Explore.RepositoryCount),
-                    profile.followers?.let(strings.Profile.Followers),
-                ).joinToString(" · "),
+                        profile.publicRepos?.let(strings.Explore.RepositoryCount),
+                        profile.followers?.let(strings.Profile.Followers),
+                    )
+                    .joinToString(" · "),
                 modifier = Modifier.padding(top = 14.dp),
                 style = styles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
                 color = colors.secondaryContent,
@@ -260,7 +272,8 @@ private fun FeedAction(
     var confirm by remember { mutableStateOf(false) }
     val selected = state.selected == true
     val label =
-        if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN) strings.Common.MutationReconcile
+        if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN)
+            strings.Common.MutationReconcile
         else if (state.selected == null) {
             if (state.busy) strings.Common.MutationPreparing else strings.Common.Retry
         } else if (following) {
@@ -322,7 +335,8 @@ private fun FeedAction(
                 )
             Text(
                 if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.PENDING)
-                    "$label · ${strings.Common.MutationPending}" else label,
+                    "$label · ${strings.Common.MutationPending}"
+                else label,
                 style = style,
                 color = GlasmioTheme.colors.content,
                 maxLines = 1,

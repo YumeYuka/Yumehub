@@ -37,7 +37,6 @@ internal fun LazyListScope.ProfileAccountContent(
     state: ProfileUiState,
     strings: GithubStrings_Profile,
     onRetryProfile: () -> Unit,
-    onRetryReadme: () -> Unit,
     onEditStatus: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenFollowing: () -> Unit,
@@ -48,7 +47,9 @@ internal fun LazyListScope.ProfileAccountContent(
     val content = state as? ProfileUiState.Content
     val profile = content?.profile
     if (state != ProfileUiState.Error) {
-        item(key = "profile-header") { ProfileHeader(profile, strings, onEditStatus, onOpenFollowing) }
+        item(key = "profile-header") {
+            ProfileHeader(profile, strings, onEditStatus, onOpenFollowing)
+        }
     }
     item(key = "profile-actions") { ProfileActionCards(strings, onOpenSettings) }
     if (state == ProfileUiState.Error || content?.refreshFailed == true) {
@@ -57,9 +58,15 @@ internal fun LazyListScope.ProfileAccountContent(
     if (state != ProfileUiState.Error) {
         item(key = "profile-details") { ProfileDetailsSection(profile, strings) }
         item(key = "profile-collections") {
-            ProfileCollectionsCard(profile, strings, onOpenRepositories, onOpenStarred, onOpenOrganizations)
+            ProfileCollectionsCard(
+                profile,
+                strings,
+                onOpenRepositories,
+                onOpenStarred,
+                onOpenOrganizations,
+            )
         }
-        readingItem(key = "profile-readme") { ProfileReadmeContent(profile, onRetryReadme) }
+        readingItem(key = "profile-readme") { ProfileReadmeContent(profile) }
     }
 }
 
@@ -107,17 +114,17 @@ private fun ProfileActionButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = 58.dp),
     ) {
-            Column(
-                Modifier.padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                GithubIcon(icon, contentDescription = null)
-                Text(
-                    label,
-                    style = GlasmioTheme.textStyles.footnote.copy(fontSize = 12.sp),
-                    maxLines = 1,
-                )
+        Column(
+            Modifier.padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            GithubIcon(icon, contentDescription = null)
+            Text(
+                label,
+                style = GlasmioTheme.textStyles.footnote.copy(fontSize = 12.sp),
+                maxLines = 1,
+            )
         }
     }
 }
@@ -131,7 +138,6 @@ internal fun ProfileDetailsSection(
     // 外壳保留；已知资料按实际行数测量，未知时的估算仅用于加载阶段。
     GithubLoadingCard(
         loading = profile == null,
-        deferUntilEntry = false,
         placeholder = { ProfileDetailsPlaceholder() },
     ) {
         if (profile != null) ProfileDetailsRows(profile, strings)
@@ -166,7 +172,9 @@ private fun ProfileDetailsRows(profile: ProfileDto, strings: GithubStrings_Profi
 
 /** README 正文：官方 HTML 渲染，走共享阅读分组。 */
 @Composable
-internal fun ProfileReadmeContent(profile: ProfileDto?, onRetry: () -> Unit) {
+internal fun ProfileReadmeContent(profile: ProfileDto?) {
+    // 没有 README、尚未解析或解析失败时不渲染卡片。
+    if (profile != null && (!profile.readmeResolved || profile.readmeHtml.isNullOrBlank())) return
     val readme = profile?.readmeHtml?.takeIf(String::isNotBlank)
     val repositoryUrl = profile?.let {
         "https://github.com/${it.login}/${if (it.isOrganization) ".github" else it.login}"
@@ -175,11 +183,10 @@ internal fun ProfileReadmeContent(profile: ProfileDto?, onRetry: () -> Unit) {
         val path = it.readmePath ?: if (it.isOrganization) "profile/README.md" else "README.md"
         "$repositoryUrl/blob/HEAD/${Uri.encode(path, "/")}"
     }
-    val strings = LocalGithubStrings.current.Profile
     GithubReadingGroup(documentKey = readme) {
-        when {
-            profile == null -> ReadmePlaceholder()
-            readme != null -> GithubMarkdown(
+        if (profile == null) ReadmePlaceholder()
+        else if (readme != null)
+            GithubMarkdown(
                 text = "",
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 pageUrl = pageUrl,
@@ -188,17 +195,18 @@ internal fun ProfileReadmeContent(profile: ProfileDto?, onRetry: () -> Unit) {
                 readme = true,
                 transparentBackground = true,
             )
-            !profile.readmeResolved -> Unit
-            else -> GlasmioListRow(title = strings.CollectionEmpty(strings.Readme), systemName = null)
-        }
-        if (profile?.readmeResolved == false) ProfileRetryRow(strings.ReadmeLoadFailed, onRetry)
     }
 }
 
 @Composable
 internal fun ProfileRetryRow(message: String, retry: () -> Unit) {
     GlasmioGroupedList {
-        GlasmioListRow(title = message, detail = LocalGithubStrings.current.Common.Retry, systemName = null, onClick = retry)
+        GlasmioListRow(
+            title = message,
+            detail = LocalGithubStrings.current.Common.Retry,
+            systemName = null,
+            onClick = retry,
+        )
     }
 }
 

@@ -65,7 +65,6 @@ internal fun ProfileHeader(
         }
         GithubLoadingContent(
             loading = profile == null && fallbackName == null,
-            deferUntilEntry = false,
             modifier = Modifier.fillMaxWidth().height(28.dp),
             placeholder = {
                 Box(Modifier.fillMaxWidth().height(28.dp), contentAlignment = Alignment.Center) {
@@ -120,7 +119,6 @@ internal fun ProfileHeader(
         if (!organization && (profile == null || profile.audienceResolved))
             GithubLoadingContent(
                 loading = profile?.audienceResolved != true,
-                deferUntilEntry = false,
                 modifier = Modifier.fillMaxWidth().height(18.dp),
                 placeholder = {
                     Box(

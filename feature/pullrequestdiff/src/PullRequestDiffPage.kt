@@ -13,14 +13,14 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubDiffFileCard
-import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
-import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
@@ -56,7 +56,10 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
     val contentKey = "pr-diff:$account:$route:$head"
     val expansions = rememberGithubDiffExpansions(contentKey)
     val source = remember(viewModel, head) { viewModel.files(head) }
-    val sync = remember(viewModel, head) { head?.let(viewModel::revalidation) ?: IdleGithubPagingRevalidation }
+    val sync =
+        remember(viewModel, head) {
+            head?.let(viewModel::revalidation) ?: IdleGithubPagingRevalidation
+        }
     GithubPagingContent(
         source,
         contentKey = contentKey,
@@ -68,7 +71,8 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
             rememberGithubPagingSlots(
                 pages,
                 contentKey,
-                if (head == null) state.data == null && state.error == null else paging.initialLoading,
+                if (head == null) state.data == null && state.error == null
+                else paging.initialLoading,
                 contentReady = head != null,
                 autoRefresh = false,
             ) {
@@ -97,11 +101,6 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
                     GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
                 }
             }
-            if (head != null && slots.isEmptyResult && pageError == null) {
-                item(key = "pr-diff-empty") {
-                    GlasmioGroupedList { GlasmioListRow(title = strings.Activity.Empty, systemName = null) }
-                }
-            }
             if (!state.loading && (missingHead || state.error != null || pageError != null)) {
                 item(key = "pr-diff-retry") {
                     GlasmioGroupedList {
@@ -110,7 +109,8 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
                             detail = strings.Common.Retry,
                             enabled = host.navigationEnabled,
                             onClick = {
-                                if (missingHead || state.error != null || revisionChanged) viewModel.refresh()
+                                if (missingHead || state.error != null || revisionChanged)
+                                    viewModel.refresh()
                                 if (pageError != null) pages.retry()
                             },
                         )

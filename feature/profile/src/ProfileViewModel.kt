@@ -49,11 +49,12 @@ internal data class StatusEditorState(
     val submitting: Boolean = false,
     val failed: Boolean = false,
 ) {
-    val isBusy: Boolean get() = preparing || submitting
-    val blocksRefresh: Boolean get() = visible || isBusy
+    val isBusy: Boolean
+        get() = preparing || submitting
+
+    val blocksRefresh: Boolean
+        get() = visible || isBusy
 }
-
-
 
 internal enum class StatusExpiry(val millis: Long) {
     Never(0L),
@@ -107,7 +108,8 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                 mutableUiState.value = latestCached.toUiState()
                 mutableStatusEditor.update { editor ->
                     when (write.phase) {
-                        WritePhase.PENDING -> editor?.copy(preparing = false, submitting = true, failed = false)
+                        WritePhase.PENDING ->
+                            editor?.copy(preparing = false, submitting = true, failed = false)
                         WritePhase.IDLE -> if (editor?.submitting == true) null else editor
                         WritePhase.REJECTED,
                         WritePhase.UNCERTAIN ->
@@ -134,17 +136,24 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     fun retryReadme() {
         val profile = resource.cached ?: return
-        if (profile.readmeResolved || resource.state.value.loading || readmeJob?.isActive == true) return
+        if (profile.readmeResolved || resource.state.value.loading || readmeJob?.isActive == true)
+            return
         readmeJob = viewModelScope.launch {
-            val result = try {
-                repository.loadProfileReadme(account, profile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                return@launch
-            }
+            val result =
+                try {
+                    repository.loadProfileReadme(account, profile)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return@launch
+                }
             val current = resource.cached ?: return@launch
-            if (repository.account == account && !current.readmeResolved && result.readmeResolved && !resource.state.value.loading) {
+            if (
+                repository.account == account &&
+                    !current.readmeResolved &&
+                    result.readmeResolved &&
+                    !resource.state.value.loading
+            ) {
                 resource.update(current.withReadme(result))
             }
         }
@@ -205,19 +214,22 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     fun setStatusEmoji(emoji: String) {
         mutableStatusEditor.update { editor ->
-            if (editor == null || editor.isBusy) editor else editor.copy(emoji = emoji, failed = false)
+            if (editor == null || editor.isBusy) editor
+            else editor.copy(emoji = emoji, failed = false)
         }
     }
 
     fun setStatusMessage(message: String) {
         mutableStatusEditor.update { editor ->
-            if (editor == null || editor.isBusy) editor else editor.copy(message = message, failed = false)
+            if (editor == null || editor.isBusy) editor
+            else editor.copy(message = message, failed = false)
         }
     }
 
     fun setStatusLimitedAvailability(enabled: Boolean) {
         mutableStatusEditor.update { editor ->
-            if (editor == null || editor.isBusy) editor else editor.copy(limitedAvailability = enabled)
+            if (editor == null || editor.isBusy) editor
+            else editor.copy(limitedAvailability = enabled)
         }
     }
 
@@ -242,7 +254,6 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
         }
     }
 
-
     fun saveStatus() {
         submitStatus(clear = false)
     }
@@ -257,13 +268,17 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
         mutableStatusEditor.value = editor.copy(preparing = true, failed = false)
         val expiresAt =
             if (clear) null
-            else editor.expiry.millis.takeIf { it > 0L }?.let { Instant.now().plusMillis(it).toString() }
+            else
+                editor.expiry.millis
+                    .takeIf { it > 0L }
+                    ?.let { Instant.now().plusMillis(it).toString() }
         val message = if (clear) null else editor.message.trim().ifBlank { null }
         val emoji = if (clear) null else editor.emoji.trim().ifBlank { null }
         val limitedAvailability = if (clear) false else editor.limitedAvailability
         val organizationId = if (clear) null else editor.organizationId
-        val organization =
-            organizationId?.let { id -> editor.organizations.firstOrNull { it.id == id } }
+        val organization = organizationId?.let { id ->
+            editor.organizations.firstOrNull { it.id == id }
+        }
         val desiredStatus =
             if (clear || (message == null && emoji == null && !limitedAvailability)) null
             else
@@ -338,7 +353,6 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
         }
     }
 
-
     private fun expiryFrom(value: String?): StatusExpiry {
         if (value.isNullOrBlank()) return StatusExpiry.Never
         val remaining =
@@ -355,13 +369,13 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     }
 
     private fun CachedDataState<ProfileDto>.toUiState(): ProfileUiState {
-        if (error is moe.yumeyuka.yumehub.data.repository.ProfileUnavailableException) return ProfileUiState.Error
+        if (error is moe.yumeyuka.yumehub.data.repository.ProfileUnavailableException)
+            return ProfileUiState.Error
         val statusWrite = coordinator?.current(statusKey)
         val statusOverride = statusWrite?.visible
-        val projectedData =
-            data?.let { profile ->
-                if (statusOverride != null) profile.copy(status = statusOverride.value) else profile
-            }
+        val projectedData = data?.let { profile ->
+            if (statusOverride != null) profile.copy(status = statusOverride.value) else profile
+        }
         return projectedData?.let {
             ProfileUiState.Content(
                 it,

@@ -64,8 +64,10 @@ private fun notification(node: JsonObject): NotificationDto {
             else -> null
         }
     val state =
-        subject?.graphText("issueState") ?: subject?.graphText("pullRequestState")
-            ?: check?.graphText("conclusion") ?: check?.graphText("status")
+        subject?.graphText("issueState")
+            ?: subject?.graphText("pullRequestState")
+            ?: check?.graphText("conclusion")
+            ?: check?.graphText("status")
     return NotificationDto(
         id = node.graphRequiredText("id"),
         unread = (node["isUnread"] as? JsonPrimitive)?.booleanOrNull ?: throw GithubPageException(),
@@ -76,8 +78,10 @@ private fun notification(node: JsonObject): NotificationDto {
                 type = subject?.graphText("__typename") ?: node.graphText("threadType"),
                 url =
                     (subject?.get("workflowRun") as? JsonObject)?.graphText("url")
-                        ?: subject?.graphText("url") ?: subject?.graphText("permalink")
-                        ?: subject?.graphText("notificationsPermalink") ?: node.graphText("url"),
+                        ?: subject?.graphText("url")
+                        ?: subject?.graphText("permalink")
+                        ?: subject?.graphText("notificationsPermalink")
+                        ?: node.graphText("url"),
             ),
         repository =
             repo?.let {

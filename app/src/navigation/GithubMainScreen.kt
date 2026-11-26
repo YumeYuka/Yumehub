@@ -20,8 +20,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.rememberLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import io.github.neoruaa.glasmio.scaffold.rememberGlasmioNavigationScrollState
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
+import io.github.neoruaa.glasmio.scaffold.rememberGlasmioNavigationScrollState
 import moe.yumeyuka.yumehub.feature.profile.ProfileRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
@@ -126,10 +126,12 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
 private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
     val component = LocalGithubShellArgs.current.component
     val isActive = component.mainTab == tab
-    val lifecycleOwner = rememberLifecycleOwner(
-        maxLifecycle = if (isActive && LocalGithubRouteChild.current.isTop) Lifecycle.State.RESUMED
-            else Lifecycle.State.CREATED,
-    )
+    val lifecycleOwner =
+        rememberLifecycleOwner(
+            maxLifecycle =
+                if (isActive && LocalGithubRouteChild.current.isTop) Lifecycle.State.RESUMED
+                else Lifecycle.State.CREATED,
+        )
     val dispatcherOwner =
         rememberChildDispatcherOwner(
             parent = checkNotNull(LocalNavigationEventDispatcherOwner.current),

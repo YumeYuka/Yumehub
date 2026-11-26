@@ -121,7 +121,7 @@ internal class CollaborationListViewModel(
     private val mutableCreationState = MutableStateFlow(WorkCreationState())
     internal val creationState = mutableCreationState.asStateFlow()
     private var creationObserverStarted = false
-    val created = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val created = MutableSharedFlow<Pair<Int, String>>(extraBufferCapacity = 1)
     private var submittingHere = false
     private var navigateOnSuccess = false
     private var initialized = false
@@ -216,7 +216,7 @@ internal class CollaborationListViewModel(
                 val navigate = navigateOnSuccess && mutableCreationState.value.visible
                 mutableCreationState.value = WorkCreationState(draftRestored = true, formRevision = mutableCreationState.value.formRevision + 1,
                     visible = mutableCreationState.value.visible && !navigate)
-                if (navigate) created.tryEmit(number)
+                if (navigate) created.tryEmit(number to draft.title)
             } else {
                 mutableCreationState.update { it.copy(submitting = command.phase == WritePhase.PENDING,
                     uncertain = command.phase == WritePhase.UNCERTAIN, uncertainOperationId = command.submissionId,

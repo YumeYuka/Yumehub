@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
-import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.AtSign
@@ -69,7 +69,9 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
     val revision = state.revision
     val expansions = rememberGithubDiffExpansions(revision?.oid)
     val sectionKey = "commit:$account:$route:${section.name}"
-    val listState = LocalGithubPageState.current?.listState(sectionKey) ?: key(sectionKey) { rememberLazyListState() }
+    val listState =
+        LocalGithubPageState.current?.listState(sectionKey)
+            ?: key(sectionKey) { rememberLazyListState() }
     val information = section == CommitSection.Details
     val files = if (!information) revision?.files?.collectRows { it.filename } else null
     val parents = if (information) revision?.parents?.collectRows { it.id } else null
@@ -78,18 +80,22 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
     GithubPage(
         title = readyDetail?.title ?: route.oid.take(7),
         titleMaxLines = 2,
-        titleStyle = GlasmioTheme.typography.headlineLarge.copy(
-            fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold,
-        ),
+        titleStyle =
+            GlasmioTheme.typography.headlineLarge.copy(
+                fontSize = 22.sp,
+                lineHeight = 32.sp,
+                fontWeight = FontWeight.Bold,
+            ),
         smallTitle = (readyDetail?.oid ?: route.oid).take(7),
         listState = listState,
         itemSpacing = if (information) 12.dp else 8.dp,
         contentHeader = {
             GlasmioSegmentedControl(
-                items = listOf(
-                    CommitSection.Files to strings.WorkDetail.Changes,
-                    CommitSection.Details to strings.Activity.Details,
-                ),
+                items =
+                    listOf(
+                        CommitSection.Files to strings.WorkDetail.Changes,
+                        CommitSection.Details to strings.Activity.Details,
+                    ),
                 selected = section,
                 onSelected = { if (host.navigationEnabled) section = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -133,7 +139,8 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                 }
             }
             if (files != null) {
-                githubPagingItems(files.slots, reading = true, contentType = "commit-file") { file ->
+                githubPagingItems(files.slots, reading = true, contentType = "commit-file") { file
+                    ->
                     GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
                 }
                 commitPageStatus(files, strings)
@@ -161,8 +168,7 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                                 ) {
                                     GithubAvatar(detail.avatarUrl, detail.author, size = 24.dp)
                                     Text(
-                                        text =
-                                            detail.author ?: strings.Workspaces.UnknownAuthor,
+                                        text = detail.author ?: strings.Workspaces.UnknownAuthor,
                                         style = GlasmioTheme.textStyles.body,
                                         color = GlasmioTheme.colors.secondaryContent,
                                         maxLines = 1,
@@ -195,8 +201,24 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                     GithubSection(strings.Activity.Details) { OrganizationRowPlaceholder() }
                 }
             }
-            commitLinks("parents", strings.Activity.Parents, parents, !state.failed, strings, host.navigationEnabled, open = { open(it) })
-            commitLinks("pull-requests", strings.Activity.Related, pullRequests, !state.failed, strings, host.navigationEnabled, open = { open(it) })
+            commitLinks(
+                "parents",
+                strings.Activity.Parents,
+                parents,
+                !state.failed,
+                strings,
+                host.navigationEnabled,
+                open = { open(it) },
+            )
+            commitLinks(
+                "pull-requests",
+                strings.Activity.Related,
+                pullRequests,
+                !state.failed,
+                strings,
+                host.navigationEnabled,
+                open = { open(it) },
+            )
         }
     }
 }
@@ -212,17 +234,21 @@ private fun LazyListScope.commitLinks(
 ) {
     item(key = "$key-heading") { GithubSectionHeader(title) }
     if (rows == null) {
-        if (waitingForRevision) item(key = "$key-pending") {
-            GithubLoadingCard(loading = true, placeholder = {
-                if (key == "parents") WorkspaceCommitPlaceholder() else OrganizationRowPlaceholder()
-            }) {}
-        }
+        if (waitingForRevision)
+            item(key = "$key-pending") {
+                GithubLoadingCard(
+                    loading = true,
+                    placeholder = {
+                        if (key == "parents") WorkspaceCommitPlaceholder()
+                        else OrganizationRowPlaceholder()
+                    },
+                ) {}
+            }
         return
     }
     githubPagingItems(rows.slots, contentType = "commit-$key") { entry ->
         GithubLoadingCard(
             loading = entry == null,
-            deferUntilEntry = false,
             placeholder = {
                 if (key == "parents") WorkspaceCommitPlaceholder() else OrganizationRowPlaceholder()
             },
@@ -305,7 +331,10 @@ private fun LazyListScope.commitLinks(
     commitPageStatus(rows, strings)
 }
 
-private enum class CommitSection { Files, Details }
+private enum class CommitSection {
+    Files,
+    Details,
+}
 
 private class CommitRows<T : Any>(
     val source: CommitSource<T>,
@@ -318,24 +347,28 @@ private class CommitRows<T : Any>(
 private fun <T : Any> CommitSource<T>.collectRows(id: (T) -> String): CommitRows<T> {
     val items = pages.collectAsLazyPagingItems()
     val sync by revalidation.collectAsStateWithLifecycle()
-    val slots = rememberGithubPagingSlots(
-        items,
-        key,
-        autoRefresh = false,
-        accessDenied = (sync as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
-        itemKey = id,
-    )
+    val slots =
+        rememberGithubPagingSlots(
+            items,
+            key,
+            autoRefresh = false,
+            accessDenied =
+                (sync as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
+            itemKey = id,
+        )
     return CommitRows(this, items, slots, sync)
 }
 
 private fun LazyListScope.commitPageStatus(rows: CommitRows<*>, strings: GithubStrings) {
     val loads = rows.pages.loadState
-    if (loads.refresh is LoadState.Error || loads.append is LoadState.Error || loads.prepend is LoadState.Error) {
+    if (
+        loads.refresh is LoadState.Error ||
+            loads.append is LoadState.Error ||
+            loads.prepend is LoadState.Error
+    ) {
         item(key = "${rows.source.key}:error") {
             CommitStatusRow(strings.Activity.LoadFailed, rows.pages::retry)
         }
-    } else if (rows.slots.isEmptyResult) {
-        item(key = "${rows.source.key}:empty") { CommitStatusRow(strings.Activity.Empty) }
     }
     if (rows.sync is RevalidationState.Failed) {
         item(key = "${rows.source.key}:sync-error") {

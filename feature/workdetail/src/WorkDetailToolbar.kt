@@ -59,7 +59,8 @@ internal fun WorkDetailToolbar(
             enabled &&
             !state.loading &&
             !state.submitting &&
-            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN
+            state.mergePhase != WritePhase.PENDING &&
+            state.mergePhase != WritePhase.UNCERTAIN
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -120,7 +121,8 @@ internal fun WorkDetailToolbar(
                         when {
                             !merging -> strings.Comment
                             state.mergePhase == WritePhase.PENDING -> strings.Merging
-                            state.mergePhase == WritePhase.UNCERTAIN -> LocalGithubStrings.current.Common.MutationUncertain
+                            state.mergePhase == WritePhase.UNCERTAIN ->
+                                LocalGithubStrings.current.Common.MutationUncertain
                             else -> strings.Merge
                         },
                         style = GlasmioTheme.textStyles.body,

@@ -35,23 +35,32 @@ class PagingSnapshot<T : Any>(
         val bound = context ?: return null
         bound.ensureCurrent()
         val id = bound.sessionId()
-        val identity = ResponseCacheStore.key(id, account.lowercase(), key, pageSize.toString(), serializer.descriptor.toString())
+        val identity =
+            ResponseCacheStore.key(
+                id,
+                account.lowercase(),
+                key,
+                pageSize.toString(),
+                serializer.descriptor.toString(),
+            )
         val labels = (bound.snapshotTags + tags).map { it.diskValue() }
         session = id
         diskKey = identity
         diskTags = labels
-        val page = try {
-            withContext(Dispatchers.IO) {
-                revision = bound.cache.invalidationStore.revision(account, labels)
-                bound.state.frame<T>(revision) ?: if (bound.persistenceEnabled()) {
-                    store.load(id, identity, serializer, revision) { bound.active() }
-                } else null
+        val page =
+            try {
+                withContext(Dispatchers.IO) {
+                    revision = bound.cache.invalidationStore.revision(account, labels)
+                    bound.state.frame<T>(revision)
+                        ?: if (bound.persistenceEnabled()) {
+                            store.load(id, identity, serializer, revision) { bound.active() }
+                        } else null
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
             }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            null
-        }
         bound.ensureCurrent()
         if (page == null || page.pageSize != pageSize) return null
         return when {
@@ -68,7 +77,9 @@ class PagingSnapshot<T : Any>(
         val id = session ?: return
         val key = diskKey ?: return
         if (revision < 0 || !bound.persistenceEnabled()) return
-        store.save(bound.cache.writeQueue, id, key, serializer, page, diskTags, revision) { bound.validFrame(sequence) }
+        store.save(bound.cache.writeQueue, id, key, serializer, page, diskTags, revision) {
+            bound.validFrame(sequence)
+        }
     }
 
     fun save(page: PagingSnapshotPage<T>) = saveInBackground(page)

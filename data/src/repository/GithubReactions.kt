@@ -81,8 +81,7 @@ fun List<GithubReactionGroup>.withToggledReaction(
     val count = existing.count + if (existing.viewerReacted) -1 else 1
     if (count == 0) return filterNot { it.content == content }
     return map {
-        if (it.content == content) it.copy(count = count, viewerReacted = !it.viewerReacted)
-        else it
+        if (it.content == content) it.copy(count = count, viewerReacted = !it.viewerReacted) else it
     }
 }
 
@@ -111,11 +110,9 @@ internal fun JsonObject.reactionGroups(): List<GithubReactionGroup> =
     (get("reactionGroups") as? JsonArray ?: throw GithubPageException()).mapNotNull {
         val group = it as? JsonObject ?: throw GithubPageException()
         val count =
-            group
-                .graphObject("reactors")
-                .graphRequiredText("totalCount")
-                .toIntOrNull()
-                ?.takeIf { it >= 0 } ?: throw GithubPageException()
+            group.graphObject("reactors").graphRequiredText("totalCount").toIntOrNull()?.takeIf {
+                it >= 0
+            } ?: throw GithubPageException()
         if (count == 0) return@mapNotNull null
         val name = group.graphRequiredText("content")
         val content =

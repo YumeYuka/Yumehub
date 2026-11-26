@@ -71,7 +71,6 @@ fun GithubActivityListPage(
             githubPagingItems(slots, contentType = "activity-row") { entry ->
                 GithubLoadingCard(
                     loading = entry == null,
-                    deferUntilEntry = false,
                     placeholder = { OrganizationRowPlaceholder() },
                 ) {
                     if (entry != null) {

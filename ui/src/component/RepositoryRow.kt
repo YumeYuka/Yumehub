@@ -61,7 +61,6 @@ fun RepositoryLoadingCard(
     GithubLoadingCard(
         loading = repository == null,
         modifier = modifier,
-        deferUntilEntry = false,
         placeholder = { RepositoryCardPlaceholderContent(showCover && showCoverPlaceholder) },
     ) {
         if (repository != null)
@@ -108,7 +107,8 @@ private fun RepositoryCardContent(
                     Stat(Lucide.Star, stars.toString(), "星标 $stars")
                 }
                 GithubCardField(contributorsCount ?: repository.forksCount) { count ->
-                    if (contributorsCount != null) Stat(Lucide.UserRound, "$count 个贡献者", "$count 个贡献者")
+                    if (contributorsCount != null)
+                        Stat(Lucide.UserRound, "$count 个贡献者", "$count 个贡献者")
                     else Stat(Lucide.BookCopy, count.toString(), "派生 $count")
                 }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
@@ -124,7 +124,8 @@ private fun RepositoryCardContent(
                             )
                             Text(
                                 language,
-                                style = textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                                style =
+                                    textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
                                 color = colors.secondaryContent,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,

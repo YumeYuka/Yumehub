@@ -21,7 +21,9 @@ internal class PullRequestDiffViewModel(
             route.number,
         )
     val state = detail.state
-    fun files(head: String?) = if (head != null) detail.files(head) else flowOf(PagingData.empty<PullRequestFileDto>())
+
+    fun files(head: String?) =
+        if (head != null) detail.files(head) else flowOf(PagingData.empty<PullRequestFileDto>())
 
     fun revalidation(head: String) = detail.revalidation(detail.filesPagingKey(head))
 

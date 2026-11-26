@@ -27,7 +27,6 @@ import moe.yumeyuka.yumehub.data.api.dto.RepositoryContentDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
-import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.network.useStreamingBody
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
@@ -167,10 +166,9 @@ class RepositoryContentRepository(
     }
 
     suspend fun loadLicensePath(owner: String, name: String): String = request {
-        api.getRepositoryLicense(owner, name)
-            .path
-            ?.takeIf { it.isNotEmpty() && isRepositoryContentPath(it) }
-            ?: throw SerializationException("Missing license file path")
+        api.getRepositoryLicense(owner, name).path?.takeIf {
+            it.isNotEmpty() && isRepositoryContentPath(it)
+        } ?: throw SerializationException("Missing license file path")
     }
 
     private suspend fun queryRepository(

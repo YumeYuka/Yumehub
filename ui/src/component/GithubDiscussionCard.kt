@@ -35,7 +35,7 @@ fun GithubDiscussionCard(
     item: DiscussionListItemDto?,
     onClick: (() -> Unit)? = null,
 ) {
-    GithubLoadingCard(item == null, deferUntilEntry = false, placeholder = { WorkItemSkeleton() }) {
+    GithubLoadingCard(item == null, placeholder = { WorkItemSkeleton() }) {
         if (item != null) DiscussionCardContent(item, onClick)
     }
 }
@@ -77,7 +77,9 @@ private fun DiscussionCardContent(item: DiscussionListItemDto, onClick: (() -> U
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        GithubCardField(item.authorAssociation?.let(strings.Activity.DiscussionAuthorRole)) { role ->
+                        GithubCardField(
+                            item.authorAssociation?.let(strings.Activity.DiscussionAuthorRole),
+                        ) { role ->
                             Text(
                                 role,
                                 style = styles.caption1,

@@ -45,12 +45,13 @@ import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-/** 议题／拉取请求详情的路由键。 */
+/** 议题／拉取请求详情的路由键；[title] 是列表已展示的标题，用于首帧顶栏。 */
 data class WorkDetailRoute(
     val owner: String,
     val name: String,
     val kind: CollaborationKind,
     val number: Int,
+    val title: String? = null,
 ) : GithubRoute
 
 @Composable
@@ -65,6 +66,7 @@ fun WorkDetailPage(
     onOpenCommitGroup: (List<RepositoryActivityEntry>) -> Unit,
     onOpenCommit: (String) -> Unit,
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
+    title: String? = null,
 ) {
     val viewModel: CollaborationDetailViewModel =
         koinViewModel(
@@ -118,19 +120,26 @@ fun WorkDetailPage(
         }
     }
     val head = state.item?.head?.sha.orEmpty()
-    val sectionKey = when (state.section) {
-        CollaborationSection.Files, CollaborationSection.Commits -> "work-${state.section}:$head"
-        else -> "work-${state.section}"
-    }
+    val sectionKey =
+        when (state.section) {
+            CollaborationSection.Files,
+            CollaborationSection.Commits -> "work-${state.section}:$head"
+            else -> "work-${state.section}"
+        }
     val expansions = rememberGithubDiffExpansions(head)
     val listStates = remember { mutableMapOf<String, LazyListState>() }
     val listState =
         LocalGithubPageState.current?.listState(sectionKey)
             ?: listStates.getOrPut(sectionKey) { LazyListState() }
-    val entries = remember(viewModel, sectionKey) { viewModel.entriesFor(state.section, head) }?.collectAsLazyPagingItems()
-    val validation = remember(viewModel, sectionKey) {
-        viewModel.entriesRevalidation(state.section, state.item?.head?.sha)
-    }?.collectAsStateWithLifecycle()?.value as? RevalidationState.Failed
+    val entries =
+        remember(viewModel, sectionKey) { viewModel.entriesFor(state.section, head) }
+            ?.collectAsLazyPagingItems()
+    val validation =
+        remember(viewModel, sectionKey) {
+                viewModel.entriesRevalidation(state.section, state.item?.head?.sha)
+            }
+            ?.collectAsStateWithLifecycle()
+            ?.value as? RevalidationState.Failed
     val timeline =
         if (state.section == CollaborationSection.Discussion) {
             viewModel.timeline.state.collectAsStateWithLifecycle().value
@@ -155,12 +164,14 @@ fun WorkDetailPage(
             entry.key
         }
     }
-    val routeTitle = if (kind == CollaborationKind.PullRequest) strings.PullRequestTitle(number) else strings.IssueTitle(number)
+    val routeTitle =
+        if (kind == CollaborationKind.PullRequest) strings.PullRequestTitle(number)
+        else strings.IssueTitle(number)
     GithubPage(
-        title = state.item?.title ?: routeTitle,
+        title = state.item?.title ?: title?.takeIf(String::isNotBlank) ?: routeTitle,
         smallTitle = routeTitle,
         titleMaxLines = 3,
-        titleSuffix = state.item?.let { "#$number" },
+        titleSuffix = "#$number",
         titleStyle =
             GlasmioTheme.typography.headlineLarge.copy(
                 fontSize = 22.sp,
@@ -171,36 +182,37 @@ fun WorkDetailPage(
         listState = listState,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
         contentHeader = {
-            if (state.item != null || state.error == null) WorkDetailHeader(
-                state,
-                kind,
-                onInformation = {
-                    if (host.navigationEnabled) infoVisible = true
-                },
-                onLabels = {
-                    if (host.navigationEnabled) {
-                        propertySheet = WorkProperty.Labels
-                    }
-                },
-                onProjects = {
-                    if (host.navigationEnabled) {
-                        propertySheet = WorkProperty.Projects
-                    }
-                },
-                onReviewers = {
-                    if (host.navigationEnabled) {
-                        propertySheet = WorkProperty.Reviewers
-                    }
-                },
-                onChecks = {
-                    if (host.navigationEnabled) {
-                        viewModel.showStatusPanel(WorkStatusPanel.Checks)
-                    }
-                },
-                onIssueMetadata = { panel ->
-                    if (host.navigationEnabled) issueEditor.open(panel)
-                },
-            )
+            if (state.item != null || state.error == null)
+                WorkDetailHeader(
+                    state,
+                    kind,
+                    onInformation = {
+                        if (host.navigationEnabled) infoVisible = true
+                    },
+                    onLabels = {
+                        if (host.navigationEnabled) {
+                            propertySheet = WorkProperty.Labels
+                        }
+                    },
+                    onProjects = {
+                        if (host.navigationEnabled) {
+                            propertySheet = WorkProperty.Projects
+                        }
+                    },
+                    onReviewers = {
+                        if (host.navigationEnabled) {
+                            propertySheet = WorkProperty.Reviewers
+                        }
+                    },
+                    onChecks = {
+                        if (host.navigationEnabled) {
+                            viewModel.showStatusPanel(WorkStatusPanel.Checks)
+                        }
+                    },
+                    onIssueMetadata = { panel ->
+                        if (host.navigationEnabled) issueEditor.open(panel)
+                    },
+                )
         },
         actions = {
             GlasmioIconButton(
@@ -244,9 +256,13 @@ fun WorkDetailPage(
         )
     }
     val canChangeBase =
-        kind == CollaborationKind.PullRequest && state.item?.viewerCanChangeBase == true &&
-            state.item?.state == "open" && !state.submitting && !state.unknownField("base") &&
-            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN &&
+        kind == CollaborationKind.PullRequest &&
+            state.item?.viewerCanChangeBase == true &&
+            state.item?.state == "open" &&
+            !state.submitting &&
+            !state.unknownField("base") &&
+            state.mergePhase != WritePhase.PENDING &&
+            state.mergePhase != WritePhase.UNCERTAIN &&
             host.navigationEnabled
     if (state.item == null) return
     WorkInfoSheet(
@@ -325,7 +341,8 @@ fun WorkDetailPage(
         onDismiss = { mergeVisible = false },
         loadMessage = viewModel::mergeMessage,
         onMerge = { item, method, message ->
-            if (host.navigationEnabled && viewModel.mergePullRequest(item, method, message)) mergeVisible = false
+            if (host.navigationEnabled && viewModel.mergePullRequest(item, method, message))
+                mergeVisible = false
         },
     )
     if (currentPage) CollaborationDeleteCommentDialog(state, viewModel)

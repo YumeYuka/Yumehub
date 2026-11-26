@@ -427,8 +427,10 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                     kind = route.kind,
                     login = args.currentLogin,
                     createInitially = route.createInitially,
-                    onOpenDetail = { number ->
-                        openRoute(WorkDetailRoute(route.owner, route.name, route.kind, number))
+                    onOpenDetail = { number, title ->
+                        openRoute(
+                            WorkDetailRoute(route.owner, route.name, route.kind, number, title),
+                        )
                     },
                 )
             is WorkDetailRoute ->
@@ -437,6 +439,7 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                     name = route.name,
                     kind = route.kind,
                     number = route.number,
+                    title = route.title,
                     login = args.currentLogin,
                     onOpenFiles = {
                         openRoute(PullRequestDiffRoute(route.owner, route.name, route.number))
@@ -451,7 +454,7 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                                 route.name,
                                 route.number,
                                 activityCommits = commits,
-                            )
+                            ),
                         )
                     },
                     onOpenCommit = { oid ->

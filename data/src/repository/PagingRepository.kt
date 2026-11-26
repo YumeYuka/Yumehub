@@ -5,18 +5,13 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.cachedIn
-import java.util.LinkedHashMap
-import java.util.Locale
 import java.lang.ref.WeakReference
 import java.net.SocketTimeoutException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.data.cache.covers
-import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
+import java.util.LinkedHashMap
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -29,16 +24,23 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.KSerializer
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.covers
+import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotStore
 
 const val StarredRepositoriesPagingKey = "starred:sort=created:direction=desc:size=30"
 
 sealed interface RevalidationState {
     data object Idle : RevalidationState
+
     data object Checking : RevalidationState
+
     data class Failed(val error: Throwable) : RevalidationState
 }
 
@@ -109,7 +111,6 @@ class PagingRepository(
     internal fun revisions(account: String, key: String): StateFlow<Long> =
         registry(account).state(key).version
 
-
     private fun registry(account: String): PagingRegistry =
         cache.sessionResource(account, "paging-registry-v1") { scope ->
             PagingRegistry(scope)
@@ -120,34 +121,40 @@ internal class PagingKeyState {
     private var first: WeakReference<PagingSnapshotPage<*>>? = null
     private var diskRevision = -1L
     private var frameGeneration = -1L
-    @Volatile var sequence = 0L
+    @Volatile
+    var sequence = 0L
         private set
+
     private val mutableVersion = MutableStateFlow(0L)
     val version: StateFlow<Long> = mutableVersion.asStateFlow()
     private val mutableRevalidation = MutableStateFlow<RevalidationState>(RevalidationState.Idle)
     val revalidation: StateFlow<RevalidationState> = mutableRevalidation.asStateFlow()
 
-    @Synchronized fun rotate() {
+    @Synchronized
+    fun rotate() {
         sequence++
         mutableVersion.value++
         mutableRevalidation.value = RevalidationState.Idle
     }
 
     @Suppress("UNCHECKED_CAST")
-    @Synchronized fun <T : Any> frame(revision: Long): PagingSnapshotPage<T>? {
+    @Synchronized
+    fun <T : Any> frame(revision: Long): PagingSnapshotPage<T>? {
         val page = first?.get() as? PagingSnapshotPage<T> ?: return null
         return if (revision == diskRevision && frameGeneration == version.value) page
         else page.copy(boundaryInvalid = true)
     }
 
-    @Synchronized fun remember(page: PagingSnapshotPage<*>, revision: Long): Long {
+    @Synchronized
+    fun remember(page: PagingSnapshotPage<*>, revision: Long): Long {
         first = WeakReference(page)
         diskRevision = revision
         frameGeneration = version.value
         return ++sequence
     }
 
-    @Synchronized fun forget(): Long {
+    @Synchronized
+    fun forget(): Long {
         first = null
         return ++sequence
     }
@@ -161,13 +168,15 @@ private class PagingRegistry(val scope: CoroutineScope) {
     private val entries = LinkedHashMap<String, PagingEntry<*>>(16, 0.75f, true)
     private val states = mutableMapOf<String, PagingKeyState>()
 
-    fun state(key: String): PagingKeyState = synchronized(this) {
-        states.getOrPut(key) { PagingKeyState() }
-    }
+    fun state(key: String): PagingKeyState =
+        synchronized(this) {
+            states.getOrPut(key) { PagingKeyState() }
+        }
 
-    fun currentEntry(key: String): PagingEntry<*>? = synchronized(this) {
-        entries[key]?.takeIf { it.isReusable }
-    }
+    fun currentEntry(key: String): PagingEntry<*>? =
+        synchronized(this) {
+            entries[key]?.takeIf { it.isReusable }
+        }
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> acquire(key: String, create: () -> PagingEntry<T>): PagingEntry<T> {
@@ -195,12 +204,15 @@ private class PagingRegistry(val scope: CoroutineScope) {
     }
 
     fun invalidate(tags: Set<CacheTag>) {
-        val affected = synchronized(this) {
-            tags.filter { it.domain == DataDomain.Paging }.forEach { tag ->
-                tag.subject?.takeIf { it !in entries }?.let { states[it]?.rotate() }
+        val affected =
+            synchronized(this) {
+                tags
+                    .filter { it.domain == DataDomain.Paging }
+                    .forEach { tag ->
+                        tag.subject?.takeIf { it !in entries }?.let { states[it]?.rotate() }
+                    }
+                entries.values.filter { it.matches(tags) }.onEach { it.state.rotate() }
             }
-            entries.values.filter { it.matches(tags) }.onEach { it.state.rotate() }
-        }
         affected.forEach { it.retire() }
     }
 
@@ -269,11 +281,13 @@ internal class PagingEntry<T : Any>(
     fun ensureCurrent(expected: Long) =
         synchronized(lock) {
             scope.coroutineContext.ensureActive()
-            if (version != expected || !cache.isCurrent(account, sessionGeneration)) throw CancellationException("分页请求已失效")
+            if (version != expected || !cache.isCurrent(account, sessionGeneration))
+                throw CancellationException("分页请求已失效")
         }
 
-    fun matches(invalidations: Set<CacheTag>): Boolean =
-        tags.any { tag -> invalidations.any { it.covers(tag) } }
+    fun matches(invalidations: Set<CacheTag>): Boolean = tags.any { tag ->
+        invalidations.any { it.covers(tag) }
+    }
 
     fun <R> commit(expected: Long, block: () -> R): R = cache.locked {
         synchronized(lock) {
@@ -382,11 +396,20 @@ internal constructor(
     val forceRefresh: Boolean,
 ) {
     fun ensureCurrent() = entry.ensureCurrent(version)
-    internal val state get() = entry.state
-    internal val cache get() = entry.cache
-    internal val snapshotTags get() = entry.tags
+
+    internal val state
+        get() = entry.state
+
+    internal val cache
+        get() = entry.cache
+
+    internal val snapshotTags
+        get() = entry.tags
+
     internal suspend fun sessionId() = cache.sessionId(entry.account, entry.sessionGeneration)
-    internal fun active() = entry.isReusable && cache.isCurrent(entry.account, entry.sessionGeneration)
+
+    internal fun active() =
+        entry.isReusable && cache.isCurrent(entry.account, entry.sessionGeneration)
 
     internal fun <R> commit(block: () -> R): R = entry.commit(version, block)
 

@@ -10,7 +10,8 @@ data class FeedCardState(
     val contributorsCount: Int? = null,
     val selected: Boolean? = null,
     val busy: Boolean = false,
-    val phase: moe.yumeyuka.yumehub.data.cache.WritePhase = moe.yumeyuka.yumehub.data.cache.WritePhase.IDLE,
+    val phase: moe.yumeyuka.yumehub.data.cache.WritePhase =
+        moe.yumeyuka.yumehub.data.cache.WritePhase.IDLE,
     val actionError: String? = null,
 )
 

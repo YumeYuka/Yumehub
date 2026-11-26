@@ -11,12 +11,12 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubWorkflowRow
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
+import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 
 @Composable
 internal fun WorkCheckGroups(
@@ -35,10 +35,18 @@ internal fun WorkCheckGroups(
         val revalidation by
             remember(viewModel, head) { viewModel.checksRevalidation(head) }
                 .collectAsStateWithLifecycle()
-        val slots = rememberGithubPagingSlots(
-            pages, "work-checks:$head", autoRefresh = false,
-            accessDenied = (revalidation as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
-        ) { it.id }
+        val slots =
+            rememberGithubPagingSlots(
+                pages,
+                "work-checks:$head",
+                autoRefresh = false,
+                accessDenied =
+                    (revalidation as? RevalidationState.Failed)
+                        ?.error
+                        ?.invalidatesCachedContent() == true,
+            ) {
+                it.id
+            }
         val snapshot = slots.snapshot
         val groups = remember(snapshot) { snapshot.filterNotNull().groupBy { it.suiteId } }
         val loads = pages.loadState
@@ -114,10 +122,6 @@ internal fun WorkCheckGroups(
             (loads.refresh is LoadState.Loading && snapshot.isEmpty()) ||
                 loads.append is LoadState.Loading ||
                 loads.prepend is LoadState.Loading -> GlasmioGroupedList { ListRowPlaceholder() }
-            slots.isEmptyResult ->
-                GlasmioGroupedList {
-                    GlasmioListRow(title = strings.Activity.Empty, showTopSeparator = false)
-                }
             groups.isNotEmpty() && !loads.append.endOfPaginationReached ->
                 GlasmioGroupedList {
                     GlasmioListRow(

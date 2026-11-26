@@ -289,7 +289,6 @@ internal fun <T> HomeReorderGroup(
         GithubSectionHeader(title)
         GithubLoadingContent(
             loading = loading,
-            deferUntilEntry = false,
             placeholder = { GlasmioGroupedList { TitleRowPlaceholder(showTopSeparator = false) } },
         ) {
             if (items.isEmpty()) {

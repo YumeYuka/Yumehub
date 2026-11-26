@@ -114,11 +114,15 @@ internal fun RepositoryForkSheet(
                                 }
                             }
                         },
-                        enabled = state?.draftReady == true && state.visible && !submitting && !uncertain && !checking,
+                        enabled =
+                            state?.draftReady == true &&
+                                state.visible &&
+                                !submitting &&
+                                !uncertain &&
+                                !checking,
                     ) {
                         GithubLoadingContent(
                             loading = checking,
-                            deferUntilEntry = false,
                             modifier = Modifier.size(23.dp),
                             placeholder = { IconTilePlaceholder(23.dp) },
                         ) {
@@ -194,7 +198,10 @@ internal fun RepositoryForkSheet(
                     GlasmioGroupedList { GlasmioListRow(title = common.MutationPending) }
                 } else if (uncertain) {
                     GlasmioGroupedList {
-                        GlasmioListRow(title = common.MutationUncertain, subtitle = strings.ForkOutcomeUnknown)
+                        GlasmioListRow(
+                            title = common.MutationUncertain,
+                            subtitle = strings.ForkOutcomeUnknown,
+                        )
                         GlasmioListRow(
                             title = common.MutationAcknowledged,
                             showTopSeparator = true,

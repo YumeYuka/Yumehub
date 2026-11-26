@@ -34,7 +34,9 @@ internal fun WorkDiscussionSummary(
             GlasmioListRow(
                 title = entry.changedFiles?.let(strings.FileCount) ?: strings.Files,
                 trailing = {
-                    GithubCardField(entry.takeIf { it.additions != null && it.deletions != null }) { diff ->
+                    GithubCardField(
+                        entry.takeIf { it.additions != null && it.deletions != null },
+                    ) { diff ->
                         val colors = githubDiffColors(GlasmioTheme.colors.isDark)
                         Row {
                             Text(
@@ -147,7 +149,6 @@ private fun WorkSummarySection(
     GithubSection(title) {
         GithubLoadingContent(
             loading = item == null,
-            deferUntilEntry = false,
             placeholder = {
                 Column {
                     WorkInfoRowPlaceholder()

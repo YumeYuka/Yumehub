@@ -89,7 +89,8 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("updatePullRequest")
             .graphObject("pullRequest")
-            .requireNode(id).graphRequiredText(field)
+            .requireNode(id)
+            .graphRequiredText(field)
     }
 
     suspend fun editBody(id: String, body: String): String {
@@ -114,7 +115,8 @@ internal class WorkDetailGraphQl(
             )
             .graphObject(operation)
             .graphObject(resultField)
-            .requireNode(id).graphText("body") ?: throw GithubPageException()
+            .requireNode(id)
+            .graphText("body") ?: throw GithubPageException()
     }
 
     suspend fun editTitle(id: String, title: String): String {
@@ -139,7 +141,8 @@ internal class WorkDetailGraphQl(
             )
             .graphObject(operation)
             .graphObject(resultField)
-            .requireNode(id).graphRequiredText("title")
+            .requireNode(id)
+            .graphRequiredText("title")
     }
 
     suspend fun closeIssue(id: String): String {
@@ -156,7 +159,9 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("closeIssue")
             .graphObject("issue")
-            .requireNode(id).graphRequiredText("state").lowercase(Locale.ROOT)
+            .requireNode(id)
+            .graphRequiredText("state")
+            .lowercase(Locale.ROOT)
     }
 
     suspend fun setLocked(id: String, locked: Boolean): Boolean {
@@ -175,7 +180,9 @@ internal class WorkDetailGraphQl(
                 write = true,
             )
             .graphObject(operation)
-            .graphObject(record).requireNode(id).flag("locked")
+            .graphObject(record)
+            .requireNode(id)
+            .flag("locked")
     }
 
     suspend fun closePullRequest(id: String): String {
@@ -192,7 +199,9 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("closePullRequest")
             .graphObject("pullRequest")
-            .requireNode(id).graphRequiredText("state").lowercase(Locale.ROOT)
+            .requireNode(id)
+            .graphRequiredText("state")
+            .lowercase(Locale.ROOT)
     }
 
     private fun variables(extra: JsonObjectBuilder.() -> Unit = {}) = buildJsonObject {
@@ -244,7 +253,8 @@ internal class WorkDetailGraphQl(
         val reviewerEntries =
             if (isPull) {
                 reviewRequests.connectionNodes().mapNotNull { request ->
-                    val reviewer = request["requestedReviewer"] as? JsonObject ?: return@mapNotNull null
+                    val reviewer =
+                        request["requestedReviewer"] as? JsonObject ?: return@mapNotNull null
                     val login = reviewer.graphText("login") ?: reviewer.graphText("name")
                     login?.let { it to reviewer.graphText("avatarUrl") }
                 }
@@ -277,10 +287,12 @@ internal class WorkDetailGraphQl(
             baseRefName = if (isPull) node.graphText("baseRefName") else null,
             baseRefOid = if (isPull) node.graphText("baseRefOid") else null,
             labels = labels.values.toList(),
-            assignedActors = if (isPull) emptyList() else
-                (node["assignedActors"] as? JsonObject).connectionNodes().mapNotNull {
-                    it.graphText("login")
-                },
+            assignedActors =
+                if (isPull) emptyList()
+                else
+                    (node["assignedActors"] as? JsonObject).connectionNodes().mapNotNull {
+                        it.graphText("login")
+                    },
             issueType = (node["issueType"] as? JsonObject)?.graphText("name"),
             issueTypeColor = (node["issueType"] as? JsonObject)?.graphText("color"),
             viewerCanTypeIssue = !isPull && node.flag("viewerCanType"),
@@ -314,7 +326,8 @@ internal class WorkDetailGraphQl(
             requestedReviewers = reviewerEntries.map { it.first },
             requestedReviewerAvatars = reviewerEntries.map { it.second },
             viewerLatestReviewState =
-                if (isPull) (node["viewerLatestReview"] as? JsonObject)?.graphText("state") else null,
+                if (isPull) (node["viewerLatestReview"] as? JsonObject)?.graphText("state")
+                else null,
             viewerReviewRequested = isPull && node["viewerLatestReviewRequest"] is JsonObject,
             requiredStatusCheckCount =
                 if (isPull) node.graphObject("requiredStatusChecks").requiredInt("totalCount")
@@ -891,12 +904,9 @@ private fun JsonObject.timelineEventSubject(kind: WorkTimelineEventKind): String
         WorkTimelineEventKind.Locked -> graphText("lockReason")
         WorkTimelineEventKind.CommentDeleted ->
             (get("deletedCommentAuthor") as? JsonObject)?.graphText("login")
-        WorkTimelineEventKind.UserBlocked ->
-            (get("userSubject") as? JsonObject)?.graphText("login")
+        WorkTimelineEventKind.UserBlocked -> (get("userSubject") as? JsonObject)?.graphText("login")
         else -> null
     }
-
-
 
 private const val CommentFields =
     "id databaseId body bodyHTML(unfurlReferences: true) createdAt updatedAt url isMinimized minimizedReason viewerCanMinimize viewerCanReact $ReactionFragment author { login avatarUrl __typename }"

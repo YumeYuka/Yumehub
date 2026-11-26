@@ -341,7 +341,10 @@ internal class RepositoryOverviewViewModel(
         val state = mutableState.value.overview ?: return
         val coord = coordinator ?: return
         val write = coord.current(starKey)
-        if (write.phase == WritePhase.UNCERTAIN) { reconcileStar(); return }
+        if (write.phase == WritePhase.UNCERTAIN) {
+            reconcileStar()
+            return
+        }
         val desired = !(write.visible ?: state.starred)
         source.trackStar(account, owner, name)
         val accepted =
@@ -429,14 +432,18 @@ internal class RepositoryOverviewViewModel(
                         CacheTag(DataDomain.Notifications, null),
                     ),
                 send = { payload ->
-                    val actual = source.setSubscription(
-                        account,
-                        owner,
-                        name,
-                        payload.value,
-                        payload.types.toSet(),
+                    val actual =
+                        source.setSubscription(
+                            account,
+                            owner,
+                            name,
+                            payload.value,
+                            payload.types.toSet(),
+                        )
+                    RepoSubscriptionPayload(
+                        requireNotNull(actual.subscription),
+                        actual.subscriptionTypes.sorted(),
                     )
-                    RepoSubscriptionPayload(requireNotNull(actual.subscription), actual.subscriptionTypes.sorted())
                 },
                 readBack = {
                     val reloaded = source.load(account, owner, name)
@@ -469,7 +476,11 @@ internal class RepositoryOverviewViewModel(
                         tags = setOf(repositoryCacheTag(owner, name)),
                         send = { text ->
                             source.saveDescription(account, owner, name, text).also {
-                                drafts.removeIfUnchanged(account, descriptionDraftKey, editor.description)
+                                drafts.removeIfUnchanged(
+                                    account,
+                                    descriptionDraftKey,
+                                    editor.description,
+                                )
                             }
                         },
                         readBack = { source.readDescription(account, owner, name) },

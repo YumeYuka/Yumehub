@@ -9,7 +9,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /** 待核对写操作阶段；PREPARED 证明请求尚未发送。 */
-enum class MarkerPhase { PREPARED, MAY_HAVE_SENT }
+enum class MarkerPhase {
+    PREPARED,
+    MAY_HAVE_SENT,
+}
 
 @Serializable
 internal data class MutationMarker(
@@ -64,7 +67,12 @@ internal class PendingMutationStore(provider: MMKVProvider, private val json: Js
                 val key = accountKey(account)
                 val current = cache[key] ?: load(key)
                 check(current.any { it.operationId == operationId }) { "Missing prepared mutation" }
-                write(key, current.map { if (it.operationId == operationId) it.copy(phase = phase) else it })
+                write(
+                    key,
+                    current.map {
+                        if (it.operationId == operationId) it.copy(phase = phase) else it
+                    },
+                )
             }
         }
 
@@ -111,7 +119,8 @@ internal class PendingMutationStore(provider: MMKVProvider, private val json: Js
 
     private companion object {
         const val MaxMarkers = 512
-        val ListSerializer = kotlinx.serialization.builtins.ListSerializer(MutationMarker.serializer())
+        val ListSerializer =
+            kotlinx.serialization.builtins.ListSerializer(MutationMarker.serializer())
     }
 }
 

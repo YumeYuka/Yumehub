@@ -23,7 +23,10 @@ class GithubPageState {
     val listState = LazyListState()
     private val refreshGates = LinkedHashMap<Any, PageRefreshGate>()
 
-    internal fun forgetPagingFrame(key: String) { pagingFrames.remove(key) }
+    internal fun forgetPagingFrame(key: String) {
+        pagingFrames.remove(key)
+    }
+
     private val pagingFrames = LinkedHashMap<String, List<Any?>>(16, 0.75f, true)
     private val pagingKeys = LinkedHashMap<String, GithubPagingSlotKeys>()
 

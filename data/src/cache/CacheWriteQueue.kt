@@ -7,9 +7,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
 /**
  * 缓存磁盘写入的单写队列。
@@ -20,9 +20,12 @@ import kotlinx.coroutines.ensureActive
  */
 internal class CacheWriteQueue(private val scope: CoroutineScope) {
     private class CriticalWork(
-        val block: suspend () -> Unit, val done: CompletableDeferred<Unit>, val queuedAt: Long,
+        val block: suspend () -> Unit,
+        val done: CompletableDeferred<Unit>,
+        val queuedAt: Long,
         val sync: (() -> Unit)?,
     )
+
     private val critical = Channel<CriticalWork>(128)
     private val ready = Channel<CriticalWork>(2)
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -37,10 +40,12 @@ internal class CacheWriteQueue(private val scope: CoroutineScope) {
         repeat(2) {
             scope.launch(Dispatchers.IO) {
                 for (signal in encoding) while (true) {
-                    val prepare = synchronized(snapshots) {
-                        val iterator = snapshots.values.iterator()
-                        if (iterator.hasNext()) iterator.next().also { iterator.remove() } else null
-                    } ?: break
+                    val prepare =
+                        synchronized(snapshots) {
+                            val iterator = snapshots.values.iterator()
+                            if (iterator.hasNext()) iterator.next().also { iterator.remove() }
+                            else null
+                        } ?: break
                     try {
                         val commit = prepare() ?: continue
                         snapshotExecuted.incrementAndGet()
@@ -60,9 +65,14 @@ internal class CacheWriteQueue(private val scope: CoroutineScope) {
             for (signal in wake) {
                 var next = critical.tryReceive().getOrNull()
                 while (true) {
-                    val work = next ?: critical.tryReceive().getOrNull() ?: ready.tryReceive().getOrNull() ?: break
+                    val work =
+                        next
+                            ?: critical.tryReceive().getOrNull()
+                            ?: ready.tryReceive().getOrNull()
+                            ?: break
                     next = null
-                    if (work.queuedAt != 0L) lastCriticalQueueNanos.set(System.nanoTime() - work.queuedAt)
+                    if (work.queuedAt != 0L)
+                        lastCriticalQueueNanos.set(System.nanoTime() - work.queuedAt)
                     val sync = work.sync
                     if (sync == null) {
                         if (execute(work)) work.done.complete(Unit)
@@ -74,14 +84,15 @@ internal class CacheWriteQueue(private val scope: CoroutineScope) {
                             batch = critical.tryReceive().getOrNull()
                         } while (batch != null && batch.sync === sync)
                         next = batch
-                        if (waiting.isNotEmpty()) try {
-                            val start = System.nanoTime()
-                            sync()
-                            lastSyncNanos.set(System.nanoTime() - start)
-                            waiting.forEach { it.done.complete(Unit) }
-                        } catch (error: Exception) {
-                            waiting.forEach { it.done.completeExceptionally(error) }
-                        }
+                        if (waiting.isNotEmpty())
+                            try {
+                                val start = System.nanoTime()
+                                sync()
+                                lastSyncNanos.set(System.nanoTime() - start)
+                                waiting.forEach { it.done.complete(Unit) }
+                            } catch (error: Exception) {
+                                waiting.forEach { it.done.completeExceptionally(error) }
+                            }
                     }
                 }
             }
@@ -105,18 +116,25 @@ internal class CacheWriteQueue(private val scope: CoroutineScope) {
         done.await()
     }
 
-    private suspend fun execute(work: CriticalWork): Boolean = try {
-        work.block()
-        true
-    } catch (error: Exception) {
-        work.done.completeExceptionally(error)
-        currentCoroutineContext().ensureActive()
-        false
-    }
+    private suspend fun execute(work: CriticalWork): Boolean =
+        try {
+            work.block()
+            true
+        } catch (error: Exception) {
+            work.done.completeExceptionally(error)
+            currentCoroutineContext().ensureActive()
+            false
+        }
 
     fun close() {
-        synchronized(snapshots) { closed = true; snapshots.clear() }
-        critical.close(); ready.close(); encoding.close(); wake.close()
+        synchronized(snapshots) {
+            closed = true
+            snapshots.clear()
+        }
+        critical.close()
+        ready.close()
+        encoding.close()
+        wake.close()
         for (channel in listOf(critical, ready)) while (true) {
             val work = channel.tryReceive().getOrNull() ?: break
             work.done.completeExceptionally(expiredSession())

@@ -50,9 +50,13 @@ private class EditorFieldBinding(initial: TextFieldValue) {
     suspend fun observe(onValueChange: (TextFieldValue) -> Unit) {
         snapshotFlow { TextFieldValue(state.text.toString(), state.selection, state.composition) }
             .collect { native ->
-                val next = if (native.text == published.text) {
-                    published.copy(selection = native.selection, composition = native.composition)
-                } else native
+                val next =
+                    if (native.text == published.text) {
+                        published.copy(
+                            selection = native.selection,
+                            composition = native.composition,
+                        )
+                    } else native
                 if (next != published) {
                     published = next
                     onValueChange(next)
@@ -93,7 +97,9 @@ internal fun NativeEditorField(
             // A new source may format to the same display string with a different offset map.
             if (formatter != null) binding.state.text
             layout?.invoke()?.let { it to formatter?.presentation }
-        }.filterNotNull().collect { (result, presentation) -> notifyLayout(result, presentation) }
+        }
+            .filterNotNull()
+            .collect { (result, presentation) -> notifyLayout(result, presentation) }
     }
     if (password) {
         BasicSecureTextField(
@@ -113,16 +119,20 @@ internal fun NativeEditorField(
         )
     } else {
         val annotated = value.annotatedString
-        val styles = remember(annotated, formatter) {
-            if (annotated.spanStyles.isEmpty() && annotated.paragraphStyles.isEmpty()) formatter
-            else OutputTransformation {
-                if (annotated.text.contentEquals(asCharSequence())) {
-                    annotated.spanStyles.forEach { addStyle(it.item, it.start, it.end) }
-                    annotated.paragraphStyles.forEach { addStyle(it.item, it.start, it.end) }
-                }
-                formatter?.let { with(it) { transformOutput() } }
+        val styles =
+            remember(annotated, formatter) {
+                if (annotated.spanStyles.isEmpty() && annotated.paragraphStyles.isEmpty()) formatter
+                else
+                    OutputTransformation {
+                        if (annotated.text.contentEquals(asCharSequence())) {
+                            annotated.spanStyles.forEach { addStyle(it.item, it.start, it.end) }
+                            annotated.paragraphStyles.forEach {
+                                addStyle(it.item, it.start, it.end)
+                            }
+                        }
+                        formatter?.let { with(it) { transformOutput() } }
+                    }
             }
-        }
         BasicTextField(
             state = binding.state,
             modifier = modifier,

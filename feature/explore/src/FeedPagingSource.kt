@@ -10,14 +10,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.yumeyuka.yumehub.data.api.dto.FeedEventDto
+import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.DashboardFeedPage
 import moe.yumeyuka.yumehub.data.repository.DashboardFeedRepository
 import moe.yumeyuka.yumehub.data.repository.PagingContext
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.PagingSnapshot
 import moe.yumeyuka.yumehub.data.repository.defaultPagingConfig
-import moe.yumeyuka.yumehub.data.cache.CacheTag
-import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 
 internal fun feedPagingKey(filters: Set<FeedFilter>, sort: FeedSort): String =
@@ -38,7 +38,6 @@ internal fun feedPager(
         FeedPagingSource(
             api,
             login,
-            selected,
             sort,
             repository.snapshot(login, key, FeedEventDto.serializer(), context, feedTags),
             context,
@@ -49,7 +48,6 @@ internal fun feedPager(
 private class FeedPagingSource(
     private val api: DashboardFeedRepository,
     private val login: String,
-    private val filters: Set<FeedFilter>,
     private val sort: FeedSort,
     private val snapshot: PagingSnapshot<FeedEventDto>,
     private val context: PagingContext,
@@ -59,7 +57,9 @@ private class FeedPagingSource(
     private val cursors = mutableMapOf<Int, String?>(1 to null)
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, FeedEventDto> =
-        loads.withLock { loadPage(params) }
+        loads.withLock {
+            loadPage(params)
+        }
 
     private suspend fun loadPage(params: LoadParams<Int>): LoadResult<Int, FeedEventDto> =
         try {
@@ -78,7 +78,10 @@ private class FeedPagingSource(
                     initial
                 } else {
                     moe.yumeyuka.yumehub.data.repository.pageRead {
-                        loadNetwork(params.key, force = params !is LoadParams.Refresh || context.forceRefresh)
+                        loadNetwork(
+                            params.key,
+                            force = params !is LoadParams.Refresh || context.forceRefresh,
+                        )
                     }
                 }
             cursors[result.page] = result.requestCursor
@@ -109,8 +112,7 @@ private class FeedPagingSource(
     }
 
     private suspend fun loadFirst(force: Boolean, cursors: MutableMap<Int, String?>) =
-        if (sort == FeedSort.Oldest)
-            loadReverseTail(requestPage(1, force, cursors), force, cursors)
+        if (sort == FeedSort.Oldest) loadReverseTail(requestPage(1, force, cursors), force, cursors)
         else loadForward(null, force, cursors)
 
     private suspend fun loadForward(
@@ -185,7 +187,6 @@ private class FeedPagingSource(
                     api.page(
                         login,
                         cursors[current],
-                        filters.mapTo(linkedSetOf()) { it.serverGroup },
                     )
                 }
             val next = result.nextCursor

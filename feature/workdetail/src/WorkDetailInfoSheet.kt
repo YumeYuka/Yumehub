@@ -34,7 +34,8 @@ import moe.yumeyuka.yumehub.ui.component.GithubMessageBodyField
 import retrofit2.HttpException
 
 internal fun CollaborationItemDto.viewerReviewLabel(strings: GithubStrings_WorkDetail): String? =
-    if (viewerReviewRequested) strings.ReviewPending else viewerLatestReviewState?.let(strings.ReviewState)
+    if (viewerReviewRequested) strings.ReviewPending
+    else viewerLatestReviewState?.let(strings.ReviewState)
 
 @Composable
 internal fun WorkChecksSheet(
@@ -119,7 +120,10 @@ internal fun WorkReviewSheet(
                 },
                 actions = {
                     GlasmioIconButton(onClick = onSubmit, enabled = state.canSubmitReview) {
-                        GithubIcon(Lucide.MessageCircleCheck, contentDescription = review.SubmitReview)
+                        GithubIcon(
+                            Lucide.MessageCircleCheck,
+                            contentDescription = review.SubmitReview,
+                        )
                     }
                 },
             )
@@ -155,7 +159,8 @@ internal fun WorkReviewSheet(
                                     when (event) {
                                         PullRequestReviewEvent.Comment -> review.Comment
                                         PullRequestReviewEvent.Approve -> review.Approve
-                                        PullRequestReviewEvent.RequestChanges -> review.RequestChanges
+                                        PullRequestReviewEvent.RequestChanges ->
+                                            review.RequestChanges
                                     }
                                 },
                                 enabled = editable,
@@ -163,7 +168,12 @@ internal fun WorkReviewSheet(
                         },
                     )
                 }
-                GithubMessageBodyField(state.reviewDraft, onBodyChange, review.WriteComment, editable)
+                GithubMessageBodyField(
+                    state.reviewDraft,
+                    onBodyChange,
+                    review.WriteComment,
+                    editable,
+                )
             } else if (result == null && !state.loading) {
                 GlasmioGroupedList {
                     GlasmioListRow(title = review.ReviewUnavailable, showTopSeparator = false)
@@ -196,10 +206,8 @@ internal fun WorkMergeSheet(
     var selected by rememberSaveable(id, head, base) { mutableStateOf<String?>(null) }
     val method = selected?.takeIf { selection -> methods.any { it.first == selection } }
     val editMessage = method == "MERGE" || method == "SQUASH"
-    var editedHeadline by
-        rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
-    var editedBody by
-        rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
+    var editedHeadline by rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
+    var editedBody by rememberSaveable(id, head, base, method) { mutableStateOf<String?>(null) }
     var retry by remember(visible, id, head, base, method) { mutableStateOf(0) }
     var defaults by
         remember(visible, id, head, base, method, retry) { mutableStateOf<WorkMergeMessage?>(null) }
@@ -235,7 +243,8 @@ internal fun WorkMergeSheet(
             item.canMerge() &&
             !busy &&
             !state.loading &&
-            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN &&
+            state.mergePhase != WritePhase.PENDING &&
+            state.mergePhase != WritePhase.UNCERTAIN &&
             (!editMessage || messageReady && headline.isNotBlank())
     val scroll = rememberScrollState()
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }

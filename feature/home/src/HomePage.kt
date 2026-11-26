@@ -149,7 +149,6 @@ fun HomePage(
                 }
                 GithubLoadingContent(
                     loading = state == HomeFavoritesState.Loading,
-                    deferUntilEntry = false,
                     placeholder = { ListRowPlaceholder() },
                 ) {
                     if (favorites == null) return@GithubLoadingContent

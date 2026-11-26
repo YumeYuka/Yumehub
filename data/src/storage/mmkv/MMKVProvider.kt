@@ -48,8 +48,7 @@ internal class RealMMKVStorage(private val mmkv: MMKV) : KeyValueStorage {
 
     override fun encode(key: String, value: Boolean): Boolean = mmkv.encode(key, value)
 
-    override fun decodeInt(key: String, defaultValue: Int): Int =
-        mmkv.decodeInt(key, defaultValue)
+    override fun decodeInt(key: String, defaultValue: Int): Int = mmkv.decodeInt(key, defaultValue)
 
     override fun encode(key: String, value: Int): Boolean = mmkv.encode(key, value)
 

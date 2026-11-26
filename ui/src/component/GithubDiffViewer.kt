@@ -51,8 +51,8 @@ import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffDto
 import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffLineDto
 import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffLineType
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
+import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
 
 @Composable
 fun githubAnnotatedCode(
@@ -219,31 +219,34 @@ fun GithubDiffViewer(diff: StructuredDiffDto, modifier: Modifier, language: Stri
     val horizontalScrollState =
         key(diff.id, diff.baseCommitOid, diff.headCommitOid) { rememberScrollState() }
     // Draw actual lines immediately on expansion and restoration. Highlighting changes only spans.
-    val hunks = remember(diff.id, diff.baseCommitOid, diff.headCommitOid) {
-        buildList<List<StructuredDiffLineDto>> {
-            var lines = mutableListOf<StructuredDiffLineDto>()
-            for (line in diff.lines) {
-                if (line.type == StructuredDiffLineType.Hunk) {
-                    if (lines.isNotEmpty()) {
-                        add(lines)
-                        lines = mutableListOf()
+    val hunks =
+        remember(diff.id, diff.baseCommitOid, diff.headCommitOid) {
+            buildList<List<StructuredDiffLineDto>> {
+                var lines = mutableListOf<StructuredDiffLineDto>()
+                for (line in diff.lines) {
+                    if (line.type == StructuredDiffLineType.Hunk) {
+                        if (lines.isNotEmpty()) {
+                            add(lines)
+                            lines = mutableListOf()
+                        }
+                    } else {
+                        lines.add(line.copy(text = githubStructuredDiffCodeText(line.text)))
                     }
-                } else {
-                    lines.add(line.copy(text = githubStructuredDiffCodeText(line.text)))
                 }
+                if (lines.isNotEmpty()) add(lines)
             }
-            if (lines.isNotEmpty()) add(lines)
         }
-    }
-    var highlights by remember(hunks, language, isDark) { mutableStateOf<List<HighlightedDiffHunk>>(emptyList()) }
+    var highlights by
+        remember(hunks, language, isDark) { mutableStateOf<List<HighlightedDiffHunk>>(emptyList()) }
     LaunchedEffect(hunks, language, isDark) {
         try {
-            highlights = withContext(Dispatchers.Default) {
-                hunks.map { lines ->
-                    ensureActive()
-                    highlightDiffHunk(context, lines, language, isDark)
+            highlights =
+                withContext(Dispatchers.Default) {
+                    hunks.map { lines ->
+                        ensureActive()
+                        highlightDiffHunk(context, lines, language, isDark)
+                    }
                 }
-            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -262,7 +265,13 @@ fun GithubDiffViewer(diff: StructuredDiffDto, modifier: Modifier, language: Stri
     // 行号沿用文件头图标的起始缩进；两侧按实际位数共用列宽，至少预留两位。
     val gutterInset = GlasmioListRowDefaults.horizontalPadding
     val digits =
-        remember(hunks) { maxOf(2, diff.lines.maxOfOrNull { maxOf(it.left ?: 0, it.right ?: 0) }?.toString()?.length ?: 1) }
+        remember(hunks) {
+            maxOf(
+                2,
+                diff.lines.maxOfOrNull { maxOf(it.left ?: 0, it.right ?: 0) }?.toString()?.length
+                    ?: 1,
+            )
+        }
     val numberWidth =
         with(LocalDensity.current) {
             measurer.measure("9".repeat(digits), style).size.width.toDp() + 8.dp

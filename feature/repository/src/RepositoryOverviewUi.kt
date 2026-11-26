@@ -49,22 +49,26 @@ import moe.yumeyuka.yumehub.ui.theme.GithubHomeColors
 internal fun RepositoryHeaderDescription(description: String?, loading: Boolean) {
     if (!loading && description == null) return
     val lineCount = 2
-    val style = GlasmioTheme.textStyles.body.copy(
-        fontSize = 15.sp,
-        lineHeight = 22.sp,
-        fontWeight = FontWeight.SemiBold,
-    )
+    val style =
+        GlasmioTheme.textStyles.body.copy(
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     val textMeasurer = rememberTextMeasurer()
-    val height = with(LocalDensity.current) {
-        textMeasurer.measure("Ag\nAg", style = style, maxLines = lineCount).size.height.toDp()
-    }
+    val height =
+        with(LocalDensity.current) {
+            textMeasurer.measure("Ag\nAg", style = style, maxLines = lineCount).size.height.toDp()
+        }
     GithubLoadingContent(
         loading = loading,
-        deferUntilEntry = false,
         modifier = Modifier.fillMaxWidth().height(height),
         placeholder = {
             val barHeight = with(LocalDensity.current) { style.fontSize.toDp() * 0.9f }
-            Column(Modifier.fillMaxWidth().height(height), verticalArrangement = Arrangement.SpaceAround) {
+            Column(
+                Modifier.fillMaxWidth().height(height),
+                verticalArrangement = Arrangement.SpaceAround,
+            ) {
                 TextPlaceholder(height = barHeight, fraction = 0.96f)
                 TextPlaceholder(height = barHeight, fraction = 0.82f)
             }
@@ -115,12 +119,18 @@ internal fun RepositoryHeaderCard(
         starEnabled = enabled && state.coordinatorReady && overview != null,
     )
     val common = LocalGithubStrings.current.Common
-    val status = when (state.starPhase) {
-        WritePhase.PENDING -> common.MutationPending
-        WritePhase.UNCERTAIN -> "${common.MutationUncertain} · ${common.MutationReconcile}"
-        else -> null
-    }
-    if (status != null) Text(status, style = GlasmioTheme.textStyles.footnote, modifier = Modifier.padding(horizontal = 4.dp))
+    val status =
+        when (state.starPhase) {
+            WritePhase.PENDING -> common.MutationPending
+            WritePhase.UNCERTAIN -> "${common.MutationUncertain} · ${common.MutationReconcile}"
+            else -> null
+        }
+    if (status != null)
+        Text(
+            status,
+            style = GlasmioTheme.textStyles.footnote,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
 }
 
 /** 仓库设置里的网站地址转成展示用的主机名，去掉协议与末尾斜杠。 */
@@ -245,8 +255,9 @@ private fun RepositoryMetadataBar(
 private fun RepositoryCountLabel(label: String?, placeholderWidth: Dp, style: TextStyle) {
     GithubLoadingContent(
         loading = label == null,
-        deferUntilEntry = false,
-        placeholder = { TextPlaceholder(Modifier.width(placeholderWidth), height = 8.dp, fraction = 1f) },
+        placeholder = {
+            TextPlaceholder(Modifier.width(placeholderWidth), height = 8.dp, fraction = 1f)
+        },
     ) {
         if (label != null) Text(label, style = style, maxLines = 1)
     }

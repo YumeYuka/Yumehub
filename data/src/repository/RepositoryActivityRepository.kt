@@ -336,7 +336,8 @@ class RepositoryActivityRepository(
                 )
                 .graphObject("createDiscussion")
                 .graphObject("discussion")
-        return created["number"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: throw GithubPageException()
+        return created["number"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }
+            ?: throw GithubPageException()
     }
 
     private fun field(kind: RepositoryActivityKind): String =

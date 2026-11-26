@@ -31,7 +31,7 @@ fun GithubUserCard(
 ) {
     val styles = GlasmioTheme.textStyles
     val colors = GlasmioTheme.colors
-    GithubLoadingCard(loading, modifier, deferUntilEntry = false, placeholder = { UserRowPlaceholder() }) {
+    GithubLoadingCard(loading, modifier, placeholder = { UserRowPlaceholder() }) {
         Row(
             Modifier.fillMaxWidth()
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)

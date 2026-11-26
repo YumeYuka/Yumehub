@@ -80,7 +80,10 @@ internal class UserProfileViewModel(
                 val coord = coordinator
                 val key = observedTargetLogin?.let(::followKeyFor)
                 val activeWrite = key?.let { coord?.current(it) }
-                if (activeWrite == null || (activeWrite.desired == null && activeWrite.phase == WritePhase.IDLE)) {
+                if (
+                    activeWrite == null ||
+                        (activeWrite.desired == null && activeWrite.phase == WritePhase.IDLE)
+                ) {
                     mutableState.update { it.copy(following = relationship.data) }
                 }
             }
@@ -118,43 +121,41 @@ internal class UserProfileViewModel(
         observedTargetLogin = normalized
         followObserverJob?.cancel()
         val key = followKeyFor(normalized)
-        followObserverJob =
-            viewModelScope.launch {
-                coord.observe(key).collect { write ->
-                    if (repository.account != account) return@collect
-                    val base = confirmedProfile
-                    val projectedFollowing =
-                        write.visible ?: mutableState.value.following
-                    val baseFollowing =
-                        base?.viewerIsFollowing ?: following.cached
-                    val projectedProfile =
-                        base?.let { profile ->
-                            if (
-                                projectedFollowing != null &&
-                                    baseFollowing != null &&
-                                    !profile.isOrganization
-                            ) {
-                                val delta =
-                                    (if (projectedFollowing) 1 else 0) -
-                                        (if (baseFollowing) 1 else 0)
-                                profile.copy(
-                                    followers = (profile.followers + delta).coerceAtLeast(0),
-                                    viewerIsFollowing = projectedFollowing,
-                                )
-                            } else profile.copy(viewerIsFollowing = projectedFollowing ?: profile.viewerIsFollowing)
-                        }
-                    mutableState.update {
-                        it.copy(
-                            profile = projectedProfile ?: it.profile,
-                            following = projectedFollowing,
-                            followSubmitting = write.phase == WritePhase.PENDING,
-                            followFailed = write.phase == WritePhase.REJECTED,
-                            followPhase = write.phase,
-                            followUncertain = write.phase == WritePhase.UNCERTAIN,
+        followObserverJob = viewModelScope.launch {
+            coord.observe(key).collect { write ->
+                if (repository.account != account) return@collect
+                val base = confirmedProfile
+                val projectedFollowing = write.visible ?: mutableState.value.following
+                val baseFollowing = base?.viewerIsFollowing ?: following.cached
+                val projectedProfile = base?.let { profile ->
+                    if (
+                        projectedFollowing != null &&
+                            baseFollowing != null &&
+                            !profile.isOrganization
+                    ) {
+                        val delta =
+                            (if (projectedFollowing) 1 else 0) - (if (baseFollowing) 1 else 0)
+                        profile.copy(
+                            followers = (profile.followers + delta).coerceAtLeast(0),
+                            viewerIsFollowing = projectedFollowing,
                         )
-                    }
+                    } else
+                        profile.copy(
+                            viewerIsFollowing = projectedFollowing ?: profile.viewerIsFollowing,
+                        )
+                }
+                mutableState.update {
+                    it.copy(
+                        profile = projectedProfile ?: it.profile,
+                        following = projectedFollowing,
+                        followSubmitting = write.phase == WritePhase.PENDING,
+                        followFailed = write.phase == WritePhase.REJECTED,
+                        followPhase = write.phase,
+                        followUncertain = write.phase == WritePhase.UNCERTAIN,
+                    )
                 }
             }
+        }
     }
 
     fun load() {
@@ -200,8 +201,15 @@ internal class UserProfileViewModel(
                         orgFollowing
                     } else {
                         profile.viewerIsFollowing?.also { selected ->
-                            if (!isSelf && coord != null && initialStamp != null && coord.publishConfirmed(key, initialStamp, selected)) {
-                                repository.followingResource(account, profile.login).update(selected)
+                            if (
+                                !isSelf &&
+                                    coord != null &&
+                                    initialStamp != null &&
+                                    coord.publishConfirmed(key, initialStamp, selected)
+                            ) {
+                                repository
+                                    .followingResource(account, profile.login)
+                                    .update(selected)
                             }
                         }
                     }
@@ -209,13 +217,8 @@ internal class UserProfileViewModel(
                 val activeDesired = slotState?.visible ?: resolvedFollowing
                 val baseFollowing = resolvedFollowing
                 val projected =
-                    if (
-                        activeDesired != null &&
-                            baseFollowing != null &&
-                            !profile.isOrganization
-                    ) {
-                        val delta =
-                            (if (activeDesired) 1 else 0) - (if (baseFollowing) 1 else 0)
+                    if (activeDesired != null && baseFollowing != null && !profile.isOrganization) {
+                        val delta = (if (activeDesired) 1 else 0) - (if (baseFollowing) 1 else 0)
                         profile.copy(
                             followers = (profile.followers + delta).coerceAtLeast(0),
                             viewerIsFollowing = activeDesired,
@@ -241,16 +244,23 @@ internal class UserProfileViewModel(
 
     fun retryReadme() {
         val profile = confirmedProfile ?: return
-        if (loadJob?.isActive == true || readmeJob?.isActive == true || profile.readmeResolved) return
+        if (loadJob?.isActive == true || readmeJob?.isActive == true || profile.readmeResolved)
+            return
         readmeJob = viewModelScope.launch {
-            val result = try {
-                repository.loadProfileReadme(account, profile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
+            val result =
+                try {
+                    repository.loadProfileReadme(account, profile)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return@launch
+                }
+            if (
+                repository.account != account ||
+                    confirmedProfile !== profile ||
+                    !result.readmeResolved
+            )
                 return@launch
-            }
-            if (repository.account != account || confirmedProfile !== profile || !result.readmeResolved) return@launch
             confirmedProfile = profile.withReadme(result)
             mutableState.update { it.copy(profile = it.profile?.withReadme(result)) }
         }
@@ -261,14 +271,12 @@ internal class UserProfileViewModel(
         val selected = current.following ?: return
         val profile = current.profile ?: return
         val userId = profile.nodeId ?: return
-        if (
-            isSelf ||
-                current.unavailable ||
-                repository.account != account
-        )
-            return
+        if (isSelf || current.unavailable || repository.account != account) return
         val initial = coordinator?.current(followKeyFor(profile.login))
-        if (initial?.phase == WritePhase.UNCERTAIN) { reconcileFollowing(); return }
+        if (initial?.phase == WritePhase.UNCERTAIN) {
+            reconcileFollowing()
+            return
+        }
         val target = !(initial?.visible ?: selected)
         viewModelScope.launch {
             val coord =
@@ -311,7 +319,11 @@ internal class UserProfileViewModel(
                         if (profile.isOrganization) {
                             dashboard.organizationFollowing(account, profile.login)
                         } else {
-                            requireNotNull(repository.loadUserForAccount(account, profile.login, userId).viewerIsFollowing)
+                            requireNotNull(
+                                repository
+                                    .loadUserForAccount(account, profile.login, userId)
+                                    .viewerIsFollowing,
+                            )
                         }
                     },
                 )
@@ -328,7 +340,11 @@ internal class UserProfileViewModel(
             if (profile.isOrganization) {
                 dashboard.organizationFollowing(account, profile.login)
             } else {
-                requireNotNull(repository.loadUserForAccount(account, profile.login, profile.nodeId).viewerIsFollowing)
+                requireNotNull(
+                    repository
+                        .loadUserForAccount(account, profile.login, profile.nodeId)
+                        .viewerIsFollowing,
+                )
             }
         }
     }
@@ -338,9 +354,9 @@ internal class UserProfileViewModel(
     }
 }
 
-internal fun ProfileDto.withReadme(document: ProfileDto): ProfileDto = copy(
-    readmeHtml = document.readmeHtml,
-    readmePath = document.readmePath,
-    readmeResolved = document.readmeResolved,
-)
-
+internal fun ProfileDto.withReadme(document: ProfileDto): ProfileDto =
+    copy(
+        readmeHtml = document.readmeHtml,
+        readmePath = document.readmePath,
+        readmeResolved = document.readmeResolved,
+    )

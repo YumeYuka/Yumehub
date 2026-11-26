@@ -91,24 +91,24 @@ class RepositoryForkRepository(
         defaultBranchOnly: Boolean,
     ): RepositoryDto =
         request(session) {
-                require(name.isNotBlank() && name.length <= 100)
-                api.forkRepository(
-                        owner,
-                        repository,
-                        ForkRepositoryRequest(name, defaultBranchOnly),
-                        authorization =
-                            tokens
-                                .authorization(session.account, session.generation)
-                                .getValue("Authorization"),
+            require(name.isNotBlank() && name.length <= 100)
+            api.forkRepository(
+                    owner,
+                    repository,
+                    ForkRepositoryRequest(name, defaultBranchOnly),
+                    authorization =
+                        tokens
+                            .authorization(session.account, session.generation)
+                            .getValue("Authorization"),
+                )
+                .also {
+                    check(
+                        it.owner?.login.equals(session.account, true) &&
+                            it.name.equals(name, true) &&
+                            it.fork == true,
                     )
-                    .also {
-                        check(
-                            it.owner?.login.equals(session.account, true) &&
-                                it.name.equals(name, true) &&
-                                it.fork == true,
-                        )
-                    }
-            }
+                }
+        }
 
     private fun checkSession(session: Session) {
         if (!isActive(session)) throw CancellationException("Fork repository session changed")

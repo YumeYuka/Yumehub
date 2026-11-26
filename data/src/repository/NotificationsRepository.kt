@@ -11,12 +11,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.*
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
@@ -31,8 +31,7 @@ import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
-@Serializable
-data class NotificationThreadState(val unread: Boolean, val done: Boolean)
+@Serializable data class NotificationThreadState(val unread: Boolean, val done: Boolean)
 
 data class NotificationsQuery(
     val includeRead: Boolean = false,
@@ -46,12 +45,13 @@ enum class NotificationThreadAction(internal val operation: String, internal val
     MarkDone("MarkNotificationAsDone", "markNotificationAsDone"),
     MarkUndone("MarkNotificationAsUndone", "markNotificationAsUndone");
 
-    fun project(base: NotificationThreadState): NotificationThreadState = when (this) {
-        MarkRead -> base.copy(unread = false)
-        MarkUnread -> base.copy(unread = true)
-        MarkDone -> base.copy(done = true)
-        MarkUndone -> base.copy(done = false)
-    }
+    fun project(base: NotificationThreadState): NotificationThreadState =
+        when (this) {
+            MarkRead -> base.copy(unread = false)
+            MarkUnread -> base.copy(unread = true)
+            MarkDone -> base.copy(done = true)
+            MarkUndone -> base.copy(done = false)
+        }
 }
 
 /** 页码只用于本地窗口；网络请求使用其对应的服务端游标。 */
@@ -116,17 +116,19 @@ class NotificationsRepository(
             runtime.refresh(normalized) {
                 runtime.mutex(normalized).withLock {
                     val resource = resource(account, query)
-                    resource.refresh {
-                        val cached = resource.state.value
-                        val window = cached.data.refreshWindow(cached.updatedAt)
-                        loadWindow(
-                            account,
-                            query,
-                            window.fromPage,
-                            window.throughPage,
-                            window.previous,
-                        )
-                    }.join()
+                    resource
+                        .refresh {
+                            val cached = resource.state.value
+                            val window = cached.data.refreshWindow(cached.updatedAt)
+                            loadWindow(
+                                account,
+                                query,
+                                window.fromPage,
+                                window.throughPage,
+                                window.previous,
+                            )
+                        }
+                        .join()
                 }
             }
         }
@@ -152,8 +154,11 @@ class NotificationsRepository(
                             }
                         val next = previous?.loadedThroughPage?.plus(1)
                         val rolling =
-                            replace && previous != null && next == throughPage &&
-                                fromPage in (previous.loadedFromPage + 1)..previous.loadedThroughPage &&
+                            replace &&
+                                previous != null &&
+                                next == throughPage &&
+                                fromPage in
+                                    (previous.loadedFromPage + 1)..previous.loadedThroughPage &&
                                 previous.canReuseWindow()
                         val page =
                             loadWindow(
@@ -196,13 +201,23 @@ class NotificationsRepository(
                 val seen = mutableSetOf<String>()
                 for (page in 1..10) {
                     val statuses = if (done) "DONE" else "READ, UNREAD"
-                    val connection = session.execute(
-                        "query ThreadStates(\u0024after: String) { viewer { notificationThreads(first: 100, after: \u0024after, filterBy: {statuses: [$statuses]}) { nodes { id isUnread } pageInfo { hasNextPage endCursor } } } }",
-                        buildJsonObject { after?.let { put("after", it) } },
-                    ).graphObject("viewer").graphObject("notificationThreads")
-                    connection.graphNodes().firstOrNull { it.graphRequiredText("id") == threadId }?.let {
-                        return@withTimeoutOrNull NotificationThreadState(it.graphRequiredText("isUnread").toBooleanStrict(), done)
-                    }
+                    val connection =
+                        session
+                            .execute(
+                                "query ThreadStates(\u0024after: String) { viewer { notificationThreads(first: 100, after: \u0024after, filterBy: {statuses: [$statuses]}) { nodes { id isUnread } pageInfo { hasNextPage endCursor } } } }",
+                                buildJsonObject { after?.let { put("after", it) } },
+                            )
+                            .graphObject("viewer")
+                            .graphObject("notificationThreads")
+                    connection
+                        .graphNodes()
+                        .firstOrNull { it.graphRequiredText("id") == threadId }
+                        ?.let {
+                            return@withTimeoutOrNull NotificationThreadState(
+                                it.graphRequiredText("isUnread").toBooleanStrict(),
+                                done,
+                            )
+                        }
                     after = connection.graphCursor(after) ?: break
                     if (!seen.add(after)) throw GithubPageException()
                 }
@@ -221,14 +236,19 @@ class NotificationsRepository(
         val session = session(account)
         val affectedRuntime = runtime(account)
         val field = action.field
-        val result = affectedRuntime.submissions.withPermit {
-            session.execute(
-                "mutation ${action.operation}(${'$'}id: ID!) { $field(input: {id: ${'$'}id}) { success } }",
-                buildJsonObject { put("id", threadId) }, write = true,
-            ).graphObject(field)
-        }
+        val result =
+            affectedRuntime.submissions.withPermit {
+                session
+                    .execute(
+                        "mutation ${action.operation}(${'$'}id: ID!) { $field(input: {id: ${'$'}id}) { success } }",
+                        buildJsonObject { put("id", threadId) },
+                        write = true,
+                    )
+                    .graphObject(field)
+            }
         when (result["success"]) {
-            JsonPrimitive(false) -> throw MutationRejectedException("Notification action rejected by GitHub")
+            JsonPrimitive(false) ->
+                throw MutationRejectedException("Notification action rejected by GitHub")
             JsonPrimitive(true) -> Unit
             else -> throw GithubPageException()
         }
@@ -237,14 +257,16 @@ class NotificationsRepository(
         updateThreads(account, threadId, action, affectedRuntime)
     }
 
-
     suspend fun resolveWorkThreadId(account: String, target: WorkTarget): String {
         val session = session(account)
         val expectedRepository = "${target.owner}/${target.repository}"
         require(validRepository(expectedRepository) && target.number > 0)
         val runtime = runtime(account)
         val identity = target.normalized()
-        synchronized(runtime.resources) { runtime.workThreadIds[identity] }?.let { return it }
+        synchronized(runtime.resources) { runtime.workThreadIds[identity] }
+            ?.let {
+                return it
+            }
         val query = NotificationsQuery(includeRead = true, repository = expectedRepository)
         val seen = mutableSetOf<String>()
         var after: String? = null
@@ -261,7 +283,6 @@ class NotificationsRepository(
         }
         throw WorkNotificationUnavailableException()
     }
-
 
     /** 页面返回后仍由会话级仓库完成通知写入，不让详情页的锁阻塞返回。 */
     fun enqueueWorkDone(account: String, target: WorkTarget): Job =
@@ -337,7 +358,6 @@ class NotificationsRepository(
             owner = owner.lowercase(Locale.ROOT),
             repository = repository.lowercase(Locale.ROOT),
         )
-
 
     private suspend fun loadWindow(
         account: String,
@@ -477,18 +497,20 @@ class NotificationsRepository(
         private val refreshes = mutableMapOf<NotificationsQuery, Job>()
 
         fun refresh(query: NotificationsQuery, load: suspend () -> Unit): Job {
-            val job = synchronized(resources) {
-                refreshes[query]?.takeUnless { it.isCompleted } ?: run {
-                    val next = scope.launch(start = CoroutineStart.LAZY) { load() }
-                    refreshes[query] = next
-                    next.invokeOnCompletion {
-                        synchronized(resources) {
-                            if (refreshes[query] === next) refreshes.remove(query)
+            val job =
+                synchronized(resources) {
+                    refreshes[query]?.takeUnless { it.isCompleted }
+                        ?: run {
+                            val next = scope.launch(start = CoroutineStart.LAZY) { load() }
+                            refreshes[query] = next
+                            next.invokeOnCompletion {
+                                synchronized(resources) {
+                                    if (refreshes[query] === next) refreshes.remove(query)
+                                }
+                            }
+                            next
                         }
-                    }
-                    next
                 }
-            }
             job.start()
             return job
         }
@@ -528,8 +550,10 @@ private fun NotificationDto.recordKey(): Any = id?.takeIf(String::isNotBlank) ?:
 
 private fun List<NotificationDto>.distinctRecords() = distinctBy { it.recordKey() }
 
-private fun List<String>.distinctRepositories() =
-    distinctBy { it.lowercase(Locale.ROOT) }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+private fun List<String>.distinctRepositories() = distinctBy {
+    it.lowercase(Locale.ROOT)
+}
+    .sortedWith(String.CASE_INSENSITIVE_ORDER)
 
 internal data class NotificationRefreshWindow(
     val fromPage: Int,
@@ -582,7 +606,10 @@ internal fun NotificationsSnapshot.appendWindow(
     )
 }
 
-private fun List<NotificationDto>.repositoryNames(): List<String> =
-    mapNotNull { it.repository?.fullName }.filter(::validRepository).distinctRepositories()
+private fun List<NotificationDto>.repositoryNames(): List<String> = mapNotNull {
+    it.repository?.fullName
+}
+    .filter(::validRepository)
+    .distinctRepositories()
 
 class WorkNotificationUnavailableException : Exception()

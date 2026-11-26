@@ -4,8 +4,8 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -43,10 +43,10 @@ import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
@@ -95,9 +95,17 @@ fun RepositoryPage(
     val strings = LocalGithubStrings.current.Repository
     val profileStrings = LocalGithubStrings.current.Profile
     val viewModel: RepositoryDetailViewModel =
-        koinViewModel(key = "repository-$owner-$name", parameters = {
-            parametersOf(owner, name, if (readme == null) RepositoryDetailPage.Overview else RepositoryDetailPage.Readme)
-        })
+        koinViewModel(
+            key = "repository-$owner-$name",
+            parameters = {
+                parametersOf(
+                    owner,
+                    name,
+                    if (readme == null) RepositoryDetailPage.Overview
+                    else RepositoryDetailPage.Readme,
+                )
+            },
+        )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val overviewViewModel: RepositoryOverviewViewModel =
         koinViewModel(
@@ -304,162 +312,176 @@ fun RepositoryPage(
             listState = listState,
             itemSpacing = 12.dp,
             actions = {
-                if (overviewActions) Box {
-                    var creating by remember(viewModel, pageKey) { mutableStateOf(false) }
-                    var expanded by remember(viewModel, pageKey) { mutableStateOf(false) }
-                    val createAnchor = rememberGlasmioMenuAnchorState()
-                    val moreAnchor = rememberGlasmioMenuAnchorState()
-                    GithubToolbarActions(
-                        toolbarIcon(Lucide.Plus, strings.Create, menuAnchor = createAnchor) {
-                            if (host.navigationEnabled) creating = true
-                        },
-                        toolbarIcon(Lucide.Ellipsis, strings.Actions, menuAnchor = moreAnchor) {
-                            if (host.navigationEnabled) expanded = true
-                        },
-                    )
-                    GlasmioMenu(
-                        expanded = creating,
-                        onExpandedChange = { creating = it },
-                        itemCount = if (overview.overview?.discussionsEnabled == true) 3 else 2,
-                        menuAnchorState = createAnchor,
-                        externalAnchorBounds = createAnchor.bounds,
-                        anchor = {},
-                    ) { backdrop, close ->
-                        GlasmioMenuItem(
-                            title = strings.NewIssue,
-                            backdrop = backdrop,
-                            icon = {
-                                GithubIcon(
-                                    Lucide.CircleDot,
-                                    contentDescription = null,
-                                    size = 20.dp,
-                                )
+                if (overviewActions)
+                    Box {
+                        var creating by remember(viewModel, pageKey) { mutableStateOf(false) }
+                        var expanded by remember(viewModel, pageKey) { mutableStateOf(false) }
+                        val createAnchor = rememberGlasmioMenuAnchorState()
+                        val moreAnchor = rememberGlasmioMenuAnchorState()
+                        GithubToolbarActions(
+                            toolbarIcon(Lucide.Plus, strings.Create, menuAnchor = createAnchor) {
+                                if (host.navigationEnabled) creating = true
                             },
-                            enabled =
-                                overview.overview?.issuesEnabled == true &&
-                                    overview.overview?.archived != true,
-                            onClick = {
-                                close()
-                                creating = false
-                                onOpenWorkList(
-                                    currentOwner,
-                                    currentName,
-                                    CollaborationKind.Issue,
-                                    true,
-                                )
+                            toolbarIcon(Lucide.Ellipsis, strings.Actions, menuAnchor = moreAnchor) {
+                                if (host.navigationEnabled) expanded = true
                             },
                         )
-                        GlasmioMenuItem(
-                            title = strings.NewPullRequest,
-                            backdrop = backdrop,
-                            icon = {
-                                GithubIcon(
-                                    Lucide.GitPullRequest,
-                                    contentDescription = null,
-                                    size = 20.dp,
-                                )
-                            },
-                            enabled =
-                                overview.overview != null && overview.overview?.archived != true,
-                            onClick = {
-                                close()
-                                creating = false
-                                onOpenWorkList(
-                                    currentOwner,
-                                    currentName,
-                                    CollaborationKind.PullRequest,
-                                    true,
-                                )
-                            },
-                        )
-                        if (overview.overview?.discussionsEnabled == true) {
+                        GlasmioMenu(
+                            expanded = creating,
+                            onExpandedChange = { creating = it },
+                            itemCount = if (overview.overview?.discussionsEnabled == true) 3 else 2,
+                            menuAnchorState = createAnchor,
+                            externalAnchorBounds = createAnchor.bounds,
+                            anchor = {},
+                        ) { backdrop, close ->
                             GlasmioMenuItem(
-                                title = strings.NewDiscussion,
+                                title = strings.NewIssue,
                                 backdrop = backdrop,
                                 icon = {
-                                    GithubIcon(Lucide.MessagesSquare, contentDescription = null, size = 20.dp)
+                                    GithubIcon(
+                                        Lucide.CircleDot,
+                                        contentDescription = null,
+                                        size = 20.dp,
+                                    )
                                 },
-                                enabled = overview.overview?.archived != true,
+                                enabled =
+                                    overview.overview?.issuesEnabled == true &&
+                                        overview.overview?.archived != true,
                                 onClick = {
                                     close()
                                     creating = false
-                                    onCreateDiscussion(currentOwner, currentName)
+                                    onOpenWorkList(
+                                        currentOwner,
+                                        currentName,
+                                        CollaborationKind.Issue,
+                                        true,
+                                    )
                                 },
                             )
-                        }
-                    }
-                    GlasmioMenu(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = it },
-                        itemCount = if (overview.pinned == null) 3 else 4,
-                        menuAnchorState = moreAnchor,
-                        externalAnchorBounds = moreAnchor.bounds,
-                        anchor = {},
-                    ) { backdrop, close ->
-                        GlasmioMenuItem(
-                            title = strings.NotificationSettings,
-                            backdrop = backdrop,
-                            enabled = details != null,
-                            icon = {
-                                GithubIcon(Lucide.Bell, contentDescription = null, size = 20.dp)
-                            },
-                            onClick = {
-                                close()
-                                expanded = false
-                                openSheet(RepositorySheet.Notifications)
-                            },
-                        )
-                        GlasmioMenuItem(
-                            title = profileStrings.AddToList,
-                            backdrop = backdrop,
-                            enabled = details?.nodeId != null && !overview.busy,
-                            icon = {
-                                GithubIcon(Lucide.List, contentDescription = null, size = 20.dp)
-                            },
-                            onClick = {
-                                close()
-                                expanded = false
-                                details?.let(listsViewModel::open)
-                            },
-                        )
-                        val pinned = overview.pinned
-                        if (pinned != null)
                             GlasmioMenuItem(
-                                title = if (pinned) strings.RemoveFavorite else strings.PinToHome,
+                                title = strings.NewPullRequest,
                                 backdrop = backdrop,
-                                enabled = details != null && overview.coordinatorReady && !overview.busy,
                                 icon = {
                                     GithubIcon(
-                                        Lucide.Pin,
+                                        Lucide.GitPullRequest,
                                         contentDescription = null,
                                         size = 20.dp,
-                                        filled = pinned,
+                                    )
+                                },
+                                enabled =
+                                    overview.overview != null &&
+                                        overview.overview?.archived != true,
+                                onClick = {
+                                    close()
+                                    creating = false
+                                    onOpenWorkList(
+                                        currentOwner,
+                                        currentName,
+                                        CollaborationKind.PullRequest,
+                                        true,
+                                    )
+                                },
+                            )
+                            if (overview.overview?.discussionsEnabled == true) {
+                                GlasmioMenuItem(
+                                    title = strings.NewDiscussion,
+                                    backdrop = backdrop,
+                                    icon = {
+                                        GithubIcon(
+                                            Lucide.MessagesSquare,
+                                            contentDescription = null,
+                                            size = 20.dp,
+                                        )
+                                    },
+                                    enabled = overview.overview?.archived != true,
+                                    onClick = {
+                                        close()
+                                        creating = false
+                                        onCreateDiscussion(currentOwner, currentName)
+                                    },
+                                )
+                            }
+                        }
+                        GlasmioMenu(
+                            expanded = expanded,
+                            onExpandedChange = { expanded = it },
+                            itemCount = if (overview.pinned == null) 3 else 4,
+                            menuAnchorState = moreAnchor,
+                            externalAnchorBounds = moreAnchor.bounds,
+                            anchor = {},
+                        ) { backdrop, close ->
+                            GlasmioMenuItem(
+                                title = strings.NotificationSettings,
+                                backdrop = backdrop,
+                                enabled = details != null,
+                                icon = {
+                                    GithubIcon(Lucide.Bell, contentDescription = null, size = 20.dp)
+                                },
+                                onClick = {
+                                    close()
+                                    expanded = false
+                                    openSheet(RepositorySheet.Notifications)
+                                },
+                            )
+                            GlasmioMenuItem(
+                                title = profileStrings.AddToList,
+                                backdrop = backdrop,
+                                enabled = details?.nodeId != null && !overview.busy,
+                                icon = {
+                                    GithubIcon(Lucide.List, contentDescription = null, size = 20.dp)
+                                },
+                                onClick = {
+                                    close()
+                                    expanded = false
+                                    details?.let(listsViewModel::open)
+                                },
+                            )
+                            val pinned = overview.pinned
+                            if (pinned != null)
+                                GlasmioMenuItem(
+                                    title =
+                                        if (pinned) strings.RemoveFavorite else strings.PinToHome,
+                                    backdrop = backdrop,
+                                    enabled =
+                                        details != null &&
+                                            overview.coordinatorReady &&
+                                            !overview.busy,
+                                    icon = {
+                                        GithubIcon(
+                                            Lucide.Pin,
+                                            contentDescription = null,
+                                            size = 20.dp,
+                                            filled = pinned,
+                                        )
+                                    },
+                                    onClick = {
+                                        close()
+                                        expanded = false
+                                        details?.let { overviewViewModel.pin(it, !pinned) }
+                                    },
+                                )
+                            GlasmioMenuItem(
+                                title = strings.EditDescription,
+                                backdrop = backdrop,
+                                enabled =
+                                    details != null &&
+                                        !overview.busy &&
+                                        overview.overview?.canEditDescription == true,
+                                icon = {
+                                    GithubIcon(
+                                        Lucide.Pencil,
+                                        contentDescription = null,
+                                        size = 20.dp,
                                     )
                                 },
                                 onClick = {
                                     close()
                                     expanded = false
-                                    details?.let { overviewViewModel.pin(it, !pinned) }
+                                    openSheet(RepositorySheet.Description)
                                 },
                             )
-                        GlasmioMenuItem(
-                            title = strings.EditDescription,
-                            backdrop = backdrop,
-                            enabled =
-                                details != null &&
-                                    !overview.busy &&
-                                    overview.overview?.canEditDescription == true,
-                            icon = {
-                                GithubIcon(Lucide.Pencil, contentDescription = null, size = 20.dp)
-                            },
-                            onClick = {
-                                close()
-                                expanded = false
-                                openSheet(RepositorySheet.Description)
-                            },
-                        )
+                        }
                     }
-                }
             },
         ) {
             RepositoryDetailScreen(
@@ -497,9 +519,8 @@ fun RepositoryPage(
                     if (host.navigationEnabled) overviewViewModel.star()
                 },
                 onRetryRepository = { if (host.navigationEnabled) viewModel.retryRepository() },
-                onRetryOverview = { if (host.navigationEnabled) overviewViewModel.refresh(force = true) },
-                onRetryReadme = {
-                    if (host.navigationEnabled) viewModel.retryReadme()
+                onRetryOverview = {
+                    if (host.navigationEnabled) overviewViewModel.refresh(force = true)
                 },
                 onOpenLicense = {
                     if (host.navigationEnabled) onOpenLicense(currentOwner, currentName)
@@ -539,11 +560,13 @@ fun RepositoryPage(
         onToggle = listsViewModel::toggle,
         onSave = {
             listsViewModel.save { phase ->
-                val message = when (phase) {
-                    moe.yumeyuka.yumehub.data.cache.WritePhase.IDLE -> profileStrings.ListsSaved
-                    moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN -> common.MutationUncertain
-                    else -> profileStrings.AddToListFailed
-                }
+                val message =
+                    when (phase) {
+                        moe.yumeyuka.yumehub.data.cache.WritePhase.IDLE -> profileStrings.ListsSaved
+                        moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN ->
+                            common.MutationUncertain
+                        else -> profileStrings.AddToListFailed
+                    }
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
         },

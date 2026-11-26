@@ -87,13 +87,13 @@ fun CollaborationItemDto.canMerge(): Boolean =
 @Serializable data class WorkTaskProgressDto(val completed: Int, val total: Int)
 
 enum class WorkProperty {
-  Reviewers,
-  Assignees,
-  Labels,
-  Milestone,
-  LinkedItems,
-  SubIssues,
-  Projects,
+    Reviewers,
+    Assignees,
+    Labels,
+    Milestone,
+    LinkedItems,
+    SubIssues,
+    Projects,
 }
 
 @Serializable
@@ -146,14 +146,23 @@ data class AssigneeOptionDto(val id: String, val login: String, val name: String
 
 @Serializable
 data class WorkCreationDraft(
-    val title: String = "", val body: String = "", val base: String = "", val head: String = "",
-    val issueTypeId: String? = null, val milestoneId: String? = null,
-    val labelIds: List<String> = emptyList(), val assignees: List<AssigneeOptionDto> = emptyList(),
+    val title: String = "",
+    val body: String = "",
+    val base: String = "",
+    val head: String = "",
+    val issueTypeId: String? = null,
+    val milestoneId: String? = null,
+    val labelIds: List<String> = emptyList(),
+    val assignees: List<AssigneeOptionDto> = emptyList(),
     val issueTemplate: String? = null,
 )
 
 @Serializable
-data class DiscussionCreationDraft(val title: String = "", val body: String = "", val categoryId: String? = null)
+data class DiscussionCreationDraft(
+    val title: String = "",
+    val body: String = "",
+    val categoryId: String? = null,
+)
 
 data class IssueTemplateOptionDto(
     val name: String,

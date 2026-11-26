@@ -46,7 +46,8 @@ internal data class WorkPropertiesState(
     val uncertainOperationId: String? = null,
     val saved: Boolean = false,
 ) {
-    val submitting: Boolean get() = editor?.property?.let { writes[it]?.phase == WritePhase.PENDING } == true
+    val submitting: Boolean
+        get() = editor?.property?.let { writes[it]?.phase == WritePhase.PENDING } == true
 }
 
 internal fun WorkPropertiesState.valuesFor(property: WorkProperty): List<WorkPropertyOption> =
@@ -62,5 +63,4 @@ internal fun WorkPropertiesState.hasPendingChanges(): Boolean {
 internal fun MutationCoordinator.findUncertainOperationId(
     kind: MutationKind,
     target: String,
-): String? =
-    pending.value.firstOrNull { it.kind == kind && it.target == target }?.operationId
+): String? = pending.value.firstOrNull { it.kind == kind && it.target == target }?.operationId

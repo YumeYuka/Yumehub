@@ -31,11 +31,12 @@ fun GithubAccountAvatars(
             activeAvatarUrl ?: active?.avatarUrl,
             active?.login,
             size = size,
-            modifier = modifier.graphicsLayer {
-                val progress = compactProgress.value.coerceIn(0f, 1f)
-                scaleX = 1f + (compactScale - 1f) * progress
-                scaleY = scaleX
-            },
+            modifier =
+                modifier.graphicsLayer {
+                    val progress = compactProgress.value.coerceIn(0f, 1f)
+                    scaleX = 1f + (compactScale - 1f) * progress
+                    scaleY = scaleX
+                },
         )
         return
     }
@@ -59,16 +60,18 @@ fun GithubAccountAvatars(
                 url = if (index == 0) activeAvatarUrl ?: account.avatarUrl else account.avatarUrl,
                 login = account.login.takeIf { index == 0 },
                 size = diameter,
-                modifier = Modifier.graphicsLayer {
-                    val progress = compactProgress.value.coerceIn(0f, 1f)
-                    translationX = x.toPx() * (1f - progress)
-                    if (index == 0) {
-                        scaleX = 1f + (compactScale - 1f) * progress
-                        scaleY = scaleX
-                    } else {
-                        alpha = 1f - progress
-                    }
-                }.border(size * 0.045f, ring, CircleShape),
+                modifier =
+                    Modifier.graphicsLayer {
+                            val progress = compactProgress.value.coerceIn(0f, 1f)
+                            translationX = x.toPx() * (1f - progress)
+                            if (index == 0) {
+                                scaleX = 1f + (compactScale - 1f) * progress
+                                scaleY = scaleX
+                            } else {
+                                alpha = 1f - progress
+                            }
+                        }
+                        .border(size * 0.045f, ring, CircleShape),
             )
         }
     }

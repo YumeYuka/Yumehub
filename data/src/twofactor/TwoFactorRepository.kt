@@ -1,13 +1,11 @@
 package moe.yumeyuka.yumehub.data.twofactor
 
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -20,8 +18,8 @@ import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlResponse
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
-import moe.yumeyuka.yumehub.data.repository.definitelyRejected
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
+import moe.yumeyuka.yumehub.data.repository.definitelyRejected
 import moe.yumeyuka.yumehub.data.storage.mmkv.MarkerPhase
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TwoFactorRegistrationRecord
@@ -53,6 +51,7 @@ class GitHubTwoFactorRepository(
     private val cache: CachedDataRepository,
 ) : TwoFactorRepository {
     private val registrationMutex = Mutex()
+
     override fun decisions(login: String) = cache.mutations(login)
 
     override suspend fun hasUncertainRegistration(login: String): Boolean =
@@ -64,7 +63,8 @@ class GitHubTwoFactorRepository(
             val store = cache.twoFactorRegistrations
             val existing = store.load(login) ?: return@withLock
             withContext(Dispatchers.IO) {
-                if (tokens.deviceKeyAlias(login) != existing.candidateAlias) deviceKeyManager.deleteAlias(existing.candidateAlias)
+                if (tokens.deviceKeyAlias(login) != existing.candidateAlias)
+                    deviceKeyManager.deleteAlias(existing.candidateAlias)
             }
             store.clear(login)
         }
@@ -82,7 +82,8 @@ class GitHubTwoFactorRepository(
             when (existingRecord.phase) {
                 MarkerPhase.PREPARED -> {
                     withContext(Dispatchers.IO) {
-                        if (tokens.deviceKeyAlias(login) != existingRecord.candidateAlias) deviceKeyManager.deleteAlias(existingRecord.candidateAlias)
+                        if (tokens.deviceKeyAlias(login) != existingRecord.candidateAlias)
+                            deviceKeyManager.deleteAlias(existingRecord.candidateAlias)
                     }
                     regStore.clear(login)
                 }
@@ -91,15 +92,21 @@ class GitHubTwoFactorRepository(
                 }
             }
         }
-        val registered = withContext(Dispatchers.IO) {
-            synchronized(tokens.responseCacheSession.lock) {
-                tokens.requireSession(login, generation)
-                !force && tokens.deviceKeyRegistered.value
+        val registered =
+            withContext(Dispatchers.IO) {
+                synchronized(tokens.responseCacheSession.lock) {
+                    tokens.requireSession(login, generation)
+                    !force && tokens.deviceKeyRegistered.value
+                }
             }
-        }
         if (registered) return@withLock
         val registration = withContext(Dispatchers.IO) { deviceKeyManager.buildRegistration(login) }
-        val record = TwoFactorRegistrationRecord(registration.alias, MarkerPhase.PREPARED, System.currentTimeMillis())
+        val record =
+            TwoFactorRegistrationRecord(
+                registration.alias,
+                MarkerPhase.PREPARED,
+                System.currentTimeMillis(),
+            )
         var mayHaveSent = false
         try {
             regStore.put(login, record)
@@ -118,8 +125,11 @@ class GitHubTwoFactorRepository(
                 mayHaveSent = true
                 val response = execute(login, generation, ADD_PUBLIC_KEY_MUTATION, variables)
                 if (
-                    (((response.data as? JsonObject)?.get("addMobileDevicePublicKey") as? JsonObject)
-                        ?.get("expiresAt") as? JsonPrimitive)?.contentOrNull.isNullOrBlank()
+                    (((response.data as? JsonObject)?.get("addMobileDevicePublicKey")
+                                as? JsonObject)
+                            ?.get("expiresAt") as? JsonPrimitive)
+                        ?.contentOrNull
+                        .isNullOrBlank()
                 ) {
                     throw TwoFactorUncertainSubmissionException("注册设备密钥失败：GitHub 未确认注册结果")
                 }
@@ -131,8 +141,7 @@ class GitHubTwoFactorRepository(
             }
             regStore.clear(login)
         } catch (error: Exception) {
-            val definiteRejection =
-                error is TwoFactorException && error.definiteRejection
+            val definiteRejection = error is TwoFactorException && error.definiteRejection
             if (!mayHaveSent || definiteRejection) {
                 try {
                     withContext(NonCancellable + Dispatchers.IO) {
@@ -186,27 +195,36 @@ class GitHubTwoFactorRepository(
         tokens.requireSession(login, generation)
         val challengeDigits = if (request.requiresChallenge) digits else null
         if (request.requiresChallenge && challengeDigits == null) {
-            throw TwoFactorException("A confirmation number is required to approve this request", definiteRejection = true)
+            throw TwoFactorException(
+                "A confirmation number is required to approve this request",
+                definiteRejection = true,
+            )
         }
         val signature =
             withContext(Dispatchers.IO) {
-                try { deviceKeyManager.signApproval(login, request.payload, challengeDigits) }
-                catch (error: Exception) { throw TwoFactorException("Device signature unavailable", error, true) }
+                try {
+                    deviceKeyManager.signApproval(login, request.payload, challengeDigits)
+                } catch (error: Exception) {
+                    throw TwoFactorException("Device signature unavailable", error, true)
+                }
             }
         val variables = buildJsonObject {
             put("requestId", request.id)
             put("signature", signature)
         }
-        execute(login, generation, APPROVE_MUTATION, variables).requireDecision("approveMobileAuthDeviceRequest")
+        execute(login, generation, APPROVE_MUTATION, variables)
+            .requireDecision("approveMobileAuthDeviceRequest")
     }
 
     override suspend fun reject(login: String, generation: Long, request: MobileAuthRequest) {
         val variables = buildJsonObject { put("requestId", request.id) }
-        execute(login, generation, REJECT_MUTATION, variables).requireDecision("rejectMobileAuthDeviceRequest")
+        execute(login, generation, REJECT_MUTATION, variables)
+            .requireDecision("rejectMobileAuthDeviceRequest")
     }
 
     private fun GraphQlResponse.requireDecision(field: String) {
-        if ((data as? JsonObject)?.get(field) !is JsonObject) throw TwoFactorUncertainSubmissionException("GitHub 未确认验证请求结果")
+        if ((data as? JsonObject)?.get(field) !is JsonObject)
+            throw TwoFactorUncertainSubmissionException("GitHub 未确认验证请求结果")
     }
 
     override fun forgetDeviceKey(login: String) = deviceKeyManager.deleteKey(login)

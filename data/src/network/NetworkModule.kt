@@ -92,12 +92,10 @@ object NetworkModule {
             .build()
     }
 
-    /**
-     * 用户提交的写请求使用不重试、不跟随重定向的派生客户端；连接池和 dispatcher 与共享客户端相同。
-     * 测试与直接撤销请求也必须使用这个生产工厂。
-     */
+    /** 用户提交的写请求使用不重试、不跟随重定向的派生客户端；连接池和 dispatcher 与共享客户端相同。 测试与直接撤销请求也必须使用这个生产工厂。 */
     fun singleSubmissionClient(base: OkHttpClient): OkHttpClient =
-        base.newBuilder()
+        base
+            .newBuilder()
             .retryOnConnectionFailure(false)
             .followRedirects(false)
             .followSslRedirects(false)

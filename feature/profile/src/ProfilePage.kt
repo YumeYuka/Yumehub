@@ -55,7 +55,6 @@ fun ProfilePage(
             state = state,
             strings = strings.Profile,
             onRetryProfile = viewModel::refresh,
-            onRetryReadme = viewModel::retryReadme,
             onEditStatus = viewModel::openStatusEditor,
             onOpenSettings = onOpenSettings,
             onOpenFollowing = onOpenFollowing,

@@ -78,10 +78,13 @@ data class RepositoryOverview(
         get() = permission == "ADMIN" && !archived
 }
 
-internal fun CachedDataRepository.overviewResource(account: String, owner: String, name: String) = resource(
-    account, "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
-    RepositoryOverview.serializer(), tags = setOf(repositoryCacheTag(owner, name)),
-)
+internal fun CachedDataRepository.overviewResource(account: String, owner: String, name: String) =
+    resource(
+        account,
+        "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
+        RepositoryOverview.serializer(),
+        tags = setOf(repositoryCacheTag(owner, name)),
+    )
 
 /** 仓库首页的关系、统计与管理操作；正文、目录仍由 RepositoryContentRepository 提供。 */
 class RepositoryOverviewRepository(
@@ -115,8 +118,11 @@ class RepositoryOverviewRepository(
 
     /** 页面绑定时提前取得会话级写协调器；未取得前只暂停依赖它的写控件。 */
     fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+
     fun trackStar(account: String, owner: String, name: String) =
-        cache.starredRows(account).track("$owner/$name", contents.details(account, owner, name).cached)
+        cache
+            .starredRows(account)
+            .track("$owner/$name", contents.details(account, owner, name).cached)
 
     suspend fun setStarred(
         account: String,
@@ -191,8 +197,13 @@ class RepositoryOverviewRepository(
         val result = data.requiredObject("updateSubscription").requiredObject("subscribable")
         if (result.requiredText("id") != state.id) throw RepositoryOverviewException()
         val actual = result.requiredText("viewerSubscription")
-        if (actual == "CUSTOM" && result["viewerSubscriptionTypes"] !is JsonArray) throw RepositoryOverviewException()
-        val updated = (resource.cached ?: state).copy(subscription = actual, subscriptionTypes = result.subscriptionTypes())
+        if (actual == "CUSTOM" && result["viewerSubscriptionTypes"] !is JsonArray)
+            throw RepositoryOverviewException()
+        val updated =
+            (resource.cached ?: state).copy(
+                subscription = actual,
+                subscriptionTypes = result.subscriptionTypes(),
+            )
         resource.update(updated)
         cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
         cache.changes(account).publish(DataDomain.Work, DataDomain.Notifications)
@@ -200,14 +211,25 @@ class RepositoryOverviewRepository(
     }
 
     suspend fun readDescription(account: String, owner: String, name: String): String {
-        val node = execute(session(account),
-            "query RepositoryDescriptionRead(\$owner: String!, \$name: String!) { repository(owner: \$owner, name: \$name) { description } }",
-            buildJsonObject { put("owner", owner); put("name", name) },
-        ).requiredObject("repository")
+        val node =
+            execute(
+                    session(account),
+                    "query RepositoryDescriptionRead(\$owner: String!, \$name: String!) { repository(owner: \$owner, name: \$name) { description } }",
+                    buildJsonObject {
+                        put("owner", owner)
+                        put("name", name)
+                    },
+                )
+                .requiredObject("repository")
         return node.confirmedDescription()
     }
 
-    suspend fun saveDescription(account: String, owner: String, name: String, description: String): String {
+    suspend fun saveDescription(
+        account: String,
+        owner: String,
+        name: String,
+        description: String,
+    ): String {
         val resource = resource(account, owner, name)
         val state = resource.cached ?: throw RepositoryOverviewException()
         check(state.canEditDescription)
@@ -235,8 +257,7 @@ class RepositoryOverviewRepository(
     suspend fun isPinned(account: String, id: String): Boolean =
         readPins(session(account)).ids.contains(id)
 
-    suspend fun dashboardFavoriteIds(account: String): List<String> =
-        readPins(session(account)).ids
+    suspend fun dashboardFavoriteIds(account: String): List<String> = readPins(session(account)).ids
 
     suspend fun dashboardFavorites(account: String): List<RepositoryDto> =
         readPins(session(account)).repositories
@@ -245,7 +266,6 @@ class RepositoryOverviewRepository(
         val pins = readPins(session(account))
         return DashboardPinsSnapshot(pins.ids, pins.repositories)
     }
-
 
     suspend fun setPinned(
         account: String,
@@ -380,7 +400,8 @@ class RepositoryOverviewRepository(
             }
         currentCoroutineContext().ensureActive()
         synchronized(tokens.responseCacheSession.lock) { checkSession(session) }
-        if (write) response.checkWriteErrors() else if (response.errors.isNotEmpty()) throw RepositoryOverviewException()
+        if (write) response.checkWriteErrors()
+        else if (response.errors.isNotEmpty()) throw RepositoryOverviewException()
         return response.data as? JsonObject ?: throw RepositoryOverviewException()
     }
 
@@ -425,9 +446,10 @@ fun mergeDashboardFavorites(
 ): List<String> {
     val removed = original.toSet() - selected.toSet()
     val added = selected.filterNot { it in original }
-    val merged = added.fold(current.filterNot { it in removed }) { ids, id ->
-        updatedDashboardPins(ids, id, selected = true)
-    }
+    val merged =
+        added.fold(current.filterNot { it in removed }) { ids, id ->
+            updatedDashboardPins(ids, id, selected = true)
+        }
     if (selected == original.filterNot { it in removed } + added) return merged
     // 只交换草稿中仓库所占的位置，保留其他类型、并发新增和并发移除的项目。
     val order = selected.filter { it in merged }.iterator()
@@ -490,11 +512,13 @@ class RepositoryOverviewException : Exception("Repository operation failed")
 
 class RepositoryFavoritesLimitException : Exception("Dashboard pins limit reached")
 
-private fun JsonObject.confirmedDescription(): String = when (val value = get("description")) {
-    JsonNull -> ""
-    is JsonPrimitive -> value.takeIf { it.isString }?.content ?: throw RepositoryOverviewException()
-    else -> throw RepositoryOverviewException()
-}
+private fun JsonObject.confirmedDescription(): String =
+    when (val value = get("description")) {
+        JsonNull -> ""
+        is JsonPrimitive ->
+            value.takeIf { it.isString }?.content ?: throw RepositoryOverviewException()
+        else -> throw RepositoryOverviewException()
+    }
 
 private fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
 

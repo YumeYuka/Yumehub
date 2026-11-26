@@ -34,7 +34,7 @@ fun WorkListPage(
     kind: CollaborationKind,
     login: String,
     createInitially: Boolean,
-    onOpenDetail: (Int) -> Unit,
+    onOpenDetail: (Int, String?) -> Unit,
 ) {
   val viewModel: CollaborationListViewModel =
       koinViewModel(
@@ -98,7 +98,9 @@ fun WorkListPage(
       pageSearchClearance(searching)
     }
     androidx.compose.runtime.LaunchedEffect(host, viewModel) {
-        viewModel.created.collect { number -> if (host.navigationEnabled) onOpenDetail(number) }
+        viewModel.created.collect { (number, title) ->
+            if (host.navigationEnabled) onOpenDetail(number, title)
+        }
     }
     androidx.compose.runtime.key(creationState.formRevision) {
     WorkCreationSheet(

@@ -3,18 +3,14 @@ package moe.yumeyuka.yumehub.ui.component
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.paging.LoadState
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.FileText
 import io.github.yumeyucca.lucide.Lucide
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import retrofit2.HttpException
 
-/** 分页列表共用的加载/空态/错误尾行，供各 feature 的列表直接复用。 */
+/** 分页列表共用的空态尾项，供各 feature 的列表直接复用。 */
 fun LazyListScope.collaborationPagingStatus(
     slots: GithubPagingSlots<*>,
     title: String,
@@ -23,7 +19,6 @@ fun LazyListScope.collaborationPagingStatus(
     emptyIcon: ImageVector = Lucide.FileText,
     emptyVerticalBias: Float = -0.1f,
 ) {
-    val items = slots.items
     if (slots.isEmptyResult && emptyPlaceholder) {
         item(key = "collaboration-page-empty") {
             GithubEmptyState(
@@ -32,22 +27,6 @@ fun LazyListScope.collaborationPagingStatus(
                 modifier = Modifier.fillParentMaxHeight(),
                 verticalBias = emptyVerticalBias,
             )
-        }
-    }
-
-    val failure = (items.loadState.refresh as? LoadState.Error)
-        ?: (items.loadState.append as? LoadState.Error)
-        ?: (items.loadState.prepend as? LoadState.Error)
-    if (failure != null) {
-        item(key = "collaboration-page-retry") {
-            GlasmioGroupedList {
-                GlasmioListRow(
-                    title = if (failure.error is IOException && slots.snapshot.isEmpty())
-                        LocalGithubStrings.current.Common.NoOfflineData else collaborationErrorMessage(failure.error),
-                    detail = LocalGithubStrings.current.Common.Retry,
-                    onClick = items::retry,
-                )
-            }
         }
     }
 }

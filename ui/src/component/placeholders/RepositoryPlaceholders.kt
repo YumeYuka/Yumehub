@@ -95,7 +95,8 @@ fun RepositoryCardPlaceholderContent(showCover: Boolean = false) {
 @Composable
 fun RepositoryHeaderPlaceholder(modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth()
+        modifier
+            .fillMaxWidth()
             .padding(start = 2.dp, top = 20.dp, end = 2.dp, bottom = 2.dp)
             .height(GlasmioButtonDefaults.MediumHeight),
         verticalAlignment = Alignment.CenterVertically,

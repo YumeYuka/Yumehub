@@ -75,17 +75,16 @@ fun GithubChoiceSheet(
                         framed = false,
                         modifier =
                             Modifier.glasmioGroupedListBackground(
-                                    ContinuousRoundedRectangle(
-                                        topStart = if (index == 0) 26.dp else 0.dp,
-                                        topEnd = if (index == 0) 26.dp else 0.dp,
-                                        bottomStart = if (index == keys.lastIndex) 26.dp else 0.dp,
-                                        bottomEnd = if (index == keys.lastIndex) 26.dp else 0.dp,
-                                    ),
+                                ContinuousRoundedRectangle(
+                                    topStart = if (index == 0) 26.dp else 0.dp,
+                                    topEnd = if (index == 0) 26.dp else 0.dp,
+                                    bottomStart = if (index == keys.lastIndex) 26.dp else 0.dp,
+                                    bottomEnd = if (index == keys.lastIndex) 26.dp else 0.dp,
                                 ),
+                            ),
                     ) {
                         GithubLoadingContent(
                             loading = branch == null,
-                            deferUntilEntry = false,
                             placeholder = { TitleRowPlaceholder(showTopSeparator = index > 0) },
                         ) {
                             if (branch != null)

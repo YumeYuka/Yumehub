@@ -18,9 +18,9 @@ import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
-import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
@@ -78,15 +78,25 @@ class ReleaseRepository(
         tag: String?,
         versionId: String?,
     ): Flow<CachedDataState<GithubReleaseResult>> =
-        if (versionId != null) flow {
-            val routeResource = releaseResource(account, owner, name, tag)
-            if (routeResource.cached?.detail?.version?.id == versionId) {
-                emitAll(observe(account, owner, name, tag, versionId = null).takeWhile {
-                    it.data?.detail?.version?.id == versionId || it.error?.invalidatesCachedContent() == true
-                })
+        if (versionId != null)
+            flow {
+                val routeResource = releaseResource(account, owner, name, tag)
+                if (routeResource.cached?.detail?.version?.id == versionId) {
+                    emitAll(
+                        observe(account, owner, name, tag, versionId = null).takeWhile {
+                            it.data?.detail?.version?.id == versionId ||
+                                it.error?.invalidatesCachedContent() == true
+                        },
+                    )
+                }
+                emitAll(
+                    versionResource(account, versionId).observe {
+                        RemoteFetch.Fresh(readVersion(account, versionId))
+                    },
+                )
             }
-            emitAll(versionResource(account, versionId).observe { RemoteFetch.Fresh(readVersion(account, versionId)) })
-        } else releaseResource(account, owner, name, tag).observe {
+        else
+            releaseResource(account, owner, name, tag).observe {
                 val data =
                     GithubGraphQlSession(api, tokens, account)
                         .execute(
@@ -109,13 +119,13 @@ class ReleaseRepository(
             }
 
     suspend fun readVersion(account: String, id: String): GithubReleaseResult {
-            val data =
-                GithubGraphQlSession(api, tokens, account)
-                    .execute(ReleaseVersionQuery, buildJsonObject { put("id", id) })
-            val node = data.nullableRelease("node")
-            if (node != null && node.graphRequiredText("id") != id) throw GithubPageException()
-            return GithubReleaseResult(node?.releaseDetail())
-        }
+        val data =
+            GithubGraphQlSession(api, tokens, account)
+                .execute(ReleaseVersionQuery, buildJsonObject { put("id", id) })
+        val node = data.nullableRelease("node")
+        if (node != null && node.graphRequiredText("id") != id) throw GithubPageException()
+        return GithubReleaseResult(node?.releaseDetail())
+    }
 
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
@@ -132,12 +142,12 @@ class ReleaseRepository(
         val id = release.version.id
         val session = GithubGraphQlSession(api, tokens, account)
         val version = versionResource(account, id)
-        val tagged = release.version.tag.takeIf(String::isNotBlank)?.let { tag ->
-            releaseResource(account, owner, name, tag)
-        }
+        val tagged =
+            release.version.tag.takeIf(String::isNotBlank)?.let { tag ->
+                releaseResource(account, owner, name, tag)
+            }
         val latest = releaseResource(account, owner, name, null)
-        val reactions =
-            session.toggleGithubReaction(id, content, reacted)
+        val reactions = session.toggleGithubReaction(id, content, reacted)
         val updatedVersion = (version.cached?.detail ?: release).copy(reactions = reactions)
         version.update(GithubReleaseResult(updatedVersion))
         listOfNotNull(tagged, latest).forEach { resource ->

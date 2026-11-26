@@ -25,13 +25,13 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 
 @Composable
 internal fun RepositoryManagementSheet(
@@ -91,7 +91,12 @@ internal fun RepositoryManagementSheet(
                             RepositorySheet.Description ->
                                 toolbarIcon(Lucide.Check, common.Save, canSave, onClick = onSave)
                             RepositorySheet.Notifications ->
-                                toolbarIcon(Lucide.Check, common.Confirm, !blocking && !editor.loading, onClick = onSave)
+                                toolbarIcon(
+                                    Lucide.Check,
+                                    common.Confirm,
+                                    !blocking && !editor.loading,
+                                    onClick = onSave,
+                                )
                             else -> null
                         },
                     )
@@ -111,9 +116,10 @@ internal fun RepositoryManagementSheet(
                     GithubSection(strings.Description) {
                         BasicTextField(
                             state = rememberFormTextFieldState(editor.description, onDescription),
-                            inputTransformation = InputTransformation {
-                                if (length > RepositoryDescriptionMaxLength) revertAllChanges()
-                            },
+                            inputTransformation =
+                                InputTransformation {
+                                    if (length > RepositoryDescriptionMaxLength) revertAllChanges()
+                                },
                             modifier =
                                 Modifier.fillMaxWidth().padding(16.dp).semantics {
                                     contentDescription = strings.Description
@@ -127,7 +133,6 @@ internal fun RepositoryManagementSheet(
                 RepositorySheet.Notifications ->
                     GithubLoadingContent(
                         loading = editor.loading,
-                        deferUntilEntry = false,
                         placeholder = { ListRowPlaceholder() },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

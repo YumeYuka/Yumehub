@@ -11,7 +11,11 @@ import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
-enum class TrendingPeriod { DAILY, WEEKLY, MONTHLY }
+enum class TrendingPeriod {
+    DAILY,
+    WEEKLY,
+    MONTHLY,
+}
 
 data class TrendingFilter(
     val period: TrendingPeriod = TrendingPeriod.DAILY,
@@ -59,7 +63,10 @@ class DiscoveryRepository(
         recentlyUpdated: Boolean,
     ): Flow<PagingData<RepositoryDto>> =
         githubGraphQlPager(
-            account, featuredKey(query, language, recentlyUpdated), paging, { it.nodeId.orEmpty() },
+            account,
+            featuredKey(query, language, recentlyUpdated),
+            paging,
+            { it.nodeId.orEmpty() },
             serializer = RepositoryDto.serializer(),
         ) {
             val session = GithubGraphQlSession(api, tokens, account)
@@ -68,39 +75,54 @@ class DiscoveryRepository(
                 val variables = buildJsonObject {
                     after?.let { put("after", it) }
                     if (search) {
-                        put("query", buildString {
-                            if (query.isNotBlank()) append(query).append(' ')
-                            language?.let { append("language:\"").append(it).append("\" ") }
-                            append("topic:awesome sort:")
-                            append(if (recentlyUpdated) "updated-desc" else "stars-desc")
-                        })
+                        put(
+                            "query",
+                            buildString {
+                                if (query.isNotBlank()) append(query).append(' ')
+                                language?.let { append("language:\"").append(it).append("\" ") }
+                                append("topic:awesome sort:")
+                                append(if (recentlyUpdated) "updated-desc" else "stars-desc")
+                            },
+                        )
                     } else put("order", if (recentlyUpdated) "UPDATED_AT" else "STARGAZERS")
                 }
                 val page =
                     if (search) session.execute(FeaturedSearch, variables).graphObject("search")
-                    else session.execute(FeaturedQuery, variables).graphObject("topic").graphObject("repositories")
+                    else
+                        session
+                            .execute(FeaturedQuery, variables)
+                            .graphObject("topic")
+                            .graphObject("repositories")
                 GithubGraphQlPage(page.graphNodes().map(::repositoryItem), page.graphCursor(after))
             }
             load
         }
 
     suspend fun languages(account: String, includeSpoken: Boolean): DiscoveryLanguages =
-        cache.resource(
-            account,
-            "discovery.languages.v1:$includeSpoken",
-            DiscoveryLanguages.serializer(),
-            maxAgeMillis = 24 * 60 * 60_000L,
-            tags = setOf(CacheTag(DataDomain.Content, null)),
-        ).await { loadLanguages(account, includeSpoken) }
+        cache
+            .resource(
+                account,
+                "discovery.languages.v1:$includeSpoken",
+                DiscoveryLanguages.serializer(),
+                maxAgeMillis = 24 * 60 * 60_000L,
+                tags = setOf(CacheTag(DataDomain.Content, null)),
+            )
+            .await { loadLanguages(account, includeSpoken) }
 
     private suspend fun loadLanguages(account: String, includeSpoken: Boolean): DiscoveryLanguages {
         val session = GithubGraphQlSession(api, tokens, account)
         val data = session.execute(LanguageQuery, buildJsonObject { put("spoken", includeSpoken) })
         return DiscoveryLanguages(
-            data.objects("programmingLanguages").map { it.graphRequiredText("name") }.distinct().sorted(),
-            if (includeSpoken) data.objects("spokenLanguages").associate {
-                it.graphRequiredText("code") to it.graphRequiredText("name")
-            } else emptyMap(),
+            data
+                .objects("programmingLanguages")
+                .map { it.graphRequiredText("name") }
+                .distinct()
+                .sorted(),
+            if (includeSpoken)
+                data.objects("spokenLanguages").associate {
+                    it.graphRequiredText("code") to it.graphRequiredText("name")
+                }
+            else emptyMap(),
         )
     }
 }
@@ -126,7 +148,8 @@ private val TrendingQuery =
         $RepositoryCardFields
       }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private val FeaturedQuery =
     """
@@ -138,7 +161,8 @@ private val FeaturedQuery =
         }
       }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private val FeaturedSearch =
     """
@@ -148,7 +172,8 @@ private val FeaturedSearch =
         nodes { ... on Repository { $RepositoryCardFields } }
       }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private val LanguageQuery =
     """
@@ -156,4 +181,5 @@ private val LanguageQuery =
       programmingLanguages(suggested: true) { name }
       spokenLanguages @include(if: ${'$'}spoken) { code name }
     }
-    """.trimIndent()
+    """
+        .trimIndent()

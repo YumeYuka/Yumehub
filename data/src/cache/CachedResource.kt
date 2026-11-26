@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
@@ -31,10 +30,7 @@ sealed interface RemoteFetch<out T> {
     data object NotModified : RemoteFetch<Nothing>
 }
 
-/**
- * 不持有页面 scope；请求归仓库所有，调用方取消 await 不会取消共享请求。
- * 例外：经 [observe] 加入的请求会随最后一个观察者离开而取消，前提是没有其他调用方加入。
- */
+/** 不持有页面 scope；请求归仓库所有，调用方取消 await 不会取消共享请求。 例外：经 [observe] 加入的请求会随最后一个观察者离开而取消，前提是没有其他调用方加入。 */
 class CachedResource<T : Any>
 internal constructor(
     private val repository: CachedDataRepository,
@@ -76,8 +72,7 @@ internal constructor(
         start(force, observed = false) { RemoteFetch.Fresh(loader()) }.await()
 
     /**
-     * 绑定收集者生命周期的查询：收集开始即走缓存优先，只有数据变化才发出新状态。
-     * 最后一个收集者离开时，若在途请求只由观察者发起则取消它，关闭页面后不再等待网络；
+     * 绑定收集者生命周期的查询：收集开始即走缓存优先，只有数据变化才发出新状态。 最后一个收集者离开时，若在途请求只由观察者发起则取消它，关闭页面后不再等待网络；
      * 已被仓库或其他调用方加入的请求继续完成并写入缓存。
      */
     fun observe(
@@ -139,7 +134,8 @@ internal constructor(
             cancelRequest()
             invalidated = true
             checkedAt = 0L
-            mutableState.value = mutableState.value.copy(loading = false, error = null, updatedAt = 0L)
+            mutableState.value =
+                mutableState.value.copy(loading = false, error = null, updatedAt = 0L)
             val version = revision
             val body = mutableState.value.data
             if (body != null) {
@@ -150,7 +146,9 @@ internal constructor(
             repository.writeQueue.snapshot("response:$account:$key") {
                 val session = repository.sessionId(account, generation)
                 val diskKey = diskKey(session)
-                suspend { repository.store.invalidate(session, diskKey) { mayPersist(version, sequence) } }
+                suspend {
+                    repository.store.invalidate(session, diskKey) { mayPersist(version, sequence) }
+                }
             }
         }
     }
@@ -218,7 +216,9 @@ internal constructor(
                 // ETag 只对应已持久化的同一份正文；没有正文时不发条件请求。
                 validator.takeIf { mutableState.value.data != null }
             }
-            return when (val fetched = moe.yumeyuka.yumehub.data.repository.pageRead { fetch(etag) }) {
+            return when (
+                val fetched = moe.yumeyuka.yumehub.data.repository.pageRead { fetch(etag) }
+            ) {
                 is RemoteFetch.Fresh -> {
                     currentCoroutineContext().ensureActive()
                     accept(version, fetched.value, fetched.validator)
@@ -249,7 +249,9 @@ internal constructor(
             if (sequence != null) {
                 val session = repository.sessionId(account, generation)
                 repository.writeQueue.run {
-                    repository.store.remove(session, diskKey(session)) { mayPersist(version, sequence) }
+                    repository.store.remove(session, diskKey(session)) {
+                        mayPersist(version, sequence)
+                    }
                 }
             }
             throw error
@@ -271,7 +273,8 @@ internal constructor(
                 bodyUpdatedAt = now
             }
             if (!unchanged || current.updatedAt == 0L || current.error != null) {
-                mutableState.value = current.copy(data = value, updatedAt = bodyUpdatedAt, error = null)
+                mutableState.value =
+                    current.copy(data = value, updatedAt = bodyUpdatedAt, error = null)
             }
             persistInBackground(value, bodyUpdatedAt, version, nextValidator)
             value
@@ -279,25 +282,24 @@ internal constructor(
     }
 
     // 304 只表示服务端表示未变；正文沿用当前内容，失效标记随之清除。
-    private fun confirm(version: Long): T =
-        repository.locked {
-            checkCurrent(version)
-            val current = mutableState.value
-            val value = checkNotNull(current.data) { "A validator is only sent with cached data" }
-            val now = System.currentTimeMillis().coerceAtLeast(1L)
-            val wasInvalidated = invalidated
-            invalidated = false
-            checkedAt = now
-            if (wasInvalidated) {
-                // 失效后被服务端确认仍有效：恢复 updatedAt 并把确认结果写回磁盘。
-                mutableState.value = current.copy(updatedAt = bodyUpdatedAt, error = null)
-                persistInBackground(value, bodyUpdatedAt, version, validator)
-            } else {
-                // 304 确认正文未变：持久推进 checkedAt，保留原 updatedAt 且不重发射 UI 状态。
-                persistInBackground(value, current.updatedAt, version, validator)
-            }
-            value
+    private fun confirm(version: Long): T = repository.locked {
+        checkCurrent(version)
+        val current = mutableState.value
+        val value = checkNotNull(current.data) { "A validator is only sent with cached data" }
+        val now = System.currentTimeMillis().coerceAtLeast(1L)
+        val wasInvalidated = invalidated
+        invalidated = false
+        checkedAt = now
+        if (wasInvalidated) {
+            // 失效后被服务端确认仍有效：恢复 updatedAt 并把确认结果写回磁盘。
+            mutableState.value = current.copy(updatedAt = bodyUpdatedAt, error = null)
+            persistInBackground(value, bodyUpdatedAt, version, validator)
+        } else {
+            // 304 确认正文未变：持久推进 checkedAt，保留原 updatedAt 且不重发射 UI 状态。
+            persistInBackground(value, current.updatedAt, version, validator)
         }
+        value
+    }
 
     private suspend fun hydrate(session: String, version: Long) {
         if (repository.locked { hydrated }) return
@@ -315,11 +317,17 @@ internal constructor(
         val diskTags = response?.tags
         val value =
             if (response != null) {
-                ignoreStorageFailure { repository.json.decodeFromString(serializer, response.payload) }
+                ignoreStorageFailure {
+                    repository.json.decodeFromString(serializer, response.payload)
+                }
             } else null
         val stale =
-            response != null && (diskTags.isNullOrEmpty() || response.checkedAt <= 0L ||
-                ignoreStorageFailure { repository.stale(account, diskTags, response.checkedAt) } != false)
+            response != null &&
+                (diskTags.isNullOrEmpty() ||
+                    response.checkedAt <= 0L ||
+                    ignoreStorageFailure {
+                        repository.stale(account, diskTags, response.checkedAt)
+                    } != false)
         repository.locked {
             checkCurrent(version)
             if (hydrated) return@locked
@@ -356,25 +364,39 @@ internal constructor(
         val indexed = diskBodyVersion == body
         val queueKey = "response:${account}:$key"
         repository.writeQueue.snapshot(queueKey) {
-            val valid = { mayPersist(version, sequence) && repository.persistenceEnabled(account, generation) }
+            val valid = {
+                mayPersist(version, sequence) && repository.persistenceEnabled(account, generation)
+            }
             if (!valid()) return@snapshot null
             val session = repository.sessionId(account, generation)
             val diskKey = diskKey(session)
-            if (indexed) return@snapshot suspend {
-                if (!repository.store.touch(session, diskKey, checkedAt, etag, valid)) repository.locked {
-                    if (valid()) {
-                        diskBodyVersion = -1L
-                        persistInBackground(value, timestamp, version, etag)
-                    }
+            if (indexed)
+                return@snapshot suspend {
+                    if (!repository.store.touch(session, diskKey, checkedAt, etag, valid))
+                        repository.locked {
+                            if (valid()) {
+                                diskBodyVersion = -1L
+                                persistInBackground(value, timestamp, version, etag)
+                            }
+                        }
                 }
-            }
             val payload = repository.json.encodeToString(serializer, value)
             val bytes = payload.utf8Size()
             val diskTags = tags.map { it.diskValue() }
             if (!valid()) return@snapshot null
             repository.recordRecentSize(account, key, this, bytes)
             suspend {
-                repository.store.save(session, diskKey, payload, bytes, timestamp, checkedAt, etag, diskTags, valid)
+                repository.store.save(
+                    session,
+                    diskKey,
+                    payload,
+                    bytes,
+                    timestamp,
+                    checkedAt,
+                    etag,
+                    diskTags,
+                    valid,
+                )
                 repository.locked { if (valid()) diskBodyVersion = body }
             }
         }
@@ -382,38 +404,58 @@ internal constructor(
 
     /** The marker must outlive the index entry for a server-confirmed update. */
     internal suspend fun persistConfirmed() {
-        val frame = repository.locked {
-            if (!isCurrent()) throw expiredSession()
-            val value = mutableState.value.data ?: return@locked null
-            ConfirmedFrame(value, bodyVersion, bodyUpdatedAt, checkedAt, validator, tags)
-        } ?: return
+        val frame =
+            repository.locked {
+                if (!isCurrent()) throw expiredSession()
+                val value = mutableState.value.data ?: return@locked null
+                ConfirmedFrame(value, bodyVersion, bodyUpdatedAt, checkedAt, validator, tags)
+            } ?: return
         check(repository.persistenceEnabled(account, generation)) { "Snapshot storage unavailable" }
         val session = repository.sessionId(account, generation)
         val key = diskKey(session)
         val valid = { repository.locked { isCurrent() && bodyVersion == frame.version } }
         if (repository.locked { diskBodyVersion == frame.version }) {
             var indexed = false
-            repository.writeQueue.run { indexed = repository.store.touch(session, key, frame.checkedAt, frame.etag, valid) }
+            repository.writeQueue.run {
+                indexed = repository.store.touch(session, key, frame.checkedAt, frame.etag, valid)
+            }
             if (indexed) return
         }
         val payload = repository.json.encodeToString(serializer, frame.value)
         val bytes = payload.utf8Size()
         val labels = frame.tags.map { it.diskValue() }
         repository.writeQueue.run {
-            repository.store.save(session, key, payload, bytes, frame.updatedAt, frame.checkedAt, frame.etag, labels, valid)
+            repository.store.save(
+                session,
+                key,
+                payload,
+                bytes,
+                frame.updatedAt,
+                frame.checkedAt,
+                frame.etag,
+                labels,
+                valid,
+            )
             repository.locked { if (valid()) diskBodyVersion = frame.version }
         }
     }
 
-    private data class ConfirmedFrame<T>(val value: T, val version: Long, val updatedAt: Long,
-        val checkedAt: Long, val etag: String?, val tags: Set<CacheTag>)
+    private data class ConfirmedFrame<T>(
+        val value: T,
+        val version: Long,
+        val updatedAt: Long,
+        val checkedAt: Long,
+        val etag: String?,
+        val tags: Set<CacheTag>,
+    )
 
     private fun mayPersist(version: Long, sequence: Long): Boolean = repository.locked {
         isCurrent() && revision == version && writeSequence == sequence
     }
 
-    internal fun matches(invalidations: Set<CacheTag>): Boolean =
-        tags.any { tag -> invalidations.any { it.covers(tag) } }
+    internal fun matches(invalidations: Set<CacheTag>): Boolean = tags.any { tag ->
+        invalidations.any { it.covers(tag) }
+    }
 
     internal fun mergeTags(next: Set<CacheTag>) {
         if (next.isNotEmpty()) tags = tags + next

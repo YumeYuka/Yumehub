@@ -28,7 +28,10 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDiffFileHeaderPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 
-/** Only expanded identities are saved; neither list position nor the patch text belongs in saved state. */
+/**
+ * Only expanded identities are saved; neither list position nor the patch text belongs in saved
+ * state.
+ */
 @Stable
 class GithubDiffExpansions internal constructor() {
     private val expanded = mutableStateMapOf<String, String>()
@@ -40,19 +43,31 @@ class GithubDiffExpansions internal constructor() {
     }
 
     internal companion object {
-        val Saver = listSaver<GithubDiffExpansions, String>(
-            save = { state -> buildList { state.expanded.forEach { (path, version) -> add(path); add(version) } } },
-            restore = { values -> GithubDiffExpansions().apply {
-                for (index in values.indices step 2) expanded[values[index]] = values[index + 1]
-            } },
-        )
+        val Saver =
+            listSaver<GithubDiffExpansions, String>(
+                save = { state ->
+                    buildList {
+                        state.expanded.forEach { (path, version) ->
+                            add(path)
+                            add(version)
+                        }
+                    }
+                },
+                restore = { values ->
+                    GithubDiffExpansions().apply {
+                        for (index in values.indices step 2) expanded[values[index]] =
+                            values[index + 1]
+                    }
+                },
+            )
     }
 }
 
 @Composable
-fun rememberGithubDiffExpansions(revision: String?): GithubDiffExpansions = key(revision) {
-    rememberSaveable(saver = GithubDiffExpansions.Saver) { GithubDiffExpansions() }
-}
+fun rememberGithubDiffExpansions(revision: String?): GithubDiffExpansions =
+    key(revision) {
+        rememberSaveable(saver = GithubDiffExpansions.Saver) { GithubDiffExpansions() }
+    }
 
 /** Expanding is a user action. A remounted or long patch is laid out at its actual height. */
 @Composable
@@ -65,9 +80,11 @@ fun GithubDiffFileCard(
     val strings = LocalGithubStrings.current.Repository
     val expansionStrings = LocalGithubStrings.current.EditorMenu
     val diff = file?.structuredDiff
-    val revision = remember(diff?.id, diff?.baseCommitOid, diff?.headCommitOid) {
-        if (diff == null) "unavailable" else "${diff.baseCommitOid}:${diff.headCommitOid}:${diff.id}"
-    }
+    val revision =
+        remember(diff?.id, diff?.baseCommitOid, diff?.headCommitOid) {
+            if (diff == null) "unavailable"
+            else "${diff.baseCommitOid}:${diff.headCommitOid}:${diff.id}"
+        }
     val expanded = file != null && expansions.contains(file.filename, revision)
     val interactionSource = remember { MutableInteractionSource() }
     val cardModifier =
@@ -88,7 +105,6 @@ fun GithubDiffFileCard(
     GithubDiffCardFrame(modifier = cardModifier) {
         GithubLoadingContent(
             loading = file == null,
-            deferUntilEntry = false,
             placeholder = { GithubDiffFileHeaderPlaceholder() },
         ) {
             if (file != null) DisableSelection { GithubDiffFileHeader(file = file) }

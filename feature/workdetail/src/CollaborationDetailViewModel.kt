@@ -45,7 +45,6 @@ import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.data.repository.GithubReactionContent
 import moe.yumeyuka.yumehub.data.repository.GithubReactionGroup
 import moe.yumeyuka.yumehub.data.repository.GithubReactionUpdate
-import moe.yumeyuka.yumehub.data.repository.GithubReactionUpdates
 import moe.yumeyuka.yumehub.data.repository.NotificationsRepository
 import moe.yumeyuka.yumehub.data.repository.WorkDetailCommentChangedException
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
@@ -103,8 +102,7 @@ internal enum class PullRequestReviewEvent(val apiValue: String) {
     RequestChanges("REQUEST_CHANGES"),
 }
 
-@Serializable
-private data class ReviewForm(val body: String, val event: PullRequestReviewEvent)
+@Serializable private data class ReviewForm(val body: String, val event: PullRequestReviewEvent)
 
 internal sealed interface CollaborationEntry {
     val key: String
@@ -136,7 +134,6 @@ internal data class ReviewLineTarget(
     val commitId: String,
     val patch: String,
 )
-
 
 internal data class CollaborationDetailUiState(
     val item: CollaborationItemDto? = null,
@@ -180,8 +177,15 @@ internal data class CollaborationDetailUiState(
     val branchCursor: String? = null,
     val branchError: Boolean = false,
 ) {
-    fun unknownField(name: String): Boolean = uncertainOperations.any { it.kind == MutationKind.WORK_FIELD && it.target.endsWith(":$name") }
-    val commentUncertain: Boolean get() = uncertainOperations.any { it.kind == MutationKind.COMMENT && it.target.endsWith(":new-comment") }
+    fun unknownField(name: String): Boolean = uncertainOperations.any {
+        it.kind == MutationKind.WORK_FIELD && it.target.endsWith(":$name")
+    }
+
+    val commentUncertain: Boolean
+        get() = uncertainOperations.any {
+            it.kind == MutationKind.COMMENT && it.target.endsWith(":new-comment")
+        }
+
     val canSubmitReview: Boolean
         get() =
             canReview &&
@@ -207,13 +211,14 @@ internal class CollaborationDetailViewModel(
     private val account: String,
 ) : ViewModel() {
     private val detail = repository.detail(viewerLogin, owner, repo, kind, number)
-    val issueMetadata = IssueMetadataEditor(detail, viewModelScope) { error ->
-        val strings = GithubTxt.current.WorkDetail
-        messageChannel.trySend(
-            if (error is WorkDetailReviewChangedException) strings.PropertyChanged
-            else strings.PropertySaveFailed,
-        )
-    }
+    val issueMetadata =
+        IssueMetadataEditor(detail, viewModelScope) { error ->
+            val strings = GithubTxt.current.WorkDetail
+            messageChannel.trySend(
+                if (error is WorkDetailReviewChangedException) strings.PropertyChanged
+                else strings.PropertySaveFailed,
+            )
+        }
     private val draftPrefix =
         "${owner.lowercase(Locale.ROOT)}/${repo.lowercase(Locale.ROOT)}/${kind.name}/$number"
     private val draftWrites =
@@ -244,9 +249,13 @@ internal class CollaborationDetailViewModel(
     private var branchGeneration = 0L
 
     private fun titleKey() = detail.keys.title
+
     private fun bodyKey() = detail.keys.body
+
     private fun baseKey() = detail.keys.base
+
     private fun lockedKey() = detail.keys.locked
+
     private fun closeStateKey() = detail.keys.state
 
     private fun subscriptionKey(subjectId: String) =
@@ -264,8 +273,11 @@ internal class CollaborationDetailViewModel(
     private fun canWriteComment(coord: MutationCoordinator, id: String): Boolean {
         val edit = coord.current(detail.keys.comment(id))
         val deletion = coord.currentCommand(detail.keys.deleteComment(id))
-        return edit.phase != WritePhase.PENDING && edit.phase != WritePhase.UNCERTAIN && deletion.result == null &&
-            deletion.phase != WritePhase.PENDING && deletion.phase != WritePhase.UNCERTAIN
+        return edit.phase != WritePhase.PENDING &&
+            edit.phase != WritePhase.UNCERTAIN &&
+            deletion.result == null &&
+            deletion.phase != WritePhase.PENDING &&
+            deletion.phase != WritePhase.UNCERTAIN
     }
 
     private fun newCommentKey() =
@@ -288,7 +300,6 @@ internal class CollaborationDetailViewModel(
             "${detail.workTarget}:review",
             PullRequestReviewDto.serializer(),
         )
-
 
     private suspend fun ensureCoordinator(): MutationCoordinator =
         coordinator
@@ -323,18 +334,23 @@ internal class CollaborationDetailViewModel(
         }
         viewModelScope.launch {
             coord.observeCommand(detail.keys.merge).collect { cmd ->
-                mutableUiState.update { it.copy(mergePhase = cmd.phase).withDetail(confirmedDetailState) }
+                mutableUiState.update {
+                    it.copy(mergePhase = cmd.phase).withDetail(confirmedDetailState)
+                }
                 if (cmd.phase == WritePhase.UNCERTAIN && cmd.result == null) {
                     coord.reconcileCommand(detail.keys.merge) { detail.checkMerge() }
                 }
             }
         }
-        WorkProperty.entries.forEach { property -> viewModelScope.launch {
-            coord.observe(detail.keys.property(property)).collect { write ->
-                refreshUiDetail()
-                if (write.phase == WritePhase.REJECTED) write.message?.let(messageChannel::trySend)
+        WorkProperty.entries.forEach { property ->
+            viewModelScope.launch {
+                coord.observe(detail.keys.property(property)).collect { write ->
+                    refreshUiDetail()
+                    if (write.phase == WritePhase.REJECTED)
+                        write.message?.let(messageChannel::trySend)
+                }
             }
-        } }
+        }
         viewModelScope.launch { coord.observe(detail.keys.issueType).collect { refreshUiDetail() } }
         subscriptionNodeId?.let { observeSubscriptionSlot(coord, it) }
         confirmedDetailState.data?.takeIf(detail::accepts)?.let { item ->
@@ -350,12 +366,13 @@ internal class CollaborationDetailViewModel(
                 val prefix = detail.workTarget
                 val subId = subscriptionNodeId
                 val prefixWithSeparator = "$prefix:"
-                val relevant =
-                    pending.filter { summary ->
-                        summary.target == prefix ||
-                            summary.target.startsWith(prefixWithSeparator) ||
-                            (subId != null && summary.kind == MutationKind.WORK_SUBSCRIPTION && summary.target == subId)
-                    }
+                val relevant = pending.filter { summary ->
+                    summary.target == prefix ||
+                        summary.target.startsWith(prefixWithSeparator) ||
+                        (subId != null &&
+                            summary.kind == MutationKind.WORK_SUBSCRIPTION &&
+                            summary.target == subId)
+                }
                 mutableUiState.update { it.copy(uncertainOperations = relevant) }
             }
         }
@@ -372,12 +389,29 @@ internal class CollaborationDetailViewModel(
         }
         viewModelScope.launch {
             val encoded = draftStore.loadOrNull(viewerLogin, "$draftPrefix/review-form")
-            val form = try {
-                if (encoded == null) ReviewForm(draftStore.load(viewerLogin, "$draftPrefix/review"), PullRequestReviewEvent.Comment)
-                else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Json.decodeFromString<ReviewForm>(encoded) }
-            } catch (_: SerializationException) { messageChannel.trySend(GithubTxt.current.Common.MutationNotSubmitted); return@launch }
+            val form =
+                try {
+                    if (encoded == null)
+                        ReviewForm(
+                            draftStore.load(viewerLogin, "$draftPrefix/review"),
+                            PullRequestReviewEvent.Comment,
+                        )
+                    else
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            Json.decodeFromString<ReviewForm>(encoded)
+                        }
+                } catch (_: SerializationException) {
+                    messageChannel.trySend(GithubTxt.current.Common.MutationNotSubmitted)
+                    return@launch
+                }
             mutableUiState.update {
-                if (it.reviewDraftReady) it else it.copy(reviewDraft = form.body, reviewEvent = form.event, reviewDraftReady = true)
+                if (it.reviewDraftReady) it
+                else
+                    it.copy(
+                        reviewDraft = form.body,
+                        reviewEvent = form.event,
+                        reviewDraftReady = true,
+                    )
             }
         }
     }
@@ -497,8 +531,15 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (error: Exception) {
                 if (generation == branchGeneration)
-                    mutableUiState.update { it.copy(branchLoading = false, branchError = true,
-                        branchChoices = if (error.invalidatesCachedContent()) emptyList() else it.branchChoices) }
+                    mutableUiState.update {
+                        it.copy(
+                            branchLoading = false,
+                            branchError = true,
+                            branchChoices =
+                                if (error.invalidatesCachedContent()) emptyList()
+                                else it.branchChoices,
+                        )
+                    }
             }
         }
     }
@@ -530,9 +571,16 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (error: Exception) {
                 if (generation == branchGeneration)
-                    mutableUiState.update { it.copy(branchError = true,
-                        branchChoices = if (error.invalidatesCachedContent()) emptyList() else it.branchChoices,
-                        branchCursor = it.branchCursor.takeUnless { error.invalidatesCachedContent() }) }
+                    mutableUiState.update {
+                        it.copy(
+                            branchError = true,
+                            branchChoices =
+                                if (error.invalidatesCachedContent()) emptyList()
+                                else it.branchChoices,
+                            branchCursor =
+                                it.branchCursor.takeUnless { error.invalidatesCachedContent() },
+                        )
+                    }
             }
         }
     }
@@ -558,25 +606,29 @@ internal class CollaborationDetailViewModel(
 
     fun checksRevalidation(head: String) = detail.revalidation(detail.checksPagingKey(head))
 
-    fun retryChecksRevalidation(head: String) = detail.retryRevalidation(detail.checksPagingKey(head))
+    fun retryChecksRevalidation(head: String) =
+        detail.retryRevalidation(detail.checksPagingKey(head))
 
     fun entriesRevalidation(section: CollaborationSection, head: String?) =
         when (section) {
             CollaborationSection.Discussion -> null
             CollaborationSection.Reviews -> detail.revalidation(detail.reviewsPagingKey)
-            CollaborationSection.Files -> head?.let { detail.revalidation(detail.filesPagingKey(it)) }
-            CollaborationSection.Commits -> head?.let { detail.revalidation(detail.commitsPagingKey(it)) }
+            CollaborationSection.Files ->
+                head?.let { detail.revalidation(detail.filesPagingKey(it)) }
+            CollaborationSection.Commits ->
+                head?.let { detail.revalidation(detail.commitsPagingKey(it)) }
         }
 
     fun retryEntriesRevalidation(section: CollaborationSection, head: String?) {
         when (section) {
             CollaborationSection.Discussion -> Unit
             CollaborationSection.Reviews -> detail.retryRevalidation(detail.reviewsPagingKey)
-            CollaborationSection.Files -> head?.let { detail.retryRevalidation(detail.filesPagingKey(it)) }
-            CollaborationSection.Commits -> head?.let { detail.retryRevalidation(detail.commitsPagingKey(it)) }
+            CollaborationSection.Files ->
+                head?.let { detail.retryRevalidation(detail.filesPagingKey(it)) }
+            CollaborationSection.Commits ->
+                head?.let { detail.retryRevalidation(detail.commitsPagingKey(it)) }
         }
     }
-
 
     init {
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -731,22 +783,32 @@ internal class CollaborationDetailViewModel(
             CollaborationEditorTarget.LineComment -> state.lineCommentDraft
         }
 
-    fun entriesFor(section: CollaborationSection, head: String): Flow<PagingData<CollaborationEntry>>? =
+    fun entriesFor(
+        section: CollaborationSection,
+        head: String,
+    ): Flow<PagingData<CollaborationEntry>>? =
         when (section) {
             CollaborationSection.Discussion -> null
             CollaborationSection.Reviews -> reviewEntries
-            CollaborationSection.Files -> head.takeIf(String::isNotBlank)?.let { sha ->
-                detail.files(sha).map { page ->
-                    page.map<PullRequestFileDto, CollaborationEntry> { CollaborationEntry.File(sha, it) }
-                }
-            }
-            CollaborationSection.Commits -> head.takeIf(String::isNotBlank)?.let { sha ->
-                detail.commits(sha).map { page ->
-                    page.map<moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry, CollaborationEntry> {
-                        CollaborationEntry.Commit(it)
+            CollaborationSection.Files ->
+                head.takeIf(String::isNotBlank)?.let { sha ->
+                    detail.files(sha).map { page ->
+                        page.map<PullRequestFileDto, CollaborationEntry> {
+                            CollaborationEntry.File(sha, it)
+                        }
                     }
                 }
-            }
+            CollaborationSection.Commits ->
+                head.takeIf(String::isNotBlank)?.let { sha ->
+                    detail.commits(sha).map { page ->
+                        page.map<
+                            moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry,
+                            CollaborationEntry,
+                        > {
+                            CollaborationEntry.Commit(it)
+                        }
+                    }
+                }
         }
 
     private fun CollaborationDetailUiState.withDetail(
@@ -792,7 +854,10 @@ internal class CollaborationDetailViewModel(
                 !item.head?.sha.isNullOrBlank()
         return copy(
             item = item,
-            projectTitles = coord?.current(detail.keys.property(WorkProperty.Projects))?.visible?.map { it.title },
+            projectTitles =
+                coord?.current(detail.keys.property(WorkProperty.Projects))?.visible?.map {
+                    it.title
+                },
             loading = cached.loading,
             error = failure?.let(::collaborationErrorMessage),
             browserUrl = githubBrowserUrl(item?.htmlUrl),
@@ -833,32 +898,40 @@ internal class CollaborationDetailViewModel(
 
     private fun observeSubscriptionSlot(coord: MutationCoordinator, subjectId: String) {
         subscriptionObserver?.cancel()
-        subscriptionObserver =
-            viewModelScope.launch {
-                coord.observe(subscriptionKey(subjectId)).collect { write ->
-                    val projected = write.visible
-                    mutableUiState.update { current ->
-                        val baseSub = confirmedSubscription ?: current.subscription
-                        val updatedSub =
-                            if (projected != null && baseSub != null) {
-                                baseSub.copy(state = if (projected) "SUBSCRIBED" else if (baseSub.inherited || baseSub.state == "IGNORED") "IGNORED" else "UNSUBSCRIBED")
-                            } else baseSub
-                        current.copy(
-                            subscription = updatedSub,
-                            desiredSubscription =
-                                write.desired.takeIf { write.phase == WritePhase.PENDING },
-                            subscriptionUpdating = write.phase == WritePhase.PENDING,
-                            subscriptionError =
-                                if (write.phase == WritePhase.REJECTED || write.phase == WritePhase.UNCERTAIN) {
-                                    write.message ?: current.subscriptionError
-                                } else null,
-                        )
-                    }
-                    if (write.phase == WritePhase.REJECTED) {
-                        write.message?.let(messageChannel::trySend)
-                    }
+        subscriptionObserver = viewModelScope.launch {
+            coord.observe(subscriptionKey(subjectId)).collect { write ->
+                val projected = write.visible
+                mutableUiState.update { current ->
+                    val baseSub = confirmedSubscription ?: current.subscription
+                    val updatedSub =
+                        if (projected != null && baseSub != null) {
+                            baseSub.copy(
+                                state =
+                                    if (projected) "SUBSCRIBED"
+                                    else if (baseSub.inherited || baseSub.state == "IGNORED")
+                                        "IGNORED"
+                                    else "UNSUBSCRIBED",
+                            )
+                        } else baseSub
+                    current.copy(
+                        subscription = updatedSub,
+                        desiredSubscription =
+                            write.desired.takeIf { write.phase == WritePhase.PENDING },
+                        subscriptionUpdating = write.phase == WritePhase.PENDING,
+                        subscriptionError =
+                            if (
+                                write.phase == WritePhase.REJECTED ||
+                                    write.phase == WritePhase.UNCERTAIN
+                            ) {
+                                write.message ?: current.subscriptionError
+                            } else null,
+                    )
+                }
+                if (write.phase == WritePhase.REJECTED) {
+                    write.message?.let(messageChannel::trySend)
                 }
             }
+        }
     }
 
     fun loadSubscription(force: Boolean = false, notifyFailure: Boolean = true) {
@@ -880,7 +953,13 @@ internal class CollaborationDetailViewModel(
                     val effective = slot.visible
                     val shown =
                         if (effective != null) {
-                            loaded.copy(state = if (effective) "SUBSCRIBED" else if (loaded.inherited || loaded.state == "IGNORED") "IGNORED" else "UNSUBSCRIBED")
+                            loaded.copy(
+                                state =
+                                    if (effective) "SUBSCRIBED"
+                                    else if (loaded.inherited || loaded.state == "IGNORED")
+                                        "IGNORED"
+                                    else "UNSUBSCRIBED",
+                            )
                         } else loaded
                     mutableUiState.update { it.copy(subscription = shown) }
                 }
@@ -922,7 +1001,8 @@ internal class CollaborationDetailViewModel(
                     ?: state.subscription
                     ?: try {
                         val stamp = coord.beginRead(key)
-                        subscriptions.load(viewerLogin, subjectId, force = state.subscriptionError != null)
+                        subscriptions
+                            .load(viewerLogin, subjectId, force = state.subscriptionError != null)
                             .also {
                                 confirmedSubscription = it
                                 coord.publishConfirmed(key, stamp, it.subscribed)
@@ -960,7 +1040,8 @@ internal class CollaborationDetailViewModel(
                     },
                 )
             if (!accepted) {
-                val message = "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}"
+                val message =
+                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}"
                 mutableUiState.update { it.copy(subscriptionError = message) }
                 messageChannel.trySend(message)
             }
@@ -1110,25 +1191,27 @@ internal class CollaborationDetailViewModel(
                     return@launch
                 }
             if (reactionObservers[subjectId]?.isActive != true) {
-                reactionObservers[subjectId] =
-                    viewModelScope.launch {
-                        coord.observe(key).collect { write ->
-                            val value = write.visible
-                            if (value != null) {
-                                reactionUpdates.set(
-                                    subjectId,
-                                    GithubReactionUpdate(
-                                        source = sourceReactions,
-                                        reactions = value,
-                                        pending = write.phase == WritePhase.PENDING,
-                                    ),
-                                )
-                            }
-                            if (write.phase == WritePhase.REJECTED || write.phase == WritePhase.UNCERTAIN) {
-                                messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
-                            }
+                reactionObservers[subjectId] = viewModelScope.launch {
+                    coord.observe(key).collect { write ->
+                        val value = write.visible
+                        if (value != null) {
+                            reactionUpdates.set(
+                                subjectId,
+                                GithubReactionUpdate(
+                                    source = sourceReactions,
+                                    reactions = value,
+                                    pending = write.phase == WritePhase.PENDING,
+                                ),
+                            )
+                        }
+                        if (
+                            write.phase == WritePhase.REJECTED ||
+                                write.phase == WritePhase.UNCERTAIN
+                        ) {
+                            messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
                         }
                     }
+                }
             }
             val accepted =
                 coord.submit(
@@ -1138,7 +1221,11 @@ internal class CollaborationDetailViewModel(
                     tags = detail.mutationTags,
                     send = { nextDesired ->
                         val baseline = coord.current(key).confirmed ?: sourceReactions
-                        convergeGithubReactions(baseline, nextDesired, { coord.confirmStep(key, it) }) { targetContent, currentReacted ->
+                        convergeGithubReactions(
+                            baseline,
+                            nextDesired,
+                            { coord.confirmStep(key, it) },
+                        ) { targetContent, currentReacted ->
                             detail.toggleReaction(subjectId, targetContent, currentReacted)
                         }
                     },
@@ -1212,8 +1299,13 @@ internal class CollaborationDetailViewModel(
                     tags = detail.mutationTags,
                     send = {
                         detail.minimizeComment(comment, reason.apiValue)
-                        try { detail.readComment(commentId) } catch (e: CancellationException) { throw e }
-                        catch (e: Exception) { throw IOException("Comment visibility could not be read back", e) }
+                        try {
+                            detail.readComment(commentId)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            throw IOException("Comment visibility could not be read back", e)
+                        }
                     },
                     readBack = { detail.readComment(commentId) },
                 )
@@ -1225,7 +1317,8 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun quoteComment(comment: CollaborationCommentDto) = quoteBody(comment.user?.login, comment.body)
+    fun quoteComment(comment: CollaborationCommentDto) =
+        quoteBody(comment.user?.login, comment.body)
 
     fun quoteBody(author: String?, body: String?) {
         composerDraftJob?.cancel()
@@ -1237,8 +1330,7 @@ internal class CollaborationDetailViewModel(
 
     private fun appendQuote(author: String?, body: String?) {
         val state = uiState.value
-        if (!state.canComment || state.loading || state.submitting || state.commentUncertain)
-            return
+        if (!state.canComment || state.loading || state.submitting || state.commentUncertain) return
         val quote = buildList {
             author?.takeIf(String::isNotBlank)?.let { add("> @$it") }
             addAll(
@@ -1278,16 +1370,34 @@ internal class CollaborationDetailViewModel(
             val coord = ensureCoordinator()
             if (!canWriteComment(coord, commentId)) return@launch
             val key = detail.keys.deleteComment(commentId)
-            val receipt = coord.submitCommand(key, detail.mutationTags,
-                onConfirmed = { clearDraft("edit/${comment.id}") },
-                send = { detail.deleteComment(comment); CommandAccepted },
-                readBack = { null },
-            )
+            val receipt =
+                coord.submitCommand(
+                    key,
+                    detail.mutationTags,
+                    onConfirmed = { clearDraft("edit/${comment.id}") },
+                    send = {
+                        detail.deleteComment(comment)
+                        CommandAccepted
+                    },
+                    readBack = { null },
+                )
             val outcome = receipt?.await() ?: coord.currentCommand(key)
             when {
-                receipt != null && outcome.phase == WritePhase.IDLE -> mutableUiState.update { it.copy(editingComment = it.editingComment.takeUnless { edit -> edit?.comment?.id == comment.id }) }
-                outcome.phase == WritePhase.UNCERTAIN -> messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
-                outcome.phase != WritePhase.PENDING -> messageChannel.trySend(outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted)
+                receipt != null && outcome.phase == WritePhase.IDLE ->
+                    mutableUiState.update {
+                        it.copy(
+                            editingComment =
+                                it.editingComment.takeUnless { edit ->
+                                    edit?.comment?.id == comment.id
+                                },
+                        )
+                    }
+                outcome.phase == WritePhase.UNCERTAIN ->
+                    messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
+                outcome.phase != WritePhase.PENDING ->
+                    messageChannel.trySend(
+                        outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted,
+                    )
             }
         }
     }
@@ -1332,7 +1442,11 @@ internal class CollaborationDetailViewModel(
                     tags = detail.mutationTags,
                     send = { req ->
                         val updated = detail.updateComment(target.comment, req.body.orEmpty())
-                        draftStore.removeIfUnchanged(viewerLogin, "$draftPrefix/edit/${target.comment.id}", req.body.orEmpty())
+                        draftStore.removeIfUnchanged(
+                            viewerLogin,
+                            "$draftPrefix/edit/${target.comment.id}",
+                            req.body.orEmpty(),
+                        )
                         if (!background) {
                             mutableUiState.update {
                                 it.copy(composerTarget = null, editingComment = null)
@@ -1374,7 +1488,8 @@ internal class CollaborationDetailViewModel(
             if (
                 current.item?.head?.sha != commit ||
                     !current.canCommentOnLines ||
-                    current.submitting || current.uncertainOperations.any { it.target == lineCommentKey(target).target }
+                    current.submitting ||
+                    current.uncertainOperations.any { it.target == lineCommentKey(target).target }
             )
                 return@launch
             mutableUiState.update {
@@ -1419,7 +1534,8 @@ internal class CollaborationDetailViewModel(
         submitCommand(
             section = CollaborationSection.Files,
             key = lineCommentKey(target),
-            draftSuffix = lineDraftKey(target), draftText = draft,
+            draftSuffix = lineDraftKey(target),
+            draftText = draft,
             onSuccess = { created ->
                 mutableUiState.update {
                     if (it.reviewLine == target && it.lineCommentDraft == draft)
@@ -1427,7 +1543,15 @@ internal class CollaborationDetailViewModel(
                     else it.copy(lastLineComment = created)
                 }
             },
-            send = { detail.createLineComment(draft, target.commitId, target.path, target.line, target.side) },
+            send = {
+                detail.createLineComment(
+                    draft,
+                    target.commitId,
+                    target.path,
+                    target.line,
+                    target.side,
+                )
+            },
             readBack = { null },
         )
     }
@@ -1462,23 +1586,41 @@ internal class CollaborationDetailViewModel(
                 item.baseRefName != snapshot.baseRefName ||
                 state.loading ||
                 state.submitting ||
-                state.mergePhase == WritePhase.PENDING || state.mergePhase == WritePhase.UNCERTAIN ||
+                state.mergePhase == WritePhase.PENDING ||
+                state.mergePhase == WritePhase.UNCERTAIN ||
                 !item.canMerge() ||
                 (method != "REBASE" && message?.headline.isNullOrBlank())
         )
             return false
         val coord = detail.mutations()
-        if (listOf(baseKey(), closeStateKey()).any { coord.current(it).phase.let { p -> p == WritePhase.PENDING || p == WritePhase.UNCERTAIN } }) return false
-        val receipt = coord.submitCommand(detail.keys.merge, detail.mutationTags,
-            send = { detail.merge(head, snapshot.baseRefName, method, message); CommandAccepted },
-            readBack = { detail.checkMerge() },
-        ) ?: return false
+        if (
+            listOf(baseKey(), closeStateKey()).any {
+                coord.current(it).phase.let { p ->
+                    p == WritePhase.PENDING || p == WritePhase.UNCERTAIN
+                }
+            }
+        )
+            return false
+        val receipt =
+            coord.submitCommand(
+                detail.keys.merge,
+                detail.mutationTags,
+                send = {
+                    detail.merge(head, snapshot.baseRefName, method, message)
+                    CommandAccepted
+                },
+                readBack = { detail.checkMerge() },
+            ) ?: return false
         mutableUiState.update { it.copy(mergePhase = WritePhase.PENDING) }
         viewModelScope.launch {
             val outcome = receipt.await()
             when (outcome.phase) {
-                WritePhase.REJECTED -> messageChannel.trySend(outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted)
-                WritePhase.UNCERTAIN -> messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
+                WritePhase.REJECTED ->
+                    messageChannel.trySend(
+                        outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted,
+                    )
+                WritePhase.UNCERTAIN ->
+                    messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
                 else -> Unit
             }
         }
@@ -1486,7 +1628,8 @@ internal class CollaborationDetailViewModel(
     }
 
     private fun updateTitleFromEditor(title: String) {
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         val trimmed = title.trim()
         if (trimmed.isBlank() || trimmed.length > 256) return
         submitField(
@@ -1499,7 +1642,8 @@ internal class CollaborationDetailViewModel(
     }
 
     private fun updateBodyFromEditor(body: String) {
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         if (body.length > 65_536) return
         submitField(
             key = bodyKey(),
@@ -1511,7 +1655,8 @@ internal class CollaborationDetailViewModel(
     }
 
     fun editPullRequest(field: String, value: String) {
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         val trimmed = value.trim()
         if (trimmed.isBlank() || trimmed.length > (if (field == "title") 256 else 1024)) return
         if (field == "title") {
@@ -1535,7 +1680,8 @@ internal class CollaborationDetailViewModel(
     }
 
     fun toggleConversationLock() {
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         submitField(
             key = lockedKey(),
             confirmed = snapshot.locked,
@@ -1547,7 +1693,8 @@ internal class CollaborationDetailViewModel(
 
     fun closePullRequest() {
         if (mergeBlocksChanges()) return
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         submitField(
             key = closeStateKey(),
             confirmed = snapshot.state,
@@ -1557,12 +1704,14 @@ internal class CollaborationDetailViewModel(
         )
     }
 
-    private fun mergeBlocksChanges() = detail.mutations().currentCommand(detail.keys.merge).phase.let {
-        it == WritePhase.PENDING || it == WritePhase.UNCERTAIN
-    }
+    private fun mergeBlocksChanges() =
+        detail.mutations().currentCommand(detail.keys.merge).phase.let {
+            it == WritePhase.PENDING || it == WritePhase.UNCERTAIN
+        }
 
     fun closeIssue() {
-        val snapshot = confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
+        val snapshot =
+            confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return
         if (snapshot.state != "open" || !snapshot.viewerCanClose) return
         submitField(
             key = closeStateKey(),
@@ -1581,7 +1730,9 @@ internal class CollaborationDetailViewModel(
     }
 
     private fun saveReviewDraft(form: ReviewForm) {
-        draftStore.saveEncoded(viewerLogin, "$draftPrefix/review-form") { Json.encodeToString(form) }
+        draftStore.saveEncoded(viewerLogin, "$draftPrefix/review-form") {
+            Json.encodeToString(form)
+        }
     }
 
     fun submitComment() {
@@ -1593,9 +1744,12 @@ internal class CollaborationDetailViewModel(
         submitCommand(
             section = CollaborationSection.Discussion,
             key = newCommentKey(),
-            draftSuffix = "comment", draftText = body,
+            draftSuffix = "comment",
+            draftText = body,
             onSuccess = {
-                mutableUiState.update { if (it.commentDraft == body) it.copy(commentDraft = "") else it }
+                mutableUiState.update {
+                    if (it.commentDraft == body) it.copy(commentDraft = "") else it
+                }
             },
             send = { detail.createComment(body) },
             readBack = { null },
@@ -1610,20 +1764,29 @@ internal class CollaborationDetailViewModel(
         submitCommand(
             section = CollaborationSection.Reviews,
             key = reviewKey(),
-            draftSuffix = "review-form", encodeDraft = { Json.encodeToString(ReviewForm(state.reviewDraft, state.reviewEvent)) },
+            draftSuffix = "review-form",
+            encodeDraft = { Json.encodeToString(ReviewForm(state.reviewDraft, state.reviewEvent)) },
             onSuccess = {
                 mutableUiState.update {
-                    if (it.reviewDraft != state.reviewDraft || it.reviewEvent != state.reviewEvent) return@update it
+                    if (it.reviewDraft != state.reviewDraft || it.reviewEvent != state.reviewEvent)
+                        return@update it
                     it.copy(
                         reviewDraft = "",
                         reviewEvent = PullRequestReviewEvent.Comment,
-                        statusPanel = it.statusPanel.takeUnless { panel -> panel == WorkStatusPanel.Reviews },
+                        statusPanel =
+                            it.statusPanel.takeUnless { panel -> panel == WorkStatusPanel.Reviews },
                     )
                 }
             },
-            send = { detail.createReview(commit, state.reviewEvent.apiValue, body).also {
-                draftStore.removeIfUnchanged(viewerLogin, "$draftPrefix/review", state.reviewDraft)
-            } },
+            send = {
+                detail.createReview(commit, state.reviewEvent.apiValue, body).also {
+                    draftStore.removeIfUnchanged(
+                        viewerLogin,
+                        "$draftPrefix/review",
+                        state.reviewDraft,
+                    )
+                }
+            },
             readBack = { null },
         )
     }
@@ -1634,22 +1797,31 @@ internal class CollaborationDetailViewModel(
         return when (op.kind) {
             MutationKind.MERGE -> strings.MergePullRequest
             MutationKind.REVIEW -> strings.Review
-            MutationKind.COMMENT -> if (field.startsWith("delete-comment:")) strings.DeleteComment else strings.Comment
+            MutationKind.COMMENT ->
+                if (field.startsWith("delete-comment:")) strings.DeleteComment else strings.Comment
             MutationKind.WORK_SUBSCRIPTION -> strings.Subscribe
-            MutationKind.WORK_PROPERTY -> WorkProperty.entries.firstOrNull { it.name == field.substringAfter("property:") }?.title(strings) ?: strings.EditProperty
+            MutationKind.WORK_PROPERTY ->
+                WorkProperty.entries
+                    .firstOrNull { it.name == field.substringAfter("property:") }
+                    ?.title(strings) ?: strings.EditProperty
             MutationKind.ISSUE_FIELD -> strings.IssueFields
-            else -> when (field) {
-                "title" -> strings.EditTitle
-                "body" -> strings.EditDescription
-                "base" -> strings.ChangeBaseBranch
-                "locked" -> strings.LockConversation
-                "state" -> if (kind == CollaborationKind.PullRequest) strings.ClosePullRequest else strings.CloseIssue
-                else -> strings.EditProperty
-            }
+            else ->
+                when (field) {
+                    "title" -> strings.EditTitle
+                    "body" -> strings.EditDescription
+                    "base" -> strings.ChangeBaseBranch
+                    "locked" -> strings.LockConversation
+                    "state" ->
+                        if (kind == CollaborationKind.PullRequest) strings.ClosePullRequest
+                        else strings.CloseIssue
+                    else -> strings.EditProperty
+                }
         }
     }
 
-    fun acknowledgeOperation(id: String) { detail.mutations().acknowledge(id) }
+    fun acknowledgeOperation(id: String) {
+        detail.mutations().acknowledge(id)
+    }
 
     private fun <T : Any> submitField(
         key: MutationKey<T>,
@@ -1668,7 +1840,8 @@ internal class CollaborationDetailViewModel(
                     messageChannel.trySend(collaborationErrorMessage(error))
                     return@launch
                 }
-            val accepted = coord.submit(key, confirmed, desired, detail.mutationTags, send, readBack)
+            val accepted =
+                coord.submit(key, confirmed, desired, detail.mutationTags, send, readBack)
             if (!accepted) {
                 val limitMsg =
                     "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}"
@@ -1688,7 +1861,13 @@ internal class CollaborationDetailViewModel(
         send: suspend () -> R,
         readBack: suspend () -> R?,
     ) {
-        if (uiState.value.submitting || uiState.value.uncertainOperations.any { it.kind == key.kind && it.target == key.target }) return
+        if (
+            uiState.value.submitting ||
+                uiState.value.uncertainOperations.any {
+                    it.kind == key.kind && it.target == key.target
+                }
+        )
+            return
         val submittedEditor = activeEditorSession
         val background = submittedEditor != null
         mutableUiState.update {
@@ -1706,7 +1885,12 @@ internal class CollaborationDetailViewModel(
                 val store = draftStore
                 val account = viewerLogin
                 val storedKey = draftSuffix?.let { "$draftPrefix/$it" }
-                val storedText = if (encodeDraft == null) draftText else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { encodeDraft() }
+                val storedText =
+                    if (encodeDraft == null) draftText
+                    else
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            encodeDraft()
+                        }
                 if (storedKey != null && !store.saveConfirmed(account, storedKey, storedText)) {
                     val message = GithubTxt.current.Common.MutationNotSubmitted
                     mutableUiState.update {
@@ -1728,7 +1912,10 @@ internal class CollaborationDetailViewModel(
                     coord.submitCommand(
                         key = key,
                         tags = detail.mutationTags,
-                        onConfirmed = { if (storedKey != null) store.removeIfUnchanged(account, storedKey, storedText) },
+                        onConfirmed = {
+                            if (storedKey != null)
+                                store.removeIfUnchanged(account, storedKey, storedText)
+                        },
                         send = {
                             try {
                                 send()
@@ -1741,8 +1928,11 @@ internal class CollaborationDetailViewModel(
                     )
                 if (receipt == null) {
                     val shared = coord.currentCommand(key)
-                    val limitMsg = shared.message ?: if (shared.phase == WritePhase.UNCERTAIN) GithubTxt.current.Common.MutationUncertain
-                        else GithubTxt.current.Common.MutationNotSubmitted
+                    val limitMsg =
+                        shared.message
+                            ?: if (shared.phase == WritePhase.UNCERTAIN)
+                                GithubTxt.current.Common.MutationUncertain
+                            else GithubTxt.current.Common.MutationNotSubmitted
                     mutableUiState.update {
                         it.copy(
                             submitting = false,
@@ -1759,19 +1949,38 @@ internal class CollaborationDetailViewModel(
                 when (cmd.phase) {
                     WritePhase.IDLE -> {
                         onSuccess(checkNotNull(cmd.result))
-                        mutableUiState.update { it.copy(submitting = false, sendingInBackground = false, composerTarget = null) }
-                    }
-                    WritePhase.REJECTED, WritePhase.UNCERTAIN -> {
-                        val message = if (cmd.phase == WritePhase.UNCERTAIN) GithubTxt.current.Common.MutationUncertain else when (val error = latestError) {
-                            is WorkDetailCommentChangedException -> "评论已在其他位置更新，请重新打开评论核对，草稿已保留"
-                            is WorkDetailReviewChangedException -> "拉取请求已更新，请刷新后重新检查，草稿已保留。"
-                            null -> cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted
-                            else -> collaborationErrorMessage(error)
+                        mutableUiState.update {
+                            it.copy(
+                                submitting = false,
+                                sendingInBackground = false,
+                                composerTarget = null,
+                            )
                         }
-                        mutableUiState.update { it.copy(submitting = false, sendingInBackground = false,
-                            composerTarget = if (background) null else it.composerTarget,
-                            submissionError = message) }
-                        if (background || uiState.value.composerTarget == null) messageChannel.trySend(message)
+                    }
+                    WritePhase.REJECTED,
+                    WritePhase.UNCERTAIN -> {
+                        val message =
+                            if (cmd.phase == WritePhase.UNCERTAIN)
+                                GithubTxt.current.Common.MutationUncertain
+                            else
+                                when (val error = latestError) {
+                                    is WorkDetailCommentChangedException ->
+                                        "评论已在其他位置更新，请重新打开评论核对，草稿已保留"
+                                    is WorkDetailReviewChangedException -> "拉取请求已更新，请刷新后重新检查，草稿已保留。"
+                                    null ->
+                                        cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted
+                                    else -> collaborationErrorMessage(error)
+                                }
+                        mutableUiState.update {
+                            it.copy(
+                                submitting = false,
+                                sendingInBackground = false,
+                                composerTarget = if (background) null else it.composerTarget,
+                                submissionError = message,
+                            )
+                        }
+                        if (background || uiState.value.composerTarget == null)
+                            messageChannel.trySend(message)
                     }
                     WritePhase.PENDING -> error("A command receipt must be terminal")
                 }

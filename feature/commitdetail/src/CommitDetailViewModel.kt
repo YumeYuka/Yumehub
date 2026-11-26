@@ -19,8 +19,8 @@ import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.repository.CommitRepository
 import moe.yumeyuka.yumehub.data.repository.GithubCommitDetail
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
-import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 
 internal class CommitSource<T : Any>(
     val key: String,
@@ -38,27 +38,33 @@ internal class CommitRevision(
     parent: CoroutineScope,
     private val generation: Int,
 ) {
-    private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
+    private val scope =
+        CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
 
     fun close() = scope.cancel()
 
     val files: CommitSource<PullRequestFileDto> by lazy {
-        source(repository.filesKey(route.owner, route.name, oid), repository.files(account, route.owner, route.name, oid))
+        source(
+            repository.filesKey(route.owner, route.name, oid),
+            repository.files(account, route.owner, route.name, oid),
+        )
     }
     val parents by lazy { links(parents = true) }
     val pullRequests by lazy { links(parents = false) }
 
-    private fun links(parents: Boolean): CommitSource<RepositoryActivityEntry> = source(
-        repository.linksKey(route.owner, route.name, oid, parents),
-        repository.links(account, route.owner, route.name, oid, parents),
-    )
+    private fun links(parents: Boolean): CommitSource<RepositoryActivityEntry> =
+        source(
+            repository.linksKey(route.owner, route.name, oid, parents),
+            repository.links(account, route.owner, route.name, oid, parents),
+        )
 
-    private fun <T : Any> source(key: String, pages: Flow<PagingData<T>>) = CommitSource(
-        key = "$account:$generation:$key",
-        pages = pages.cachedIn(scope),
-        revalidation = repository.revalidation(account, key),
-        retryRevalidation = { repository.retryRevalidation(account, key) },
-    )
+    private fun <T : Any> source(key: String, pages: Flow<PagingData<T>>) =
+        CommitSource(
+            key = "$account:$generation:$key",
+            pages = pages.cachedIn(scope),
+            revalidation = repository.revalidation(account, key),
+            retryRevalidation = { repository.retryRevalidation(account, key) },
+        )
 }
 
 internal data class CommitDetailState(
@@ -73,15 +79,22 @@ internal class CommitDetailViewModel(
     private val account: String,
 ) : ViewModel() {
     private var generation = 0
-    private fun revision(oid: String) = CommitRevision(oid, repository, account, route, viewModelScope, generation++)
 
-    private val mutableState = MutableStateFlow(CommitDetailState(
-        revision = route.oid.takeIf { it.length == 40 }?.lowercase()?.let(::revision),
-    ))
+    private fun revision(oid: String) =
+        CommitRevision(oid, repository, account, route, viewModelScope, generation++)
+
+    private val mutableState =
+        MutableStateFlow(
+            CommitDetailState(
+                revision = route.oid.takeIf { it.length == 40 }?.lowercase()?.let(::revision),
+            ),
+        )
     val state = mutableState.asStateFlow()
     private var job: Job? = null
 
-    init { load() }
+    init {
+        load()
+    }
 
     fun load() {
         if (job?.isActive == true) return

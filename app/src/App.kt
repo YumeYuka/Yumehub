@@ -29,14 +29,15 @@ class App : Application(), KoinComponent {
             androidContext(this@App)
             modules(appModule)
         }
-        storageStartup = CoroutineScope(Dispatchers.Main.immediate).async {
-            withContext(Dispatchers.IO) {
-                MMKV.initialize(this@App)
-                get<SettingsStore>().loadUiPreferences()
-                val client = get<OkHttpClient>()
-                initializeGithubImageLoader(this@App, client)
+        storageStartup =
+            CoroutineScope(Dispatchers.Main.immediate).async {
+                withContext(Dispatchers.IO) {
+                    MMKV.initialize(this@App)
+                    get<SettingsStore>().loadUiPreferences()
+                    val client = get<OkHttpClient>()
+                    initializeGithubImageLoader(this@App, client)
+                }
+                storageReady = true
             }
-            storageReady = true
-        }
     }
 }

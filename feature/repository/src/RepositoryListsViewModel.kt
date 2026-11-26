@@ -6,15 +6,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
-import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
-import moe.yumeyuka.yumehub.data.repository.repositoryListsKey
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.ProfileCollectionsRepository
 import moe.yumeyuka.yumehub.data.repository.UserRepositoryList
+import moe.yumeyuka.yumehub.data.repository.repositoryListsKey
 
 internal data class RepositoryListsState(
     val visible: Boolean = false,
@@ -54,7 +54,6 @@ internal class RepositoryListsViewModel(
         }
     }
 
-
     fun open(row: RepositoryDto) {
         val id = row.nodeId ?: return
         if (!active() || id.isBlank()) return
@@ -75,15 +74,24 @@ internal class RepositoryListsViewModel(
                 var catalogFailed = false
                 var membershipFailed = false
                 fun renderRead() {
-                    if (active() && repositoryId == id) mutableState.value = mutableState.value.copy(
-                        loading = !catalogFailed && !membershipFailed && (!catalogReady || coord.current(key).confirmed == null), failed = catalogFailed || membershipFailed)
+                    if (active() && repositoryId == id)
+                        mutableState.value =
+                            mutableState.value.copy(
+                                loading =
+                                    !catalogFailed &&
+                                        !membershipFailed &&
+                                        (!catalogReady || coord.current(key).confirmed == null),
+                                failed = catalogFailed || membershipFailed,
+                            )
                 }
                 observeSlot(coord, id)
                 confirmedIds = coord.current(key).confirmed?.toSet()
                 launch {
                     collections.observeUserLists(account, account).collect { cached ->
                         if (!active() || repositoryId != id) return@collect
-                        cached.data?.let { mutableState.value = mutableState.value.copy(lists = it) }
+                        cached.data?.let {
+                            mutableState.value = mutableState.value.copy(lists = it)
+                        }
                         catalogReady = cached.data != null
                         catalogFailed = cached.error != null && !catalogReady
                         renderRead()
@@ -93,8 +101,11 @@ internal class RepositoryListsViewModel(
                     val selected = collections.repositoryListIds(account, id)
                     if (!active() || repositoryId != id) return@launch
                     coord.publishConfirmed(key, stamp, selected.sorted())
-                } catch (error: CancellationException) { throw error }
-                catch (_: Exception) { membershipFailed = coord.current(key).confirmed == null }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    membershipFailed = coord.current(key).confirmed == null
+                }
                 renderRead()
             } catch (error: CancellationException) {
                 throw error
@@ -108,30 +119,55 @@ internal class RepositoryListsViewModel(
 
     private fun observeSlot(coord: MutationCoordinator, id: String) {
         slotObserver?.cancel()
-        slotObserver =
-            viewModelScope.launch {
-                val key = repositoryListsKey(id)
-                combine(coord.observe(key), coord.pending) { write, pending -> write to
-                    pending.firstOrNull { it.kind == key.kind && it.target == id }?.operationId }.collect { (write, marker) ->
+        slotObserver = viewModelScope.launch {
+            val key = repositoryListsKey(id)
+            combine(coord.observe(key), coord.pending) { write, pending ->
+                    write to
+                        pending.firstOrNull { it.kind == key.kind && it.target == id }?.operationId
+                }
+                .collect { (write, marker) ->
                     if (!active() || repositoryId != id) return@collect
                     val current = mutableState.value
                     val shown = write.visible?.toSet() ?: current.selectedIds
                     val before = confirmedIds
-                    val selected = if (before != null && write.phase == WritePhase.IDLE && current.phase == WritePhase.IDLE && !current.loading && current.selectedIds != before)
-                        (shown - (before - current.selectedIds)) + (current.selectedIds - before) else shown
+                    val selected =
+                        if (
+                            before != null &&
+                                write.phase == WritePhase.IDLE &&
+                                current.phase == WritePhase.IDLE &&
+                                !current.loading &&
+                                current.selectedIds != before
+                        )
+                            (shown - (before - current.selectedIds)) +
+                                (current.selectedIds - before)
+                        else shown
                     confirmedIds = write.confirmed?.toSet()
-                    mutableState.value = current.copy(saving = write.phase == WritePhase.PENDING, selectedIds = selected, phase = write.phase, uncertainOperationId = marker)
+                    mutableState.value =
+                        current.copy(
+                            saving = write.phase == WritePhase.PENDING,
+                            selectedIds = selected,
+                            phase = write.phase,
+                            uncertainOperationId = marker,
+                        )
                 }
-            }
+        }
     }
 
     fun acknowledge(operationId: String) {
-        if (mutableState.value.uncertainOperationId == operationId) coordinator?.acknowledge(operationId)
+        if (mutableState.value.uncertainOperationId == operationId)
+            coordinator?.acknowledge(operationId)
     }
 
     fun toggle(listId: String) {
         val state = mutableState.value
-        if (!state.visible || state.loading || state.saving || state.failed || state.phase == WritePhase.UNCERTAIN) return
+        if (
+            !state.visible ||
+                state.loading ||
+                state.saving ||
+                state.failed ||
+                state.phase == WritePhase.UNCERTAIN
+        )
+            return
         val selected =
             if (listId in state.selectedIds) state.selectedIds - listId
             else state.selectedIds + listId
@@ -143,7 +179,15 @@ internal class RepositoryListsViewModel(
         val state = mutableState.value
         val row = repository ?: return
         val original = confirmedIds ?: return
-        if (!active() || !state.visible || state.loading || state.saving || state.failed || state.phase == WritePhase.UNCERTAIN) return
+        if (
+            !active() ||
+                !state.visible ||
+                state.loading ||
+                state.saving ||
+                state.failed ||
+                state.phase == WritePhase.UNCERTAIN
+        )
+            return
         viewModelScope.launch {
             val coord =
                 coordinator
@@ -156,9 +200,13 @@ internal class RepositoryListsViewModel(
                         return@launch
                     }
             val key = repositoryListsKey(id)
-            val accepted = collections.submitRepositoryLists(account, row, original, state.selectedIds)
+            val accepted =
+                collections.submitRepositoryLists(account, row, original, state.selectedIds)
             if (!accepted) {
-                onComplete(coord.current(key).phase.takeIf { it == WritePhase.UNCERTAIN } ?: WritePhase.REJECTED)
+                onComplete(
+                    coord.current(key).phase.takeIf { it == WritePhase.UNCERTAIN }
+                        ?: WritePhase.REJECTED,
+                )
                 return@launch
             }
             dismiss()

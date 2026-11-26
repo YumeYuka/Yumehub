@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,7 +22,8 @@ import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTag
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.WorkHeaderPlaceholder
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -42,72 +42,87 @@ internal fun WorkDetailHeader(
     val enabled = !state.submitting || state.sendingInBackground
     val isPullRequest = kind == CollaborationKind.PullRequest
     val strings = LocalGithubStrings.current.WorkDetail
-    val projectTitle = state.projectTitles?.let { it.firstOrNull() ?: strings.NoProjects } ?: strings.Projects
+    val projectTitle =
+        state.projectTitles?.let { it.firstOrNull() ?: strings.NoProjects } ?: strings.Projects
     GlasmioGroupedList {
-        if (entry == null) {
-            Box(Modifier.fillMaxWidth().height(58.dp).padding(16.dp)) {
-                TextLinePlaceholder(GlasmioTheme.textStyles.body, fraction = 0.55f)
-            }
-        } else {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GithubWorkStatusTag(
-                    item = entry,
-                    kind = kind,
-                    onClick = onInformation,
-                    enabled = enabled,
-                )
-                WorkHeaderLabels(entry.labels, enabled, onLabels)
-                WorkHeaderProject(projectTitle, enabled, onProjects)
-                if (isPullRequest) WorkHeaderReviewers(entry, enabled, onReviewers)
-                if (kind == CollaborationKind.Issue) {
-                    val all = LocalGithubStrings.current
-                    if (entry.viewerCanTypeIssue || entry.issueType != null) {
-                        WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Type) }) {
+        GithubLoadingContent(
+            loading = entry == null,
+            placeholder = { WorkHeaderPlaceholder() },
+        ) {
+            if (entry != null)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GithubWorkStatusTag(
+                        item = entry,
+                        kind = kind,
+                        onClick = onInformation,
+                        enabled = enabled,
+                    )
+                    WorkHeaderLabels(entry.labels, enabled, onLabels)
+                    WorkHeaderProject(projectTitle, enabled, onProjects)
+                    if (isPullRequest) WorkHeaderReviewers(entry, enabled, onReviewers)
+                    if (kind == CollaborationKind.Issue) {
+                        val all = LocalGithubStrings.current
+                        if (entry.viewerCanTypeIssue || entry.issueType != null) {
+                            WorkHeaderButton(
+                                enabled,
+                                { onIssueMetadata(IssueMetadataPanel.Type) },
+                            ) {
+                                GithubIcon(
+                                    Lucide.CircleDot,
+                                    contentDescription = null,
+                                    size = 16.dp,
+                                    tint = issueOptionColor(entry.issueTypeColor),
+                                )
+                                WorkHeaderText(entry.issueType ?: all.WorkList.IssueType)
+                            }
+                        }
+                        WorkHeaderButton(
+                            enabled,
+                            { onIssueMetadata(IssueMetadataPanel.Assignees) },
+                        ) {
                             GithubIcon(
-                                Lucide.CircleDot, contentDescription = null, size = 16.dp,
-                                tint = issueOptionColor(entry.issueTypeColor),
+                                Lucide.UserRound,
+                                contentDescription = null,
+                                size = 16.dp,
+                                tint = GithubWorkColors.muted,
                             )
-                            WorkHeaderText(entry.issueType ?: all.WorkList.IssueType)
+                            WorkHeaderText(
+                                when (entry.assignedActors.size) {
+                                    0 -> strings.Unassigned
+                                    1 -> entry.assignedActors.single()
+                                    else -> strings.AssigneeCount(entry.assignedActors.size)
+                                },
+                            )
                         }
                     }
-                    WorkHeaderButton(enabled, { onIssueMetadata(IssueMetadataPanel.Assignees) }) {
+                    val progress = entry.taskProgress
+                    WorkHeaderButton(enabled, onInformation) {
                         GithubIcon(
-                            Lucide.UserRound,
+                            Lucide.ListChecks,
                             contentDescription = null,
                             size = 16.dp,
                             tint = GithubWorkColors.muted,
                         )
                         WorkHeaderText(
-                            when (entry.assignedActors.size) {
-                                0 -> strings.Unassigned
-                                1 -> entry.assignedActors.single()
-                                else -> strings.AssigneeCount(entry.assignedActors.size)
-                            }
+                            strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0),
                         )
                     }
+                    if (isPullRequest) WorkHeaderChecks(entry, enabled, onChecks)
                 }
-                val progress = entry.taskProgress
-                WorkHeaderButton(enabled, onInformation) {
-                    GithubIcon(
-                        Lucide.ListChecks,
-                        contentDescription = null,
-                        size = 16.dp,
-                        tint = GithubWorkColors.muted,
-                    )
-                    WorkHeaderText(strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0))
-                }
-                if (isPullRequest) WorkHeaderChecks(entry, enabled, onChecks)
-            }
         }
     }
 }
 
 @Composable
-private fun WorkHeaderLabels(labels: List<CollaborationLabelDto>, enabled: Boolean, onClick: () -> Unit) {
+private fun WorkHeaderLabels(
+    labels: List<CollaborationLabelDto>,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val strings = LocalGithubStrings.current.WorkDetail
     WorkHeaderButton(enabled, onClick) {
         if (labels.isEmpty()) {
@@ -126,7 +141,7 @@ private fun WorkHeaderLabels(labels: List<CollaborationLabelDto>, enabled: Boole
                         Modifier.zIndex(-index.toFloat())
                             .size(12.dp)
                             .background(githubLabelColor(labels[index].color), CircleShape)
-                            .border(1.dp, outline, CircleShape)
+                            .border(1.dp, outline, CircleShape),
                     )
                 }
             }

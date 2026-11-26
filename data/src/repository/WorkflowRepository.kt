@@ -5,8 +5,8 @@ import java.util.PriorityQueue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
-import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CacheTag
+import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
@@ -163,7 +163,10 @@ class WorkflowRepository(
         run: Long,
         page: Int,
     ): WorkflowArtifacts =
-        when (val fetched = listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, page)) {
+        when (
+            val fetched =
+                listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, page)
+        ) {
             is RemoteFetch.Fresh -> fetched.value
             RemoteFetch.NotModified -> error("An unconditional artifact request cannot return 304")
         }
@@ -183,7 +186,16 @@ class WorkflowRepository(
                 tags = setOf(CacheTag(DataDomain.Work, null)),
             )
             .observe { validator ->
-                listWorkflowArtifacts(artifactClient, tokens, account, owner, name, run, 1, validator)
+                listWorkflowArtifacts(
+                    artifactClient,
+                    tokens,
+                    account,
+                    owner,
+                    name,
+                    run,
+                    1,
+                    validator,
+                )
             }
 
     suspend fun artifactDownload(account: String, owner: String, name: String, id: Long) =

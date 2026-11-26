@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 
-abstract class MMKVPreference internal constructor(
+abstract class MMKVPreference
+internal constructor(
     @PublishedApi internal val mmkv: KeyValueStorage,
 ) {
     constructor(

@@ -45,8 +45,10 @@ fun GithubRefreshEffect(
     val refreshEnabled by rememberUpdatedState(enabled)
     LaunchedEffect(owner, lifecycle, host, changes, pollWhileVisible) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            combine(snapshotFlow { host?.isCurrent != false && refreshEnabled }, changes.versions) {
-                    active, versions ->
+            combine(
+                    snapshotFlow { host?.isCurrent != false && refreshEnabled },
+                    changes.versions,
+                ) { active, versions ->
                     active to versions.filterKeys { it in dependencies }
                 }
                 .distinctUntilChanged()

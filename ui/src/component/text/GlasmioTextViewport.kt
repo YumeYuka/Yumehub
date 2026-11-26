@@ -1,8 +1,8 @@
 package moe.yumeyuka.yumehub.ui.component.text
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldBuffer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,15 +23,20 @@ internal class EditorTextPresentation(
         if (password) {
             // The secure field masks Unicode code points, not UTF-16 code units.
             val count = source.codePointCount(0, source.length)
-            boundaries = if (count == source.length) null else IntArray(count + 1).also { offsets ->
-                for (i in 0 until count) {
-                    offsets[i + 1] = offsets[i] + Character.charCount(source.codePointAt(offsets[i]))
-                }
-            }
+            boundaries =
+                if (count == source.length) null
+                else
+                    IntArray(count + 1).also { offsets ->
+                        for (i in 0 until count) {
+                            offsets[i + 1] =
+                                offsets[i] + Character.charCount(source.codePointAt(offsets[i]))
+                        }
+                    }
             displayText = "\u2022".repeat(count)
         } else {
             boundaries = null
-            displayText = if (singleLine) formatted.replace('\n', ' ').replace('\r', '\uFEFF') else formatted
+            displayText =
+                if (singleLine) formatted.replace('\n', ' ').replace('\r', '\uFEFF') else formatted
         }
     }
 
@@ -72,20 +77,28 @@ internal class EditorOutputFormatter(
     override fun TextFieldBuffer.transformOutput() {
         with(transform) { transformOutput() }
         val count = changes.changeCount
-        val ranges = if (count == 0) null else IntArray(count * 4).also { ranges ->
-            for (i in 0 until count) {
-                val before = changes.getOriginalRange(i)
-                val after = changes.getRange(i)
-                ranges[4 * i] = before.min
-                ranges[4 * i + 1] = before.max
-                ranges[4 * i + 2] = after.min
-                ranges[4 * i + 3] = after.max
-            }
-        }
+        val ranges =
+            if (count == 0) null
+            else
+                IntArray(count * 4).also { ranges ->
+                    for (i in 0 until count) {
+                        val before = changes.getOriginalRange(i)
+                        val after = changes.getRange(i)
+                        ranges[4 * i] = before.min
+                        ranges[4 * i + 1] = before.max
+                        ranges[4 * i + 2] = after.min
+                        ranges[4 * i + 3] = after.max
+                    }
+                }
         val source = originalText.toString()
-        presentation = EditorTextPresentation(
-            source, false, singleLine, if (count == 0) source else toString(), ranges,
-        )
+        presentation =
+            EditorTextPresentation(
+                source,
+                false,
+                singleLine,
+                if (count == 0) source else toString(),
+                ranges,
+            )
     }
 }
 

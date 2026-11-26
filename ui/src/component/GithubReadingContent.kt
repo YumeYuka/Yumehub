@@ -13,9 +13,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
@@ -100,7 +100,9 @@ fun GithubReadingGroup(
                             role = Role.Button,
                             onClick = onFooterClick,
                         ),
-                    ) { footer() }
+                    ) {
+                        footer()
+                    }
                 }
             }
         }
@@ -179,7 +181,10 @@ fun GithubMarkdownPreview(
     // retain the same mounted preview behind the editor and suspend its interactions.
     var visited by remember { mutableStateOf(false) }
     if (!LocalGithubRouteEntryReady.current || (!visible && !visited)) {
-        if (visible) GithubMarkdownPlaceholder(modifier.padding(contentPadding).padding(16.dp).clearAndSetSemantics {})
+        if (visible)
+            GithubMarkdownPlaceholder(
+                modifier.padding(contentPadding).padding(16.dp).clearAndSetSemantics {},
+            )
         return
     }
     if (visible && !visited) SideEffect { visited = true }

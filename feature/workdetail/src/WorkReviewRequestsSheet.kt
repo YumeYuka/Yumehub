@@ -24,10 +24,11 @@ import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+
 @Composable
 internal fun WorkReviewRequestsSheet(
     state: WorkPropertiesState,
@@ -44,8 +45,12 @@ internal fun WorkReviewRequestsSheet(
     LaunchedEffect(viewModel) { viewModel?.edit(WorkProperty.Reviewers) }
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
     val editable =
-        live != null && live.editable && !live.loading && !live.failed &&
-            !live.needsReconcile && !state.submitting
+        live != null &&
+            live.editable &&
+            !live.loading &&
+            !live.failed &&
+            !live.needsReconcile &&
+            !state.submitting
     val shown = remember(editor) { editor?.reviewerGroups() }
     GithubSearchSelectionSheet(
         // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发。
@@ -77,7 +82,9 @@ internal fun WorkReviewRequestsSheet(
                 var acknowledgeVisible by remember { mutableStateOf(false) }
                 GlasmioGroupedList {
                     GlasmioListRow(
-                        title = if (state.uncertain) locale.Common.MutationReconcile else locale.Common.Retry,
+                        title =
+                            if (state.uncertain) locale.Common.MutationReconcile
+                            else locale.Common.Retry,
                         subtitle =
                             when {
                                 state.uncertain -> locale.Common.MutationUncertain
@@ -106,7 +113,8 @@ internal fun WorkReviewRequestsSheet(
                                 io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
                                     locale.Common.Cancel,
                                     onClick = { acknowledgeVisible = false },
-                                    role = io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Cancel,
+                                    role =
+                                        io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Cancel,
                                 ),
                                 io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
                                     locale.Common.MutationAcknowledged,
@@ -114,7 +122,8 @@ internal fun WorkReviewRequestsSheet(
                                         acknowledgeVisible = false
                                         viewModel?.acknowledgeUncertain()
                                     },
-                                    role = io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Default,
+                                    role =
+                                        io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Default,
                                 ),
                             ),
                         onDismissRequest = { acknowledgeVisible = false },
@@ -122,9 +131,15 @@ internal fun WorkReviewRequestsSheet(
                 }
             }
         } else {
-            reviewerGroup("pending", strings.ReviewPending, shown.pending, editable) { viewModel?.select(it) }
-            reviewerGroup("reviewed", strings.ReviewCompleted, shown.reviewed, editable) { viewModel?.select(it) }
-            reviewerGroup("available", strings.ReviewAvailable, shown.available, editable) { viewModel?.select(it) }
+            reviewerGroup("pending", strings.ReviewPending, shown.pending, editable) {
+                viewModel?.select(it)
+            }
+            reviewerGroup("reviewed", strings.ReviewCompleted, shown.reviewed, editable) {
+                viewModel?.select(it)
+            }
+            reviewerGroup("available", strings.ReviewAvailable, shown.available, editable) {
+                viewModel?.select(it)
+            }
             if (editor.editable && (!editor.hasReviewerCandidates || editor.nextCursor != null)) {
                 item("review-candidates-page") {
                     if (editor.moreFailed) {
@@ -135,8 +150,12 @@ internal fun WorkReviewRequestsSheet(
                     }
                 }
             }
-            if ((!editor.editable || (editor.hasReviewerCandidates && editor.nextCursor == null)) &&
-                shown.pending.isEmpty() && shown.reviewed.isEmpty() && shown.available.isEmpty()) {
+            if (
+                (!editor.editable || (editor.hasReviewerCandidates && editor.nextCursor == null)) &&
+                    shown.pending.isEmpty() &&
+                    shown.reviewed.isEmpty() &&
+                    shown.available.isEmpty()
+            ) {
                 item("review-requests-empty") {
                     GlasmioGroupedList {
                         GlasmioListRow(
@@ -162,11 +181,13 @@ private fun WorkPropertyEditor.reviewerGroups(): ReviewerGroups {
     val term = query.trim()
     fun WorkPropertyOption.matches() = title.contains(term, ignoreCase = true)
     return ReviewerGroups(
-        pending = selected.filter { it.matches() }.map { it.copy(state = reviewedById[it.id]?.state) },
+        pending =
+            selected.filter { it.matches() }.map { it.copy(state = reviewedById[it.id]?.state) },
         reviewed = reviewed.filter { it.id !in selectedIds && it.matches() },
-        available = (original + options).distinctBy(WorkPropertyOption::id).filter {
-            it.id !in selectedIds && it.id !in reviewedById && it.matches()
-        },
+        available =
+            (original + options).distinctBy(WorkPropertyOption::id).filter {
+                it.id !in selectedIds && it.id !in reviewedById && it.matches()
+            },
     )
 }
 
@@ -181,26 +202,31 @@ private fun LazyListScope.reviewerGroup(
     item("review-requests:$group") {
         GithubSectionHeader(title, Modifier.animateItem().padding(bottom = 8.dp))
     }
-    itemsIndexed(reviewers, key = { _, reviewer -> "review-request:${reviewer.id}" }) { index, reviewer ->
+    itemsIndexed(reviewers, key = { _, reviewer -> "review-request:${reviewer.id}" }) {
+        index,
+        reviewer ->
         val strings = LocalGithubStrings.current.WorkDetail
         val pending = group == "pending"
-        val detail = when {
-            pending && reviewer.state != null -> strings.ReviewAgain
-            pending -> strings.ReviewPending
-            else -> reviewer.state?.let(strings.ReviewState) ?: strings.ReviewNotRequested
-        }
+        val detail =
+            when {
+                pending && reviewer.state != null -> strings.ReviewAgain
+                pending -> strings.ReviewPending
+                else -> reviewer.state?.let(strings.ReviewState) ?: strings.ReviewNotRequested
+            }
         val first = if (index == 0) 26.dp else 0.dp
         val last = if (index == reviewers.lastIndex) 26.dp else 0.dp
         GlasmioGroupedList(
             framed = false,
-            modifier = Modifier.animateItem().glasmioGroupedListBackground(
-                ContinuousRoundedRectangle(
-                    topStart = first,
-                    topEnd = first,
-                    bottomStart = last,
-                    bottomEnd = last,
-                ),
-            ),
+            modifier =
+                Modifier.animateItem()
+                    .glasmioGroupedListBackground(
+                        ContinuousRoundedRectangle(
+                            topStart = first,
+                            topEnd = first,
+                            bottomStart = last,
+                            bottomEnd = last,
+                        ),
+                    ),
         ) {
             GlasmioListRow(
                 title = reviewer.title,
