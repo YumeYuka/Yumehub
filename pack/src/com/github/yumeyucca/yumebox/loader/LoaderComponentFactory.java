@@ -92,8 +92,7 @@ public final class LoaderComponentFactory extends AppComponentFactory {
         ApplicationInfo appInfo = RuntimeBootstrap.currentApplicationInfo();
         PayloadInstaller.Installation installation = PayloadInstaller.install(
                 appInfo,
-                classLoader,
-                RuntimeBootstrap.currentLoadedApk()
+                classLoader
         );
         payloadLoader = installation.classLoader();
         return installation;

@@ -65,16 +65,6 @@ final class RuntimeBootstrap {
         return (ApplicationInfo) boundField("appInfo");
     }
 
-    static Object currentLoadedApk() {
-        return boundField("info");
-    }
-
-    static void installClassLoader(Object loadedApk, ClassLoader classLoader)
-            throws ReflectiveOperationException {
-        ReflectionAccess.set(loadedApk, "mClassLoader", classLoader);
-        ReflectionAccess.setIfPresent(loadedApk, "mDefaultClassLoader", classLoader);
-    }
-
     private static Object boundField(String fieldName) {
         ReflectionAccess.exemptHiddenApis();
         try {
