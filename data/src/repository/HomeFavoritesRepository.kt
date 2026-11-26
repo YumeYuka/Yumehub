@@ -72,8 +72,12 @@ class HomeFavoritesRepository(
                     val name =
                         node.name?.takeIf { it.isNotBlank() }
                             ?: throw HomeFavoritesException("收藏仓库信息不完整，请重试")
+                    val nodeId =
+                        node.id?.takeIf { it.isNotBlank() }
+                            ?: throw HomeFavoritesException("收藏仓库信息不完整，请重试")
                     RepositoryDto(
                         id = node.databaseId,
+                        nodeId = nodeId,
                         name = name,
                         fullName = "$owner/$name",
                         htmlUrl = node.url,
@@ -113,6 +117,7 @@ private data class PinnedItemsViewer(
 @Serializable
 private data class PinnedRepository(
     @SerialName("__typename") val type: String? = null,
+    val id: String? = null,
     val databaseId: Long? = null,
     val name: String? = null,
     val url: String? = null,

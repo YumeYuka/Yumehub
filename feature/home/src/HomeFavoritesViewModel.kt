@@ -278,14 +278,25 @@ internal class HomeFavoritesViewModel(
 
     private fun CachedDataState<List<RepositoryDto>>.toUiState(): HomeFavoritesState {
         val base = data ?: return if (error != null) HomeFavoritesState.Error else HomeFavoritesState.Loading
-        val visibleIds = coordinator?.current(pinsKey)?.visible
+        // 已确认的仓库列表来自资源；详情页读回的 ID 不替代列表快照。
+        val desiredIds = coordinator?.current(pinsKey)?.takeIf { it.phase == WritePhase.PENDING }?.desired
         val repositories =
-            if (visibleIds == null) base
+            if (desiredIds == null) base
             else {
-                val knownById = (base + lastSubmittedMetadata + edit.value.draft?.selected.orEmpty())
-                    .mapNotNull { repo -> repo.nodeId?.let { it to repo } }
-                    .toMap()
-                visibleIds.mapNotNull { knownById[it] }
+                val knownById = buildMap {
+                    for (repo in base) repo.nodeId?.let { put(it, repo) }
+                    for (repo in lastSubmittedMetadata) repo.nodeId?.let { put(it, repo) }
+                    for (repo in edit.value.draft?.selected.orEmpty()) repo.nodeId?.let { put(it, repo) }
+                }
+                buildList {
+                    desiredIds.mapNotNullTo(this) { knownById[it] }
+                    // 旧快照可能没有节点 ID；无法匹配不代表仓库已取消收藏。
+                    for (repo in base) {
+                        if (repo.nodeId == null && none { it.fullName.equals(repo.fullName, ignoreCase = true) }) {
+                            add(repo)
+                        }
+                    }
+                }
             }
         return HomeFavoritesState.Content(repositories, error != null)
     }
