@@ -44,6 +44,7 @@ import moe.yumeyuka.yumehub.ui.component.githubTitleOpticalCenter
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowTokens
+import moe.yumeyuka.yumehub.ui.theme.GithubActivityColors
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
@@ -157,14 +158,7 @@ private fun NotificationCardContent(
                 if (!isSelecting && notification.unread) {
                     Box(
                         Modifier.size(10.dp)
-                            .background(
-                                readableForeground(
-                                    colors.accent,
-                                    colors.elevatedBackground,
-                                    colors.content,
-                                ),
-                                CircleShape,
-                            )
+                            .background(GithubActivityColors.accent, CircleShape)
                             .semantics { contentDescription = strings.Unread },
                     )
                 }
