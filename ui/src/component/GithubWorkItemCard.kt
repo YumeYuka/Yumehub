@@ -26,6 +26,8 @@ import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
+import androidx.compose.runtime.remember
+import moe.yumeyuka.yumehub.data.api.dto.workTarget
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -38,6 +40,9 @@ fun GithubWorkItemCard(
     kind: CollaborationKind,
     onClick: (() -> Unit)? = null,
 ) {
+    val target = remember(item.htmlUrl, item.number) { item.workTarget() }
+    val write = rememberWorkRowProjection(target)
+    val shown = remember(item, write) { write.apply(item) }
     val strings = LocalGithubStrings.current
     val repository = item.repositoryName?.substringAfterLast('/')?.takeIf(String::isNotBlank)
     val meta = listOfNotNull(repository, "#${item.number}").joinToString(" · ")
@@ -48,22 +53,26 @@ fun GithubWorkItemCard(
             GithubWorkItemHeader(item.user, meta, relativeTime) {
                 GithubWorkItemStatusIcon(
                     kind,
-                    item.state,
-                    item.draft,
-                    item.merged,
-                    item.stateReason,
+                    shown.state,
+                    shown.draft,
+                    shown.merged,
+                    shown.stateReason,
                 )
             }
         },
         summary = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                GithubActivityCardSummary(item.title, item.bodyPreview, titleMaxLines = 2)
-                item.subIssuesTotal
+                GithubActivityCardSummary(shown.title, shown.bodyPreview, titleMaxLines = 2)
+                workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
+                if (shown.labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (label in shown.labels) GithubLabelTag(label.name, label.color)
+                }
+                shown.subIssuesTotal
                     ?.takeIf { it > 0 }
                     ?.let { total ->
                         GithubWorkItemMeta(
                             Lucide.ListChecks,
-                            "${item.subIssuesCompleted ?: 0}/$total",
+                            "${shown.subIssuesCompleted ?: 0}/$total",
                         )
                     }
             }

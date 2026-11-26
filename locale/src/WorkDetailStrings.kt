@@ -39,6 +39,7 @@ public data class GithubStrings_WorkDetail(
     val MergePullRequest: String,
     val MergeMessageLoadFailed: String,
     val Merge: String,
+    val Merging: String,
     val MergeCommit: String,
     val SquashMerge: String,
     val RebaseMerge: String,
@@ -288,6 +289,7 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         MergePullRequest = "合并拉取请求",
         MergeMessageLoadFailed = "无法加载默认提交信息，可重试或手动填写。",
         Merge = "合并",
+        Merging = "正在合并…",
         MergeCommit = "创建合并提交",
         SquashMerge = "压缩并合并",
         RebaseMerge = "变基并合并",
@@ -594,6 +596,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         MergeMessageLoadFailed =
             "Could not load the default commit message. Retry or enter it manually.",
         Merge = "Merge",
+        Merging = "Merging…",
         MergeCommit = "Create a merge commit",
         SquashMerge = "Squash and merge",
         RebaseMerge = "Rebase and merge",

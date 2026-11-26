@@ -4,6 +4,7 @@ import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import androidx.paging.PagingData
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import moe.yumeyuka.yumehub.data.cache.RemoteFetch
@@ -18,6 +19,7 @@ import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 class ProfileCollectionsRepository(
@@ -30,7 +32,27 @@ class ProfileCollectionsRepository(
         get() = tokenStore.accountLogin.value
 
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
-    fun starredChanges(account: String) = cache.starredRows(account).changes
+    fun starredChanges(account: String) = cache.starredRows(account).changes { it }
+
+    fun listChanges(account: String, listId: String) = cache.listRows(account).changes(listId) { listId in it }
+
+    fun submitRepositoryLists(account: String, row: RepositoryDto, before: Set<String>, after: Set<String>): Boolean {
+        val id = row.nodeId ?: return false
+        val added = after - before
+        val removed = before - after
+        val accepted = cache.mutations(account).submit(repositoryListsKey(id), before.sorted(), after.sorted(),
+            setOf(CacheTag(DataDomain.Repositories, null)),
+            send = {
+                val remote = try { repositoryListIds(account, id) } catch (cancel: CancellationException) { throw cancel }
+                    catch (error: Exception) { throw MutationRejectedException(cause = error) }
+                val next = (remote - removed) + added
+                if (remote == next) remote.sorted() else updateRepositoryLists(account, id, next)
+            },
+            readBack = { repositoryListIds(account, id).sorted() },
+        )
+        if (accepted) cache.listRows(account).track(id, row, added + removed)
+        return accepted
+    }
 
     fun repositoriesKey(login: String, organization: Boolean): String {
         val type = if (organization) "Organization" else "User"
@@ -190,15 +212,15 @@ class ProfileCollectionsRepository(
         return result
     }
 
-    suspend fun updateRepositoryLists(
+    private suspend fun updateRepositoryLists(
         account: String,
         repositoryId: String,
         listIds: Set<String>,
-    ) {
+    ): List<String> {
         val session = GithubGraphQlSession(api, tokenStore, account)
         val mutation =
             "mutation UpdateUserListsForItem(\u0024input: UpdateUserListsForItemInput!) { " +
-                "updateUserListsForItem(input: \u0024input) { item { ... on Repository { id } } } }"
+                "updateUserListsForItem(input: \u0024input) { item { ... on Repository { id lists(first: 100, onlyOwnedByViewer: true) { pageInfo { hasNextPage endCursor } nodes { id } } } } } }"
         val variables = buildJsonObject {
             put(
                 "input",
@@ -214,15 +236,16 @@ class ProfileCollectionsRepository(
                 },
             )
         }
-        val itemId =
+        val item =
             session
                 .execute(mutation, variables, write = true)
                 .graphObject("updateUserListsForItem")
                 .graphObject("item")
-                .graphRequiredText("id")
-        if (itemId != repositoryId) throw GithubPageException()
-        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Repositories, null)))
-        cache.changes(account).publish(DataDomain.Repositories)
+        if (item.graphRequiredText("id") != repositoryId) throw GithubPageException()
+        val lists = item.graphObject("lists")
+        if (lists.graphCursor(null) == null) return lists.graphNodes().map { it.graphRequiredText("id") }.sorted()
+        return try { repositoryListIds(account, repositoryId).sorted() } catch (cancel: CancellationException) { throw cancel }
+            catch (error: Exception) { throw java.io.IOException("Could not read all lists after update", error) }
     }
 
     fun listItems(

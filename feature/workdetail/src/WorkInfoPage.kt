@@ -23,6 +23,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -74,7 +75,7 @@ internal fun WorkInfoSheet(
 ) {
     var opened by remember { mutableStateOf(false) }
     SideEffect { if (visible) opened = true }
-    if (!opened) return
+    if (!visible && !opened) return
     val strings = LocalGithubStrings.current.WorkDetail
     val common = LocalGithubStrings.current.Common
     val scroll = rememberScrollState()
@@ -82,16 +83,25 @@ internal fun WorkInfoSheet(
     val title =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
         else strings.IssueInformation
-    val viewModel: WorkInfoViewModel =
-        koinViewModel(
-            key = "work-info-$login-$owner-$name-${kind.name}-$number",
-            parameters = { parametersOf(owner, name, kind, number, login) },
-        )
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(visible) { if (visible) viewModel.load() }
-    LaunchedEffect(state.saved) {
+    var viewModelReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        viewModelReady = true
+    }
+    val viewModel: WorkInfoViewModel? =
+        if (viewModelReady) {
+            koinViewModel(
+                key = "work-info-$login-$owner-$name-${kind.name}-$number",
+                parameters = { parametersOf(owner, name, kind, number, login) },
+            )
+        } else null
+    val state by
+        viewModel?.uiState?.collectAsStateWithLifecycle()
+            ?: remember { mutableStateOf(WorkPropertiesState()) }
+    LaunchedEffect(visible, viewModel) { if (visible) viewModel?.load() }
+    LaunchedEffect(state.saved, viewModel) {
         if (state.saved) {
-            viewModel.consumeSaved()
+            viewModel?.consumeSaved()
             onDismiss()
         }
     }
@@ -113,8 +123,8 @@ internal fun WorkInfoSheet(
                     }
                 },
                 actions = {
-                    if (state.value != null) {
-                        GlasmioIconButton(onClick = viewModel::saveAll, enabled = !state.submitting) {
+                    if (state.value != null && viewModel != null) {
+                        GlasmioIconButton(onClick = { viewModel.saveAll() }, enabled = !state.submitting) {
                             GithubIcon(Lucide.Check, contentDescription = strings.SaveChanges)
                         }
                     }
@@ -129,20 +139,31 @@ internal fun WorkInfoSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            WorkInfoSections(
-                state,
-                viewModel,
-                kind,
-                item,
-                "$owner/$name",
-                onOpenWork,
-                onOpenBaseBranch,
-                onOpenIssueFields,
-            )
+            if (viewModel != null) {
+                WorkInfoSections(
+                    state,
+                    viewModel,
+                    kind,
+                    item,
+                    "$owner/$name",
+                    onOpenWork,
+                    onOpenBaseBranch,
+                    onOpenIssueFields,
+                )
+            } else {
+                item?.let { entry ->
+                    WorkInfoDetailsSection(entry)
+                    if (kind == CollaborationKind.PullRequest) {
+                        WorkInfoStatusSection(entry, kind, onOpenBaseBranch)
+                    }
+                }
+                workInfoPlaceholders(kind, strings)
+            }
         }
     }
-    if (visible) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
+    if (visible && viewModel != null) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
 }
+
 
 /** 头部 chip 直接打开单个属性的选择面板，不再先展开信息 sheet。 */
 @Composable
@@ -158,29 +179,45 @@ internal fun WorkPropertySheet(
 ) {
     if (!visible || property == null) return
     val strings = LocalGithubStrings.current.WorkDetail
-    val viewModel: WorkInfoViewModel =
-        koinViewModel(
-            key = "work-info-$login-$owner-$name-${kind.name}-$number",
-            parameters = { parametersOf(owner, name, kind, number, login) },
-        )
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var viewModelReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        viewModelReady = true
+    }
+    val viewModel: WorkInfoViewModel? =
+        if (viewModelReady) {
+            koinViewModel(
+                key = "work-info-$login-$owner-$name-${kind.name}-$number",
+                parameters = { parametersOf(owner, name, kind, number, login) },
+            )
+        } else null
+    val state by
+        viewModel?.uiState?.collectAsStateWithLifecycle()
+            ?: remember { mutableStateOf(WorkPropertiesState()) }
     if (property == WorkProperty.Reviewers) {
         WorkReviewRequestsSheet(state, viewModel, onDismiss)
         return
     }
-    LaunchedEffect(viewModel) { viewModel.load() }
-    var requested by remember(property) { mutableStateOf<WorkProperty?>(null) }
-    LaunchedEffect(property, state.value) {
+    LaunchedEffect(viewModel) { viewModel?.load() }
+    var requested by remember { mutableStateOf<WorkProperty?>(null) }
+    LaunchedEffect(property, state.value, viewModel) {
+        val activeViewModel = viewModel ?: return@LaunchedEffect
         if (state.value != null && requested != property) {
             requested = property
-            viewModel.edit(property)
+            activeViewModel.edit(property)
         }
     }
-    LaunchedEffect(state.failed) { if (state.failed) onDismiss() }
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
-    WorkPropertySelectionSheet(state, viewModel, onDismiss, saveImmediately = true)
+    WorkPropertySelectionSheet(
+        state,
+        viewModel,
+        onDismiss,
+        saveImmediately = true,
+        requestedProperty = property,
+    )
 }
+
 
 @Composable
 private fun WorkInfoSections(
@@ -221,7 +258,18 @@ private fun WorkInfoSections(
     }
     val value = state.value
     if (value == null) {
-        if (!state.failed) workInfoPlaceholders(kind, strings)
+        if (!state.failed) {
+            workInfoPlaceholders(kind, strings)
+        } else {
+            GlasmioGroupedList {
+                GlasmioListRow(
+                    title = LocalGithubStrings.current.Common.Retry,
+                    subtitle = strings.PropertyLoadFailed,
+                    showTopSeparator = false,
+                    onClick = viewModel::retry,
+                )
+            }
+        }
         return
     }
     val milestone = state.valuesFor(WorkProperty.Milestone).singleOrNull()?.title
@@ -566,9 +614,10 @@ private fun WorkInfoRowPlaceholder(
 @Composable
 private fun WorkPropertySelectionSheet(
     state: WorkPropertiesState,
-    viewModel: WorkInfoViewModel,
+    viewModel: WorkInfoViewModel?,
     onDismiss: () -> Unit,
     saveImmediately: Boolean = false,
+    requestedProperty: WorkProperty? = null,
 ) {
     val live = state.editor
     // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
@@ -586,24 +635,46 @@ private fun WorkPropertySelectionSheet(
     GithubSearchSelectionSheet(
         // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发，
         // 由那里清空 retained 与调用方状态，收起期间内容用快照渲染。
-        visible = live != null || retained != null,
-        title = editor?.property?.selectionTitle(strings).orEmpty(),
+        visible = requestedProperty != null || live != null || retained != null,
+        title = (editor?.property ?: requestedProperty)?.selectionTitle(strings).orEmpty(),
         placeholder = strings.PropertySearch,
         queryKey = editor?.query.orEmpty(),
-        onQueryChange = viewModel::search,
+        onQueryChange = { viewModel?.search(it) },
         onDismiss = {
-            viewModel.closeEditor()
+            viewModel?.closeEditor()
             retained = null
             onDismiss()
         },
-        onConfirm = { viewModel.applyEditor(saveImmediately) },
-        showConfirm = editor?.editable != false,
+        onConfirm = { viewModel?.applyEditor(saveImmediately) },
+        showConfirm = editor?.editable == true,
         confirmEnabled =
             live != null && !live.loading && !live.failed && !live.needsReconcile &&
                 !state.submitting,
         requestClose = live == null && retained != null,
     ) {
-        if (editor == null) return@GithubSearchSelectionSheet
+        if (editor == null) {
+            if (state.failed && state.value == null) {
+                item(key = "work-property-load-retry") {
+                    GlasmioGroupedList {
+                        GlasmioListRow(
+                            title = LocalGithubStrings.current.Common.Retry,
+                            subtitle = strings.PropertyLoadFailed,
+                            showTopSeparator = false,
+                            onClick = { viewModel?.retry() },
+                        )
+                    }
+                }
+            } else {
+                item(key = "work-property-loading") {
+                    GlasmioGroupedList {
+                        repeat(3) { index ->
+                            WorkInfoRowPlaceholder(showTopSeparator = index > 0)
+                        }
+                    }
+                }
+            }
+            return@GithubSearchSelectionSheet
+        }
         if (!editor.loading && (editor.failed || editor.needsReconcile)) {
             item(key = "work-property-retry") {
                 var acknowledgeVisible by remember { mutableStateOf(false) }
@@ -617,7 +688,7 @@ private fun WorkPropertySelectionSheet(
                                 editor.needsReconcile -> strings.PropertySaveFailed
                                 else -> strings.PropertyLoadFailed
                             },
-                        onClick = viewModel::retryEditor,
+                        onClick = { viewModel?.retryEditor() },
                     )
                     if (state.uncertain) {
                         GlasmioListRow(
@@ -644,7 +715,7 @@ private fun WorkPropertySelectionSheet(
                                     common.MutationAcknowledged,
                                     onClick = {
                                         acknowledgeVisible = false
-                                        viewModel.acknowledgeUncertain()
+                                        viewModel?.acknowledgeUncertain()
                                     },
                                     role = GlasmioAlertButtonRole.Default,
                                 ),
@@ -707,7 +778,10 @@ private fun WorkPropertySelectionSheet(
                                         option,
                                         checked = editor.selected.any { it.id == option.id },
                                         showTopSeparator = index > 0,
-                                        onSelect = if (editor.editable && !state.submitting) ({ viewModel.select(option) }) else null,
+                                        onSelect =
+                                            if (editor.editable && !state.submitting) {
+                                                viewModel?.let { vm -> { vm.select(option) } }
+                                            } else null,
                                     )
                                 }
                             }
@@ -734,7 +808,7 @@ private fun WorkPropertySelectionSheet(
                             if (option == null) {
                                 if (!editor.moreFailed) {
                                     LaunchedEffect(editor.query, editor.nextCursor) {
-                                        viewModel.more()
+                                        viewModel?.more()
                                     }
                                     WorkInfoRowPlaceholder(showTopSeparator = index > 0)
                                 }
@@ -744,7 +818,10 @@ private fun WorkPropertySelectionSheet(
                                     option,
                                     checked = editor.selected.any { it.id == option.id },
                                     showTopSeparator = index > 0,
-                                    onSelect = if (editor.editable && !state.submitting) ({ viewModel.select(option) }) else null,
+                                    onSelect =
+                                        if (editor.editable && !state.submitting) {
+                                            viewModel?.let { vm -> { vm.select(option) } }
+                                        } else null,
                                 )
                             }
                         }
@@ -833,7 +910,7 @@ private fun LinkedItemIcon(option: WorkPropertyOption) {
     )
 }
 
-private fun WorkProperty.title(strings: GithubStrings_WorkDetail) =
+internal fun WorkProperty.title(strings: GithubStrings_WorkDetail) =
     when (this) {
         WorkProperty.Reviewers -> strings.RequestedReviewers
         WorkProperty.Assignees -> strings.Assignees

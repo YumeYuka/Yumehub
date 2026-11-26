@@ -34,6 +34,8 @@ internal class WorkDetailGraphQl(
 
     suspend fun properties(): WorkProperties = properties.load()
 
+    suspend fun propertyValues(property: WorkProperty) = properties.values(property)
+
     suspend fun reviewRequests() = properties.reviewRequests()
 
     suspend fun reviewerCandidates(query: String, after: String?) =
@@ -43,12 +45,6 @@ internal class WorkDetailGraphQl(
 
     fun issueMetadata() = properties.issueMetadata()
 
-    suspend fun saveIssueAssignees(
-        baseline: IssuePropertyChoices,
-        selected: List<WorkPropertyOption>,
-    ) = properties.save(WorkProperty.Assignees, baseline.selected, selected, baseline.issueId)
-
-    suspend fun headerProjectTitles(): List<String> = properties.headerProjectTitles()
     suspend fun crossReferences(): List<WorkPropertyOption> = properties.crossReferences()
 
     suspend fun linkedOptions(query: String, after: String?) =
@@ -64,9 +60,10 @@ internal class WorkDetailGraphQl(
         property: WorkProperty,
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
+        expectedIssueId: String? = null,
         onStep: ((List<String>) -> Unit)? = null,
     ) {
-        properties.save(property, original, selected, onStep = onStep)
+        properties.save(property, original, selected, expectedIssueId, onStep)
     }
 
     suspend fun editPullRequest(id: String, field: String, value: String): String {

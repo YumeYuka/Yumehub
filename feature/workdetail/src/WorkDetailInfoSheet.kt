@@ -24,6 +24,7 @@ import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.canMerge
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.data.repository.WorkMergeMessage
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
@@ -237,7 +238,7 @@ internal fun WorkMergeSheet(
             item.canMerge() &&
             !busy &&
             !state.loading &&
-            !state.submissionUncertain &&
+            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN &&
             (!editMessage || messageReady && headline.isNotBlank())
     val scroll = rememberScrollState()
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }

@@ -14,19 +14,12 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
-import moe.yumeyuka.yumehub.data.cache.CacheTag
-import moe.yumeyuka.yumehub.data.cache.CommandAccepted
-import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.*
@@ -45,64 +38,12 @@ internal class ActionsHistoryModel(
 ) : ViewModel() {
     val selected = MutableStateFlow<WorkflowOption?>(null)
     var catalog by mutableStateOf<WorkflowCatalog?>(null)
-    var submitting by mutableStateOf(false)
-        private set
-    var uncertain by mutableStateOf(false)
-        private set
-    private var uncertainOperationId: String? = null
-    private var uncertainTarget: String? = null
+    val commands = WorkflowCommands(workflows.mutations(account), MutationKind.WORKFLOW_DISPATCH, viewModelScope)
 
-    private val dispatchResults = Channel<WritePhase>(Channel.CONFLATED)
-    val results = dispatchResults.receiveAsFlow()
+    fun target(workflowId: String) = "${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}:$workflowId"
 
-    fun dispatch(workflowId: String, branch: String, inputs: Map<String, String>): Boolean {
-        if (submitting || uncertain) return false
-        submitting = true
-        val target = "${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}:$workflowId"
-        val key = MutationKey(MutationKind.WORKFLOW_DISPATCH, target, CommandAccepted.serializer())
-        viewModelScope.launch {
-            val coord = workflows.mutations(account)
-            val receipt =
-                coord.submitCommand(
-                    key = key,
-                    tags = setOf(CacheTag(DataDomain.Work, null)),
-                    send = {
-                        workflows.dispatch(account, workflowId, branch, inputs)
-                        CommandAccepted
-                    },
-                    readBack = { null },
-                )
-            val cmd = receipt?.await() ?: coord.currentCommand(key)
-            submitting = false
-            uncertain = cmd.phase == WritePhase.UNCERTAIN
-            uncertainTarget = target.takeIf { uncertain }
-            uncertainOperationId = cmd.submissionId.takeIf { uncertain }
-            dispatchResults.trySend(if (receipt == null && !uncertain) WritePhase.REJECTED else cmd.phase)
-        }
-        return true
-    }
-
-    fun acknowledgeDispatch() {
-        val opId = uncertainOperationId
-        val target = uncertainTarget
-        viewModelScope.launch {
-            val coord = workflows.mutations(account)
-            val id =
-                opId
-                    ?: coord.pending.value
-                        .firstOrNull {
-                            it.kind == MutationKind.WORKFLOW_DISPATCH &&
-                                (target == null || it.target == target)
-                        }
-                        ?.operationId
-            if (id == null) return@launch
-            coord.acknowledge(id).join()
-            if (coord.pending.value.any { it.operationId == id }) return@launch
-            uncertain = false
-            uncertainOperationId = null
-            uncertainTarget = null
-        }
-    }
+    fun dispatch(workflowId: String, branch: String, inputs: Map<String, String>): Boolean =
+        commands.submit(target(workflowId)) { workflows.dispatch(account, workflowId, branch, inputs) }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val runs =
@@ -171,6 +112,8 @@ internal fun ActionsHistoryPage(
         )
     val selection by vm.selected.collectAsState()
     val selected = selection
+    val target = selected?.id?.let(vm::target)
+    val command = vm.commands.stateFor(target)
     val strings = LocalGithubStrings.current
     val activity = strings.Activity
     var filter by remember { mutableStateOf(false) }
@@ -178,11 +121,11 @@ internal fun ActionsHistoryPage(
     var refreshAfterSubmit by remember { mutableIntStateOf(0) }
     var retry by remember { mutableIntStateOf(0) }
     var failed by remember { mutableStateOf(false) }
-    var acknowledgeDispatchVisible by remember { mutableStateOf(false) }
+    var acknowledgeId by remember(vm, target) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     LaunchedEffect(vm, context, activity) {
-        vm.results.collect { phase ->
-            if (phase != WritePhase.REJECTED) refreshAfterSubmit++
+        vm.commands.results.collect { phase ->
+            if (phase == WritePhase.IDLE) refreshAfterSubmit++
             Toast.makeText(
                     context,
                     when (phase) {
@@ -210,8 +153,12 @@ internal fun ActionsHistoryPage(
     GithubLoadFailureToast(failed.takeIf { it && filter }, activity.LoadFailed)
     GithubActivityListPage(
         title = strings.Repository.ActionsTitle,
-        subtitle = selected?.name,
         source = vm.runs,
+        subtitle = when (command?.phase) {
+            WritePhase.PENDING -> "${selected?.name} · ${strings.Common.MutationPending}"
+            WritePhase.UNCERTAIN -> "${selected?.name} · ${strings.Common.MutationUncertain}"
+            else -> selected?.name
+        },
         revalidation = vm.revalidation,
         onRetryRevalidation = vm::retryRevalidation,
         contentKey = "$route:${selected?.id}",
@@ -222,10 +169,10 @@ internal fun ActionsHistoryPage(
             LaunchedEffect(refreshAfterSubmit) { if (refreshAfterSubmit > 0) refresh() }
             GithubToolbarActions(
                 toolbarIcon(Lucide.ListFilter, activity.WorkflowFilter) { filter = true },
-                if (selected?.active == true && vm.catalog?.canWrite == true)
-                    toolbarIcon(Lucide.Play, activity.RunWorkflow, enabled = !vm.submitting) {
-                        if (vm.uncertain) acknowledgeDispatchVisible = true
-                        else if (!vm.submitting) form = true
+                if ((selected?.active == true && vm.catalog?.canWrite == true) || command?.phase == WritePhase.UNCERTAIN)
+                    toolbarIcon(Lucide.Play, activity.RunWorkflow, enabled = command?.phase != WritePhase.PENDING) {
+                        if (command?.phase == WritePhase.UNCERTAIN) acknowledgeId = command.submissionId
+                        else form = true
                     }
                 else toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = refresh),
             )
@@ -302,7 +249,8 @@ internal fun ActionsHistoryPage(
             },
         )
     }
-    if (acknowledgeDispatchVisible && vm.uncertain) {
+    val acknowledging = acknowledgeId
+    if (acknowledging != null && target != null && command?.phase == WritePhase.UNCERTAIN && command.submissionId == acknowledging) {
         GlasmioAlertDialog(
             visible = true,
             title = strings.Common.MutationUncertain,
@@ -311,19 +259,19 @@ internal fun ActionsHistoryPage(
                 listOf(
                     GlasmioAlertButtonSpec(
                         strings.Common.Cancel,
-                        onClick = { acknowledgeDispatchVisible = false },
+                        onClick = { acknowledgeId = null },
                         role = GlasmioAlertButtonRole.Cancel,
                     ),
                     GlasmioAlertButtonSpec(
                         strings.Common.MutationAcknowledged,
                         onClick = {
-                            acknowledgeDispatchVisible = false
-                            vm.acknowledgeDispatch()
+                            acknowledgeId = null
+                            vm.commands.acknowledge(target, acknowledging)
                         },
                         role = GlasmioAlertButtonRole.Default,
                     ),
                 ),
-            onDismissRequest = { acknowledgeDispatchVisible = false },
+            onDismissRequest = { acknowledgeId = null },
         )
     }
 }

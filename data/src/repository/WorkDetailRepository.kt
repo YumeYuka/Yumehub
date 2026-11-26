@@ -5,6 +5,8 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -16,6 +18,7 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueField
 import moe.yumeyuka.yumehub.data.api.dto.IssueFieldValue
+import moe.yumeyuka.yumehub.data.api.dto.IssueFields
 import moe.yumeyuka.yumehub.data.api.dto.IssuePropertyChoices
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestCheckRunDto
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
@@ -28,6 +31,9 @@ import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.cache.NullableValue
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.cache.workCacheTag
 import moe.yumeyuka.yumehub.data.cache.workListCacheTag
@@ -70,6 +76,11 @@ class WorkDetailRepository(
 
   suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
+  fun rowProjection(account: String, target: WorkTarget): Flow<WorkRowProjection> {
+    val base = resource(account, target.owner, target.repository, target.kind, target.number)
+    return workRowProjection(cache, account, target, base.state.map { it.data }.distinctUntilChanged())
+  }
+
   inner class Detail
   internal constructor(
       private val account: String,
@@ -90,6 +101,7 @@ class WorkDetailRepository(
     private val target =
         "${owner.lowercase(Locale.ROOT)}/${repository.lowercase(Locale.ROOT)}/$number"
     val workTarget: String = "${kind.name.lowercase(Locale.ROOT)}:$target"
+    val keys = WorkMutationKeys(workTarget)
     val mutationTags =
         setOf(
             workCacheTag(kind.name, owner, repository, number),
@@ -105,12 +117,20 @@ class WorkDetailRepository(
     private val reviewsKey = "reviews-graphql.v1:${kind.name}:$target"
     private val timelineKey = "work-timeline-graphql.v1:${kind.name}:$target"
 
-    suspend fun mutations(): MutationCoordinator = this@WorkDetailRepository.cache.mutations(account)
+    fun mutations(): MutationCoordinator = cache.mutations(account)
 
     suspend fun readDetail(): CollaborationItemDto = load()
 
     suspend fun readComment(commentNodeId: String): CollaborationCommentDto =
         graph.readComment(commentNodeId)
+
+    fun commentWrites(id: String): Flow<WorkCommentWrite> {
+      val coord = mutations()
+      return combine(coord.watch(keys.comment(id)), coord.watchCommand(keys.deleteComment(id)), coord.pending) { edit, deletion, pending ->
+        val marker = if (edit.phase == WritePhase.UNCERTAIN) pending.firstOrNull { it.kind == MutationKind.COMMENT && it.target == id } else null
+        WorkCommentWrite(edit, deletion, marker?.operationId)
+      }
+    }
 
     val reviewsPagingKey: String
         get() = reviewsKey
@@ -139,7 +159,7 @@ class WorkDetailRepository(
     fun refresh(force: Boolean = false): Job {
       // 显式刷新不能合并进此前只准备读取新鲜缓存的请求。
       if (force) resource.invalidate()
-      return resource.refresh(force) { load() }
+      return resource.refresh(force) { readForDisplay() }
     }
 
     fun refreshEntries() {
@@ -152,6 +172,30 @@ class WorkDetailRepository(
           paging.invalidate(account, filesKey(head))
           paging.invalidate(account, checksKey(head))
         }
+      }
+    }
+
+    private suspend fun readForDisplay(): CollaborationItemDto {
+      val coord = mutations()
+      val title = coord.beginRead(keys.title)
+      val body = coord.beginRead(keys.body)
+      val base = coord.beginRead(keys.base)
+      val locked = coord.beginRead(keys.locked)
+      val state = coord.beginRead(keys.state)
+      return load().also { item ->
+        coord.publishConfirmed(keys.title, title, item.title)
+        coord.publishConfirmed(keys.body, body, item.body.orEmpty())
+        item.baseRefName?.let { coord.publishConfirmed(keys.base, base, it) }
+        coord.publishConfirmed(keys.locked, locked, item.locked)
+        coord.publishConfirmed(keys.state, state, item.state)
+      }
+    }
+
+    private fun patchConfirmed(transform: (CollaborationItemDto) -> CollaborationItemDto) {
+      cache.locked {
+        val old = resource.cached ?: return@locked
+        val next = transform(old)
+        if (old != next) resource.update(next)
       }
     }
 
@@ -175,7 +219,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.editPullRequest(requireNotNull(latest.nodeId), field, value).also { changed() }
+      return graph.editPullRequest(requireNotNull(latest.nodeId), field, value).also { actual ->
+        patchConfirmed { if (field == "title") it.copy(title = actual) else it.copy(baseRefName = actual) }
+        changed()
+      }
     }
 
     suspend fun editBody(snapshot: CollaborationItemDto, body: String): String {
@@ -188,7 +235,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.editBody(requireNotNull(latest.nodeId), body).also { changed() }
+      return graph.editBody(requireNotNull(latest.nodeId), body).also { actual ->
+        patchConfirmed { it.copy(body = actual, bodyHtml = null) }
+        changed()
+      }
     }
 
     suspend fun editTitle(snapshot: CollaborationItemDto, title: String): String {
@@ -201,7 +251,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.editTitle(requireNotNull(latest.nodeId), title).also { changed() }
+      return graph.editTitle(requireNotNull(latest.nodeId), title).also { actual ->
+        patchConfirmed { it.copy(title = actual) }
+        changed()
+      }
     }
 
     suspend fun setLocked(snapshot: CollaborationItemDto, locked: Boolean): Boolean {
@@ -210,7 +263,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.setLocked(requireNotNull(latest.nodeId), locked).also { changed() }
+      return graph.setLocked(requireNotNull(latest.nodeId), locked).also { actual ->
+        patchConfirmed { it.copy(locked = actual) }
+        changed()
+      }
     }
 
     suspend fun closePullRequest(snapshot: CollaborationItemDto): String {
@@ -225,7 +281,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.closePullRequest(requireNotNull(latest.nodeId)).also { changed() }
+      return graph.closePullRequest(requireNotNull(latest.nodeId)).also { actual ->
+        patchConfirmed { it.copy(state = actual) }
+        changed()
+      }
     }
 
     suspend fun closeIssue(snapshot: CollaborationItemDto): String {
@@ -239,10 +298,53 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      return graph.closeIssue(requireNotNull(latest.nodeId)).also { changed() }
+      return graph.closeIssue(requireNotNull(latest.nodeId)).also { actual ->
+        patchConfirmed { it.copy(state = actual) }
+        changed()
+      }
     }
 
-    suspend fun properties() = graph.properties()
+    suspend fun properties() = mutations().let { coord ->
+      val stamps = WorkProperty.entries.associateWith { coord.beginRead(keys.property(it)) }
+      graph.properties().also { props -> props.values.forEach { (property, options) ->
+        coord.publishConfirmed(keys.property(property), stamps.getValue(property), options)
+      } }
+    }
+
+    fun submitProperty(property: WorkProperty, original: List<WorkPropertyOption>, selected: List<WorkPropertyOption>, issueId: String? = null): Boolean {
+      val coord = mutations()
+      val key = keys.property(property)
+      return coord.submit(key, original, selected, mutationTags, send = { desired ->
+        val candidates by lazy(LazyThreadSafetyMode.NONE) { (original + desired).associateBy { it.id } }
+        graph.saveProperty(property, original, desired, expectedIssueId = issueId) { ids ->
+          val partial = ids.map(candidates::getValue)
+          coord.confirmStep(key, partial)
+          patchConfirmed { it.withProperty(property, partial) }
+        }
+        afterWorkWrite { graph.propertyValues(property) }.also { actual ->
+          patchConfirmed { it.withProperty(property, actual) }
+        }
+      }, readBack = { readProperty(property) })
+    }
+
+    suspend fun readProperty(property: WorkProperty) = graph.propertyValues(property)
+
+    fun projectProperties(base: CollaborationItemDto): CollaborationItemDto {
+      val coord = mutations()
+      var item = base
+      for (property in WorkProperty.entries) {
+        val write = coord.current(keys.property(property))
+        if (write.phase == WritePhase.PENDING || write.phase == WritePhase.UNCERTAIN) {
+          write.visible?.let { item = item.withProperty(property, it) }
+        }
+      }
+      val type = coord.current(keys.issueType)
+      if (type.phase == WritePhase.PENDING || type.phase == WritePhase.UNCERTAIN) type.visible?.let {
+        item = item.copy(issueType = it.value?.title, issueTypeColor = it.value?.color)
+      }
+      return item
+    }
+
     suspend fun crossReferences() = graph.crossReferences()
 
 
@@ -252,53 +354,78 @@ class WorkDetailRepository(
 
     suspend fun propertyOptions(property: WorkProperty) = graph.propertyOptions(property)
 
-    suspend fun reviewRequests() = graph.reviewRequests()
+    suspend fun reviewRequests() = mutations().let { coord ->
+      val key = keys.property(WorkProperty.Reviewers)
+      val stamp = coord.beginRead(key)
+      graph.reviewRequests().also { coord.publishConfirmed(key, stamp, it.requested) }
+    }
 
     suspend fun reviewerCandidates(query: String, after: String?) = graph.reviewerCandidates(query, after)
 
-    suspend fun issueTypes() = graph.issueMetadata().types()
-
-    suspend fun issueFields() = graph.issueMetadata().fields()
-
-    suspend fun issueAssignees() = graph.issueAssignees()
-
-    suspend fun saveIssueType(baseline: IssuePropertyChoices, selectedId: String?) {
-      graph.issueMetadata().saveType(baseline.issueId, baseline.selected.singleOrNull()?.id, selectedId)
-      changed()
+    suspend fun issueTypes() = mutations().let { coord ->
+      val stamp = coord.beginRead(keys.issueType)
+      graph.issueMetadata().types().also { coord.publishConfirmed(keys.issueType, stamp, NullableValue(it.selected.singleOrNull())) }
     }
 
-    suspend fun saveIssueField(issueId: String, field: IssueField, value: IssueFieldValue?) {
+    suspend fun issueFields(): IssueFields {
+      val coord = mutations()
+      val stamps = coord.beginKnownReads(MutationKind.ISSUE_FIELD, keys.fieldPrefix)
+      return graph.issueMetadata().fields().also { result -> result.fields.forEach { field ->
+        val key = keys.field(field.id)
+        stamps[key.target]?.let { coord.publishConfirmed(key, it, NullableValue(field.value)) }
+      } }
+    }
+
+    fun projectedFields(base: IssueFields): Flow<IssueFields> {
+      if (base.fields.isEmpty()) return flowOf(base)
+      val coord = mutations()
+      return combine(base.fields.map { field -> coord.observe(keys.field(field.id)) }) { writes ->
+        base.copy(fields = base.fields.mapIndexed { index, field ->
+          val shown = writes[index].visible
+          if (shown == null || shown.value == field.value) field else field.copy(value = shown.value)
+        })
+      }
+    }
+
+    suspend fun issueAssignees() = mutations().let { coord ->
+      val key = keys.property(WorkProperty.Assignees)
+      val stamp = coord.beginRead(key)
+      graph.issueAssignees().also { coord.publishConfirmed(key, stamp, it.selected) }
+    }
+
+    suspend fun saveIssueType(baseline: IssuePropertyChoices, selected: WorkPropertyOption?): NullableValue<WorkPropertyOption> {
+      graph.issueMetadata().saveType(baseline.issueId, baseline.selected.singleOrNull()?.id, selected?.id)
+      patchConfirmed { it.copy(issueType = selected?.title, issueTypeColor = selected?.color) }
+      return NullableValue(selected)
+    }
+
+    suspend fun saveIssueField(issueId: String, field: IssueField, value: IssueFieldValue?): IssueFieldValue? {
       graph.issueMetadata().saveField(issueId, field, value)
-      changed()
+      return afterWorkWrite { readFieldValue(issueId, field.id) }
     }
 
-    suspend fun saveIssueAssignees(baseline: IssuePropertyChoices, selected: List<WorkPropertyOption>) {
-      graph.saveIssueAssignees(baseline, selected)
-      changed()
-    }
+    suspend fun readFieldValue(issueId: String, fieldId: String) = graph.issueMetadata().fieldValue(issueId, fieldId)
 
-    suspend fun saveReviewRequests(
-        original: List<WorkPropertyOption>,
-        selected: List<WorkPropertyOption>,
-    ) {
-      graph.saveProperty(WorkProperty.Reviewers, original, selected)
-      changed()
-    }
+    suspend fun readIssueType() = NullableValue(graph.issueMetadata().types().selected.singleOrNull())
 
-    suspend fun saveProperty(
-        property: WorkProperty,
-        original: List<WorkPropertyOption>,
-        selected: List<WorkPropertyOption>,
-        onStep: (List<String>) -> Unit,
-    ) {
-      graph.saveProperty(property, original, selected, onStep)
-      changed()
-    }
+    // A denied verification read does not prove that the preceding successful mutation was denied.
+    private suspend fun <T> afterWorkWrite(read: suspend () -> T): T = try {
+      read()
+    } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+    catch (error: Exception) { throw java.io.IOException("Could not confirm the updated work item", error) }
 
     fun reactionUpdates(): GithubReactionUpdates =
         this@WorkDetailRepository.cache.reactionUpdates(account)
 
-    suspend fun headerProjectTitles(): List<String> = graph.headerProjectTitles()
+    suspend fun headerProjects() {
+      val key = keys.property(WorkProperty.Projects)
+      val coord = mutations()
+      val stamp = coord.beginRead(key)
+      try {
+        coord.publishConfirmed(key, stamp, graph.propertyValues(WorkProperty.Projects))
+      } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+      catch (_: Exception) { /* Optional permission: retain the last known projects. */ }
+    }
 
     suspend fun toggleReaction(
         subjectId: String,
@@ -388,7 +515,7 @@ class WorkDetailRepository(
                 age < DetailMaxAgeMillis &&
                 accepts(it)
           }
-      val latest = cached ?: resource.await(force = force) { load() }
+      val latest = cached ?: resource.await(force = force) { readForDisplay() }
       if (latest.head?.sha != head) {
         paging.invalidate(account, timelineKey)
         throw WorkDetailReviewChangedException()
@@ -419,8 +546,14 @@ class WorkDetailRepository(
       confirmMergedLocal()
     }
 
-    fun confirmMergedLocal() {
-      resource.cached?.let { resource.update(it.copy(merged = true, state = "closed")) }
+    suspend fun checkMerge(): moe.yumeyuka.yumehub.data.cache.CommandAccepted? {
+      if (!readDetail().merged) return null
+      confirmMergedLocal()
+      return moe.yumeyuka.yumehub.data.cache.CommandAccepted
+    }
+
+    private fun confirmMergedLocal() {
+      patchConfirmed { it.copy(merged = true, state = "closed") }
       cache.changes(account).confirmMerged(WorkTarget(owner, repository, number, kind))
       changed()
     }

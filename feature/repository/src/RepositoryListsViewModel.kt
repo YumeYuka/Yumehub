@@ -7,13 +7,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
-import moe.yumeyuka.yumehub.data.cache.CacheTag
-import moe.yumeyuka.yumehub.data.cache.DataDomain
+import kotlinx.coroutines.flow.first
+import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import kotlinx.coroutines.flow.combine
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
-import moe.yumeyuka.yumehub.data.cache.MutationKey
-import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.repository.repositoryListsKey
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.ProfileCollectionsRepository
 import moe.yumeyuka.yumehub.data.repository.UserRepositoryList
@@ -26,6 +24,7 @@ internal data class RepositoryListsState(
     val lists: List<UserRepositoryList> = emptyList(),
     val selectedIds: Set<String> = emptySet(),
     val phase: WritePhase = WritePhase.IDLE,
+    val uncertainOperationId: String? = null,
 )
 
 internal class RepositoryListsViewModel(
@@ -35,11 +34,11 @@ internal class RepositoryListsViewModel(
     private val mutableState = MutableStateFlow(RepositoryListsState())
     val uiState = mutableState.asStateFlow()
     private var repositoryId: String? = null
+    private var repository: RepositoryDto? = null
     private var coordinator: MutationCoordinator? = null
     private var slotObserver: Job? = null
     private var loadJob: Job? = null
     private var confirmedIds: Set<String>? = null
-    private var pendingCompletion: ((Boolean) -> Unit)? = null
 
     init {
         viewModelScope.launch {
@@ -55,11 +54,11 @@ internal class RepositoryListsViewModel(
         }
     }
 
-    private fun listsKey(id: String) =
-        MutationKey(MutationKind.REPO_LISTS, id, ListSerializer(String.serializer()))
 
-    fun open(id: String) {
+    fun open(row: RepositoryDto) {
+        val id = row.nodeId ?: return
         if (!active() || id.isBlank()) return
+        repository = row
         loadJob?.cancel()
         slotObserver?.cancel()
         repositoryId = id
@@ -70,14 +69,14 @@ internal class RepositoryListsViewModel(
                 val coord =
                     coordinator
                         ?: collections.mutations(account).also { if (active()) coordinator = it }
-                val key = listsKey(id)
+                val key = repositoryListsKey(id)
                 val stamp = coord.beginRead(key)
                 var catalogReady = false
                 var catalogFailed = false
                 var membershipFailed = false
                 fun renderRead() {
                     if (active() && repositoryId == id) mutableState.value = mutableState.value.copy(
-                        loading = !catalogFailed && !membershipFailed && (!catalogReady || confirmedIds == null), failed = catalogFailed || membershipFailed)
+                        loading = !catalogFailed && !membershipFailed && (!catalogReady || coord.current(key).confirmed == null), failed = catalogFailed || membershipFailed)
                 }
                 observeSlot(coord, id)
                 confirmedIds = coord.current(key).confirmed?.toSet()
@@ -94,9 +93,8 @@ internal class RepositoryListsViewModel(
                     val selected = collections.repositoryListIds(account, id)
                     if (!active() || repositoryId != id) return@launch
                     coord.publishConfirmed(key, stamp, selected.sorted())
-                    confirmedIds = coord.current(key).confirmed?.toSet()
                 } catch (error: CancellationException) { throw error }
-                catch (_: Exception) { membershipFailed = confirmedIds == null }
+                catch (_: Exception) { membershipFailed = coord.current(key).confirmed == null }
                 renderRead()
             } catch (error: CancellationException) {
                 throw error
@@ -112,48 +110,23 @@ internal class RepositoryListsViewModel(
         slotObserver?.cancel()
         slotObserver =
             viewModelScope.launch {
-                coord.observe(listsKey(id)).collect { write ->
+                val key = repositoryListsKey(id)
+                combine(coord.observe(key), coord.pending) { write, pending -> write to
+                    pending.firstOrNull { it.kind == key.kind && it.target == id }?.operationId }.collect { (write, marker) ->
                     if (!active() || repositoryId != id) return@collect
                     val current = mutableState.value
                     val shown = write.visible?.toSet() ?: current.selectedIds
-                    when (write.phase) {
-                        WritePhase.IDLE -> {
-                            val cb = pendingCompletion
-                            pendingCompletion = null
-                            if (cb != null) {
-                                mutableState.value = RepositoryListsState()
-                                cb(true)
-                            } else {
-                                mutableState.value =
-                                    current.copy(
-                                        saving = false,
-                                        selectedIds = shown,
-                                        phase = WritePhase.IDLE,
-                                    )
-                            }
-                        }
-                        WritePhase.PENDING ->
-                            mutableState.value =
-                                current.copy(
-                                    saving = true,
-                                    selectedIds = shown,
-                                    phase = WritePhase.PENDING,
-                                )
-                        WritePhase.REJECTED,
-                        WritePhase.UNCERTAIN -> {
-                            val cb = pendingCompletion
-                            pendingCompletion = null
-                            mutableState.value =
-                                current.copy(
-                                    saving = false,
-                                    selectedIds = shown,
-                                    phase = write.phase,
-                                )
-                            cb?.invoke(false)
-                        }
-                    }
+                    val before = confirmedIds
+                    val selected = if (before != null && write.phase == WritePhase.IDLE && current.phase == WritePhase.IDLE && !current.loading && current.selectedIds != before)
+                        (shown - (before - current.selectedIds)) + (current.selectedIds - before) else shown
+                    confirmedIds = write.confirmed?.toSet()
+                    mutableState.value = current.copy(saving = write.phase == WritePhase.PENDING, selectedIds = selected, phase = write.phase, uncertainOperationId = marker)
                 }
             }
+    }
+
+    fun acknowledge(operationId: String) {
+        if (mutableState.value.uncertainOperationId == operationId) coordinator?.acknowledge(operationId)
     }
 
     fun toggle(listId: String) {
@@ -165,9 +138,11 @@ internal class RepositoryListsViewModel(
         mutableState.value = state.copy(selectedIds = selected)
     }
 
-    fun save(onComplete: (Boolean) -> Unit) {
+    fun save(onComplete: (WritePhase) -> Unit) {
         val id = repositoryId ?: return
         val state = mutableState.value
+        val row = repository ?: return
+        val original = confirmedIds ?: return
         if (!active() || !state.visible || state.loading || state.saving || state.failed || state.phase == WritePhase.UNCERTAIN) return
         viewModelScope.launch {
             val coord =
@@ -177,26 +152,18 @@ internal class RepositoryListsViewModel(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
-                        onComplete(false)
+                        onComplete(WritePhase.REJECTED)
                         return@launch
                     }
-            pendingCompletion = onComplete
-            val accepted =
-                coord.submit(
-                    listsKey(id),
-                    confirmed = confirmedIds?.sorted(),
-                    desired = state.selectedIds.sorted(),
-                    tags = setOf(CacheTag(DataDomain.Repositories, null)),
-                    send = { desiredIds ->
-                        collections.updateRepositoryLists(account, id, desiredIds.toSet())
-                        collections.repositoryListIds(account, id).sorted()
-                    },
-                    readBack = { collections.repositoryListIds(account, id).sorted() },
-                )
+            val key = repositoryListsKey(id)
+            val accepted = collections.submitRepositoryLists(account, row, original, state.selectedIds)
             if (!accepted) {
-                pendingCompletion = null
-                onComplete(false)
+                onComplete(coord.current(key).phase.takeIf { it == WritePhase.UNCERTAIN } ?: WritePhase.REJECTED)
+                return@launch
             }
+            dismiss()
+            val phase = coord.observe(key).first { it.phase != WritePhase.PENDING }.phase
+            if (active()) onComplete(phase)
         }
     }
 
@@ -204,7 +171,7 @@ internal class RepositoryListsViewModel(
         repositoryId = null
         loadJob?.cancel()
         slotObserver?.cancel()
-        pendingCompletion = null
+        repository = null
         mutableState.value = RepositoryListsState()
     }
 

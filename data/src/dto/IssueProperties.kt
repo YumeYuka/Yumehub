@@ -1,5 +1,7 @@
 package moe.yumeyuka.yumehub.data.api.dto
 
+import kotlinx.serialization.Serializable
+
 data class IssuePropertyChoices(
     val issueId: String,
     val selected: List<WorkPropertyOption>,
@@ -9,11 +11,17 @@ data class IssuePropertyChoices(
 
 enum class IssueFieldKind { Date, Number, Text, SingleSelect, MultiSelect }
 
+@Serializable
 sealed interface IssueFieldValue {
+    @Serializable
     data class Date(val value: String) : IssueFieldValue
+    @Serializable
     data class Number(val value: Double) : IssueFieldValue
+    @Serializable
     data class Text(val value: String) : IssueFieldValue
+    @Serializable
     data class SingleSelect(val id: String) : IssueFieldValue
+    @Serializable
     data class MultiSelect(val ids: Set<String>) : IssueFieldValue
 }
 

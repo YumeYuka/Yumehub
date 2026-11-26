@@ -51,10 +51,8 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
 import io.github.neoruaa.glasmio.ui.GlasmioReorderableGroup
 import io.github.neoruaa.glasmio.ui.GlasmioSearchToolbar
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
-import io.github.neoruaa.glasmio.ui.GlasmioSheetValue
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
-import io.github.neoruaa.glasmio.ui.rememberGlasmioSheetState
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.locale.GithubStrings_Home
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -91,23 +89,25 @@ internal fun HomeWorkSheet(
     val screen = if (showSearch) HomeEditTab.Search else tab
     val stateHolder = rememberSaveableStateHolder()
     val myCandidates = remember(favorites, visible) { FavoriteCandidates() }
-    val sheetState =
-        rememberGlasmioSheetState(skipPartiallyExpanded = false) {
-            it != GlasmioSheetValue.Hidden || !edit.saving
-        }
     val dismiss = {
-        if (enabled) {
-            favorites.resetEditor()
-            onDismiss()
-        }
+        favorites.dismissEditor()
+        onDismiss()
+    }
+    LaunchedEffect(visible) {
+        if (!visible) favorites.dismissEditor()
     }
     LaunchedEffect(visible, tab) {
         if (visible && tab == HomeEditTab.Favorites) favorites.loadDraft()
     }
-    LaunchedEffect(visible, edit.saved) {
-        if (visible && edit.saved) {
-            favorites.resetEditor()
-            onConfirm()
+    LaunchedEffect(edit.accepted) {
+        if (edit.accepted) {
+            favorites.consumeAccepted()
+            if (visible) {
+                favorites.resetEditor()
+                onConfirm()
+            } else {
+                favorites.dismissEditor()
+            }
         }
     }
     if (visible) {
@@ -124,10 +124,9 @@ internal fun HomeWorkSheet(
         visible = visible,
         onDismissRequest = dismiss,
         title = strings.EditHome,
-        sheetState = sheetState,
         skipPartiallyExpanded = false,
-        dismissOnBackPress = enabled && !showSearch,
-        dismissOnClickOutside = enabled,
+        dismissOnBackPress = !showSearch,
+        dismissOnClickOutside = !showSearch,
         topBar = {
             val focus = LocalFocusManager.current
             val keyboard = LocalSoftwareKeyboardController.current
@@ -139,7 +138,7 @@ internal fun HomeWorkSheet(
                             toolbarIcon(
                                 if (showSearch) Lucide.ChevronLeft else Lucide.X,
                                 if (showSearch) common.Back else common.Cancel,
-                                enabled,
+                                true,
                                 key = "dismiss",
                             ) {
                                 if (showSearch) {

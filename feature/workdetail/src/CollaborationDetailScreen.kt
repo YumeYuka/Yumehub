@@ -15,10 +15,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.LazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
@@ -35,6 +31,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.GithubMutationRecoveryRow
 import moe.yumeyuka.yumehub.ui.component.githubThreadGroupedItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
@@ -71,10 +68,12 @@ internal fun LazyListScope.CollaborationDetailScreen(
     }
     return
   }
-  if (state.submissionUncertain) {
+  if (state.submitting) item(key = "collaboration-submission-progress") {
+    GlasmioListRow(title = LocalGithubStrings.current.Common.MutationPending)
+  }
+  if (state.uncertainOperations.isNotEmpty()) {
     item(key = "collaboration-submission-recovery") {
       val strings = LocalGithubStrings.current
-      var acknowledgeVisible by remember { mutableStateOf(false) }
       GithubSection(strings.WorkDetail.RecoveryTitle) {
         GlasmioListRow(
             title = strings.WorkDetail.SubmissionUncertain,
@@ -86,36 +85,9 @@ internal fun LazyListScope.CollaborationDetailScreen(
             systemName = null,
             onClick = viewModel::refresh,
         )
-        GlasmioButton(
-            onClick = { acknowledgeVisible = true },
-            enabled = !state.loading,
-        ) {
-          Text(strings.Common.MutationAcknowledged)
+        state.uncertainOperations.forEach { op ->
+          GithubMutationRecoveryRow(op.operationId, viewModel.operationLabel(op), viewModel::acknowledgeOperation)
         }
-      }
-      if (acknowledgeVisible) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = strings.Common.MutationUncertain,
-            message = strings.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        strings.Common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        strings.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            viewModel.acknowledgeSubmissionResult()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
-        )
       }
     }
   }

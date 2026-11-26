@@ -150,6 +150,7 @@ private fun StatusEditorContent(
     onClear: () -> Unit,
 ) {
     val colors = GlasmioTheme.colors
+    val isBusy = editor.isBusy
     val focus = LocalFocusManager.current
     var pickerOpen by remember { mutableStateOf(false) }
     val message = rememberFormTextFieldState(editor.message, onMessageChange)
@@ -161,6 +162,14 @@ private fun StatusEditorContent(
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(12.dp))
+            if (editor.preparing) {
+                Text(
+                    text = common.MutationPreparing,
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
+                    style = GlasmioTheme.textStyles.footnote,
+                    color = colors.secondaryContent,
+                )
+            }
             GlasmioGroupedList(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
@@ -169,7 +178,7 @@ private fun StatusEditorContent(
                     EmojiPickerButton(
                         emoji = editor.emoji,
                         contentDescription = strings.ChooseEmoji,
-                        enabled = !editor.submitting,
+                        enabled = !isBusy,
                         onClick = {
                             pickerOpen = true
                             focus.clearFocus()
@@ -182,7 +191,7 @@ private fun StatusEditorContent(
                             if (length > StatusMaxLength) revertAllChanges()
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = !editor.submitting,
+                        enabled = !isBusy,
                         textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
                         cursorBrush = SolidColor(colors.accent),
                         lineLimits = TextFieldLineLimits.SingleLine,
@@ -215,7 +224,7 @@ private fun StatusEditorContent(
                         GlasmioSwitch(
                             checked = editor.limitedAvailability,
                             onCheckedChange = onLimitedAvailabilityChange,
-                            enabled = !editor.submitting,
+                            enabled = !isBusy,
                             onTintColor = colors.accent,
                         )
                     },
@@ -237,7 +246,7 @@ private fun StatusEditorContent(
                             items = StatusExpiry.entries,
                             onSelected = onExpiryChange,
                             label = { expiryLabel(it, strings) },
-                            enabled = !editor.submitting,
+                            enabled = !isBusy,
                         )
                     },
                 )
@@ -305,7 +314,7 @@ private fun VisibilityPicker(
         items = options,
         onSelected = { onOrganizationChange(it.id) },
         label = { it.label },
-        enabled = !editor.submitting,
+        enabled = !editor.isBusy,
     )
 }
 
@@ -467,6 +476,6 @@ private fun expiryLabel(expiry: StatusExpiry, strings: GithubStrings_Profile): S
     }
 
 private fun StatusEditorState.canSave(): Boolean =
-    !submitting && (emoji.isNotBlank() || message.isNotBlank())
+    !isBusy && (emoji.isNotBlank() || message.isNotBlank())
 
-private fun StatusEditorState.canClear(): Boolean = !submitting && hadStatus
+private fun StatusEditorState.canClear(): Boolean = !isBusy && hadStatus

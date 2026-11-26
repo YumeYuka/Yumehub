@@ -398,7 +398,7 @@ class WorkflowRepository(
         cache.changes(account).publish(DataDomain.Work)
     }
 
-    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     suspend fun inputs(account: String, id: String, branch: String): List<WorkflowInput>? {
         val node =

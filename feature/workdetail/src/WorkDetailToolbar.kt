@@ -30,6 +30,7 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.canMerge
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
@@ -60,7 +61,7 @@ internal fun WorkDetailToolbar(
     val canCompose =
         !state.sendingInBackground &&
             !state.loading &&
-            !state.submissionUncertain &&
+            !state.commentUncertain &&
             (state.canComment || state.commentDraft.isNotEmpty())
     val subscribed = state.desiredSubscription ?: (state.subscription?.subscribed == true)
     val showMerge = kind == CollaborationKind.PullRequest && state.item?.state == "open"
@@ -69,7 +70,7 @@ internal fun WorkDetailToolbar(
             enabled &&
             !state.loading &&
             !state.submitting &&
-            !state.submissionUncertain
+            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -77,7 +78,10 @@ internal fun WorkDetailToolbar(
     ) {
         GlasmioIconButton(
             onClick = onSubscription,
-            enabled = !state.item?.nodeId.isNullOrBlank() && state.subscription?.canSubscribe != false,
+            enabled =
+                !state.item?.nodeId.isNullOrBlank() &&
+                    (state.subscription != null || state.subscriptionError != null) &&
+                    state.subscription?.canSubscribe != false,
             size = 48.dp,
         ) {
             GithubIcon(
@@ -132,7 +136,12 @@ internal fun WorkDetailToolbar(
                             ),
                 ) {
                     Text(
-                        if (merging) strings.Merge else strings.Comment,
+                        when {
+                            !merging -> strings.Comment
+                            state.mergePhase == WritePhase.PENDING -> strings.Merging
+                            state.mergePhase == WritePhase.UNCERTAIN -> LocalGithubStrings.current.Common.MutationUncertain
+                            else -> strings.Merge
+                        },
                         style = GlasmioTheme.textStyles.body,
                         color =
                             if (merging && canMerge) GithubWorkColors.onStatus

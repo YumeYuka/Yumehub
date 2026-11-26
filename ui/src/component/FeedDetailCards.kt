@@ -15,6 +15,8 @@ import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.yumeyucca.lucide.ChevronRight
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.MessagesSquare
+import androidx.compose.runtime.remember
+import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -31,13 +33,20 @@ internal fun FeedWorkCard(
     val number = work.number ?: event.payload.number
     val strings = LocalGithubStrings.current
     val discussion = event.payload.discussion != null
+    val slug = repository.fullName ?: event.repo?.name
+    val kind = if (pullRequest) CollaborationKind.PullRequest else CollaborationKind.Issue
+    val target = remember(slug, number, kind, discussion) {
+        if (discussion || number == null || slug == null || '/' !in slug) null
+        else WorkTarget(slug.substringBefore('/'), slug.substringAfter('/'), number, kind)
+    }
+    val write = rememberWorkRowProjection(target)
     val title =
-        work.title?.takeIf(String::isNotBlank)
+        write.title ?: write.confirmed?.title ?: work.title?.takeIf(String::isNotBlank)
             ?: if (discussion) strings.Repository.Discussions
             else strings.Explore.WorkTitle(pullRequest, number)
     FeedDetailCard(
         title = title,
-        body = work.body,
+        body = write.body ?: write.confirmed?.body ?: work.body,
         open = open,
         titleMaxLines = if (discussion) 3 else 2,
         header = {
@@ -53,11 +62,12 @@ internal fun FeedWorkCard(
                         size = 20.dp,
                     )
                 } else {
+                    workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
                     GithubWorkItemStatusIcon(
-                        if (pullRequest) CollaborationKind.PullRequest else CollaborationKind.Issue,
-                        work.state,
+                        kind,
+                        write.state ?: write.confirmed?.state ?: work.state,
                         work.draft,
-                        work.merged || work.mergedAt != null,
+                        write.merged || write.confirmed?.merged == true || work.merged || work.mergedAt != null,
                     )
                 }
             }

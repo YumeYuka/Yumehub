@@ -59,6 +59,7 @@ internal data class HomeFavoritesEditState(
     val loading: Boolean = false,
     val saving: Boolean = false,
     val saved: Boolean = false,
+    val accepted: Boolean = false,
     val error: HomeFavoritesEditError? = null,
 )
 
@@ -81,6 +82,7 @@ internal class HomeFavoritesViewModel(
     private var loadDraftJob: Job? = null
     private var coordinator: MutationCoordinator? = null
     private var lastSubmittedMetadata: List<RepositoryDto> = emptyList()
+    private var closeOnAccept = false
     private val pinsKey =
         MutationKey(MutationKind.DASHBOARD_PINS, "viewer", ListSerializer(String.serializer()))
 
@@ -141,26 +143,37 @@ internal class HomeFavoritesViewModel(
     }
 
     fun resetEditor() {
+        closeOnAccept = false
         if (edit.value.saving) return
         loadDraftJob?.cancel()
         edit.value = HomeFavoritesEditState()
     }
 
+    fun dismissEditor() {
+        closeOnAccept = false
+        if (edit.value.accepted) edit.value = edit.value.copy(accepted = false)
+        resetEditor()
+    }
+
     fun loadDraft() {
-        val current = edit.value
+        var current = edit.value
+        if (current.saved && !current.accepted) {
+            current = HomeFavoritesEditState()
+            edit.value = current
+        }
         if (current.draft != null || current.loading || current.saving) return
         edit.value = current.copy(loading = true, error = null)
         loadDraftJob = viewModelScope.launch {
             try {
-                val favorites = overview.dashboardFavorites(account)
-                coordinator?.let { coord ->
-                    val stamp = coord.beginRead(pinsKey)
-                    coord.publishConfirmed(pinsKey, stamp, favorites.mapNotNull { it.nodeId })
-                }
-                edit.value = HomeFavoritesEditState(draft = HomeFavoritesDraft(favorites))
+                val coord = coordinator ?: overview.mutations(account).also { coordinator = it }
+                val stamp = coord.beginRead(pinsKey)
+                val pins = overview.dashboardPins(account)
+                if (!overview.account.equals(account, ignoreCase = true)) return@launch
+                coord.publishConfirmed(pinsKey, stamp, pins.ids)
+                edit.value = HomeFavoritesEditState(draft = HomeFavoritesDraft(pins.repositories))
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Exception) {
+            } catch (_: Exception) {
                 edit.value = HomeFavoritesEditState(error = HomeFavoritesEditError.Load)
             }
         }
@@ -210,14 +223,20 @@ internal class HomeFavoritesViewModel(
     fun confirmEditor() {
         val current = edit.value
         if (current.saving || current.saved) return
+        closeOnAccept = true
         val draft = current.draft
         if (draft == null || !draft.changed) {
-            edit.value = current.copy(saved = true, error = null)
+            edit.value = current.copy(saved = true, accepted = closeOnAccept, error = null)
             return
         }
         lastSubmittedMetadata = draft.selected
         edit.value = current.copy(saving = true, error = null)
         viewModelScope.launch {
+            val selectedIds = draft.selected.mapNotNull { it.nodeId }
+            if (selectedIds.size != draft.selected.size) {
+                edit.value = edit.value.copy(saving = false, error = HomeFavoritesEditError.Save)
+                return@launch
+            }
             val coord =
                 coordinator
                     ?: try {
@@ -225,57 +244,48 @@ internal class HomeFavoritesViewModel(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
-                        edit.value = current.copy(saving = false, error = HomeFavoritesEditError.Save)
+                        edit.value = edit.value.copy(saving = false, error = HomeFavoritesEditError.Save)
                         return@launch
                     }
-            val currentRemote =
+            val confirmed = coord.current(pinsKey).confirmed ?: draft.originalIds
+            val desired =
                 try {
-                    val stamp = coord.beginRead(pinsKey)
-                    overview.dashboardFavoriteIds(account).also {
-                        coord.publishConfirmed(pinsKey, stamp, it)
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    edit.value = current.copy(saving = false, error = HomeFavoritesEditError.Save)
-                    return@launch
-                }
-            val mergedIds =
-                try {
-                    mergeDashboardFavorites(
-                        currentRemote,
-                        draft.originalIds,
-                        draft.selected.map { requireNotNull(it.nodeId) },
-                    )
+                    mergeDashboardFavorites(confirmed, draft.originalIds, selectedIds)
                 } catch (_: RepositoryFavoritesLimitException) {
-                    edit.value = current.copy(saving = false, error = HomeFavoritesEditError.Limit)
+                    edit.value = edit.value.copy(saving = false, error = HomeFavoritesEditError.Limit)
                     return@launch
                 }
             val accepted =
                 coord.submit(
                     pinsKey,
-                    confirmed = currentRemote,
-                    desired = mergedIds,
+                    confirmed = confirmed,
+                    desired = desired,
                     tags = setOf(CacheTag(DataDomain.Repositories, null)),
-                    send = { ids -> overview.writePinIds(account, ids, draft.selected) },
+                    send = { overview.saveDashboardFavorites(account, draft.originalIds, draft.selected) },
                     readBack = { overview.dashboardFavoriteIds(account) },
                 )
-            if (!accepted) {
-                edit.value = current.copy(saving = false, error = HomeFavoritesEditError.Save)
+            if (accepted) {
+                edit.value = edit.value.copy(accepted = closeOnAccept)
+            } else {
+                edit.value = edit.value.copy(saving = false, error = HomeFavoritesEditError.Save)
             }
         }
     }
 
+    fun consumeAccepted() {
+        if (edit.value.accepted) edit.value = edit.value.copy(accepted = false)
+    }
+
     private fun CachedDataState<List<RepositoryDto>>.toUiState(): HomeFavoritesState {
         val base = data ?: return if (error != null) HomeFavoritesState.Error else HomeFavoritesState.Loading
-        val desiredIds = coordinator?.current(pinsKey)?.desired
+        val visibleIds = coordinator?.current(pinsKey)?.visible
         val repositories =
-            if (desiredIds == null) base
+            if (visibleIds == null) base
             else {
                 val knownById = (base + lastSubmittedMetadata + edit.value.draft?.selected.orEmpty())
                     .mapNotNull { repo -> repo.nodeId?.let { it to repo } }
                     .toMap()
-                desiredIds.mapNotNull { knownById[it] }
+                visibleIds.mapNotNull { knownById[it] }
             }
         return HomeFavoritesState.Content(repositories, error != null)
     }

@@ -41,8 +41,11 @@ class StarredRepositoriesViewModel(
     val searchQuery = query.asStateFlow()
     private val mutableSelectedList = MutableStateFlow<UserRepositoryList?>(null)
     val selectedList = mutableSelectedList.asStateFlow()
-    val membership = (if (login.equals(account, true)) collections.starredChanges(account) else flowOf(emptyMap<String, StarredRowChange>()))
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    internal fun membershipFor(list: UserRepositoryList?) = when {
+        !login.equals(account, true) -> flowOf(emptyMap<String, StarredRowChange>())
+        list == null -> collections.starredChanges(account)
+        else -> collections.listChanges(account, list.id)
+    }
     private val mutableLists = MutableStateFlow<List<UserRepositoryList>>(emptyList())
     val lists = mutableLists.asStateFlow()
     private val mutableListsLoading = MutableStateFlow(true)
@@ -65,10 +68,12 @@ class StarredRepositoriesViewModel(
     val repositories =
         combine(query, mutableSelectedList) { search, list -> search to list }
             .flatMapLatest { (search, list) ->
-                if (list == null) combine(collections.starred(account, login, search).cachedIn(this@StarredRepositoriesViewModel.viewModelScope), membership) { page, changes ->
-                    if (changes.isEmpty()) page else page.filter { changes[it.fullName?.lowercase(Locale.ROOT)]?.member != false }
+                kotlinx.coroutines.flow.channelFlow {
+                    val source = if (list == null) collections.starred(account, login, search) else collections.listItems(account, login, list.slug, search)
+                    combine(source.cachedIn(this), membershipFor(list)) { page, changes ->
+                        if (changes.isEmpty()) page else page.filter { changes[it.fullName?.lowercase(Locale.ROOT)]?.member != false }
+                    }.collect { send(it) }
                 }
-                else collections.listItems(account, login, list.slug, search)
             }
             .cachedIn(viewModelScope)
 

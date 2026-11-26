@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -156,7 +159,12 @@ internal constructor(
     private val json: Json,
     private val scope: CoroutineScope,
 ) {
-    private class Slot<T : Any>(val key: MutationKey<T>) {
+    private open class ObservedSlot {
+        var retained = false
+        var readers = 0
+    }
+
+    private class Slot<T : Any>(val key: MutationKey<T>) : ObservedSlot() {
         val state = MutableStateFlow(WriteState<T>())
         var epoch = 0L
         var readSequence = 0L
@@ -178,7 +186,7 @@ internal constructor(
         val readBack: suspend () -> T,
     )
 
-    private class CommandSlot<R : Any>(val key: MutationKey<R>) {
+    private class CommandSlot<R : Any>(val key: MutationKey<R>) : ObservedSlot() {
         val state = MutableStateFlow(CommandState<R>())
         var inFlight = false
         var operationId: String? = null
@@ -225,6 +233,29 @@ internal constructor(
 
     fun <R : Any> currentCommand(key: MutationKey<R>): CommandState<R> =
         commandSlot(key).state.value
+
+    /** Scrolling past a read-only row must not retain a write slot for the whole session. */
+    internal fun <T : Any> watch(key: MutationKey<T>): Flow<WriteState<T>> =
+        watchSlot({ slot(key, retain = false) }, { it.state }, { slots.remove(slotKey(key.kind, key.target)) })
+
+    internal fun <T : Any> watchCommand(key: MutationKey<T>): Flow<CommandState<T>> =
+        watchSlot({ commandSlot(key, retain = false) }, { it.state }, { commands.remove(slotKey(key.kind, key.target)) })
+
+    private fun <S : ObservedSlot, V> watchSlot(get: () -> S, state: (S) -> StateFlow<V>, remove: () -> Unit): Flow<V> = flow {
+        val holder = synchronized(lock) { get().also { it.readers++ } }
+        try {
+            emitAll(state(holder))
+        } finally {
+            synchronized(lock) { if (--holder.readers == 0 && !holder.retained) remove() }
+        }
+    }
+
+    /** Dynamic field definitions are only known after the query. Never stamp a slot after I/O. */
+    internal fun beginKnownReads(kind: MutationKind, prefix: String): Map<String, MutationReadStamp> =
+        synchronized(lock) {
+            slots.values.filter { it.key.kind == kind && it.key.target.startsWith(prefix) }
+                .associate { it.key.target to beginRead(it.key) }
+        }
 
     /**
      * 同步登记并立即投影 desired；返回 false 表示因未知结果未发送。
@@ -994,7 +1025,7 @@ internal constructor(
         }
     }
 
-    private fun <T : Any> slot(key: MutationKey<T>): Slot<T> =
+    private fun <T : Any> slot(key: MutationKey<T>, retain: Boolean = true): Slot<T> =
         synchronized(lock) {
             val id = slotKey(key.kind, key.target)
             val existing = slots[id]
@@ -1007,6 +1038,7 @@ internal constructor(
                 } else {
                     Slot(key).also { slots[id] = it }
                 }
+            if (retain) slot.retained = true
             recovered[id]?.let { marker ->
                 if (slot.state.value.phase != WritePhase.UNCERTAIN) {
                     synchronized(slot) { applyRecovered(slot, marker) }
@@ -1015,7 +1047,7 @@ internal constructor(
             slot
         }
 
-    private fun <R : Any> commandSlot(key: MutationKey<R>): CommandSlot<R> =
+    private fun <R : Any> commandSlot(key: MutationKey<R>, retain: Boolean = true): CommandSlot<R> =
         synchronized(lock) {
             val id = slotKey(key.kind, key.target)
             val existing = commands[id]
@@ -1028,6 +1060,7 @@ internal constructor(
                 } else {
                     CommandSlot(key).also { commands[id] = it }
                 }
+            if (retain) slot.retained = true
             recovered[id]?.let { marker ->
                 if (slot.state.value.phase != WritePhase.UNCERTAIN) {
                     synchronized(slot) { applyRecoveredCommand(slot, marker) }

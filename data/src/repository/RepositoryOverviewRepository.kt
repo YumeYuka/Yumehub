@@ -27,6 +27,7 @@ import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
+import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
@@ -39,6 +40,11 @@ data class ForkParent(
     val login: String,
     val avatarUrl: String?,
     val ownerType: String?,
+)
+
+data class DashboardPinsSnapshot(
+    val ids: List<String>,
+    val repositories: List<RepositoryDto>,
 )
 
 @Serializable
@@ -235,52 +241,18 @@ class RepositoryOverviewRepository(
     suspend fun dashboardFavorites(account: String): List<RepositoryDto> =
         readPins(session(account)).repositories
 
-    suspend fun writePinIds(
-        account: String,
-        ids: List<String>,
-        metadata: List<RepositoryDto> = emptyList(),
-    ): List<String> {
-        val session = session(account)
-        val favoritesResource = favorites.resource(account)
-        val confirmed =
-            pinsMutex.withLock {
-                val current = readPins(session)
-                if (ids == current.ids) current
-                else {
-                    require(ids.size <= 25 && ids.distinct().size == ids.size) {
-                        "Invalid dashboard pins"
-                    }
-                    val data =
-                        execute(
-                            session,
-                            "mutation RepositoryPin(${'$'}ids: [ID!]!) { updateUserDashboardPins(input: {itemIds: ${'$'}ids}) { user { login $PinsFields } } }",
-                            buildJsonObject { put("ids", JsonArray(ids.map(::JsonPrimitive))) },
-                            true,
-                        )
-                    parsePins(
-                        data.requiredObject("updateUserDashboardPins").requiredObject("user"),
-                        account,
-                    )
-                }
-            }
-        val metadataById = metadata.associateBy { it.nodeId }
-        favoritesResource.update(
-            confirmed.repositories.map { repository ->
-                val extra = metadataById[repository.nodeId]
-                if (extra == null) repository
-                else repository.copy(description = extra.description, language = extra.language)
-            },
-        )
-        cache.changes(account).publish(DataDomain.Repositories)
-        return confirmed.ids
+    suspend fun dashboardPins(account: String): DashboardPinsSnapshot {
+        val pins = readPins(session(account))
+        return DashboardPinsSnapshot(pins.ids, pins.repositories)
     }
+
 
     suspend fun setPinned(
         account: String,
         repository: RepositoryDto,
         id: String,
         selected: Boolean,
-    ) =
+    ): List<String> =
         updateDashboardFavorites(account, listOf(repository.copy(nodeId = id))) { current ->
             updatedDashboardPins(current, id, selected)
         }
@@ -289,22 +261,32 @@ class RepositoryOverviewRepository(
         account: String,
         original: List<String>,
         selected: List<RepositoryDto>,
-    ) =
-        updateDashboardFavorites(account, selected) { current ->
-            mergeDashboardFavorites(current, original, selected.map { requireNotNull(it.nodeId) })
+    ): List<String> {
+        val selectedIds = selected.mapNotNull { it.nodeId }
+        if (selectedIds.size != selected.size || selectedIds.distinct().size != selectedIds.size) {
+            throw MutationRejectedException("Invalid dashboard pins")
         }
+        return updateDashboardFavorites(account, selected) { current ->
+            mergeDashboardFavorites(current, original, selectedIds)
+        }
+    }
 
     private suspend fun updateDashboardFavorites(
         account: String,
         metadata: List<RepositoryDto>,
         update: (List<String>) -> List<String>,
-    ) {
-        val session = session(account)
+    ): List<String> {
+        val session = writeSession(account)
         val favoritesResource = favorites.resource(account)
-        pinsMutex.withLock {
+        return pinsMutex.withLock {
             // 每次保存基于最新完整集合，保留其他仓库、节点类型和原顺序。
-            val current = readPins(session)
-            val ids = update(current.ids)
+            val current = readPinsForWrite(session)
+            val ids =
+                try {
+                    update(current.ids)
+                } catch (error: RepositoryFavoritesLimitException) {
+                    throw MutationRejectedException(cause = error)
+                }
             val confirmed =
                 if (ids == current.ids) current
                 else {
@@ -329,8 +311,27 @@ class RepositoryOverviewRepository(
                 },
             )
             cache.changes(account).publish(DataDomain.Repositories)
+            confirmed.ids
         }
     }
+
+    private fun writeSession(account: String): Session =
+        try {
+            session(account)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw MutationRejectedException(cause = error)
+        }
+
+    private suspend fun readPinsForWrite(session: Session): Pins =
+        try {
+            readPins(session)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw MutationRejectedException(cause = error)
+        }
 
     private suspend fun readPins(session: Session): Pins =
         parsePins(

@@ -3,6 +3,7 @@ package moe.yumeyuka.yumehub.feature.starred
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
@@ -44,7 +45,9 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
     val creation by viewModel.creation.collectAsStateWithLifecycle()
     val selectedList by viewModel.selectedList.collectAsStateWithLifecycle()
     val search by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val changes by viewModel.membership.collectAsStateWithLifecycle()
+    val changes = key(viewModel, selectedList?.id) {
+        remember { viewModel.membershipFor(selectedList) }.collectAsStateWithLifecycle(emptyMap()).value
+    }
     var searchVisible by remember(login) { mutableStateOf(false) }
     var searchInput by
         rememberSaveable(login, stateSaver = TextFieldValue.Saver) {
@@ -85,9 +88,12 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                 }
             val loaded = repositories.itemSnapshotList.items
             val additions = remember(changes, loaded, search, selectedList) {
-                if (selectedList != null || search.isNotBlank() || changes.isEmpty()) emptyList() else {
+                if (selectedList == null && search.isNotBlank() || changes.isEmpty()) emptyList() else {
                     val present = loaded.mapNotNullTo(hashSetOf()) { it.fullName?.lowercase() }
-                    changes.mapNotNull { (slug, change) -> change.repository?.takeIf { change.member == true && slug !in present && change.phase != moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED } }
+                    changes.mapNotNull { (slug, change) -> change.repository?.takeIf { repo ->
+                        change.member == true && slug !in present && change.phase != moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED &&
+                            (search.isBlank() || repo.fullName.orEmpty().contains(search.trim(), true) || repo.description.orEmpty().contains(search.trim(), true))
+                    } }
                 }
             }
         GithubPage(

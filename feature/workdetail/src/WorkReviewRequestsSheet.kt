@@ -31,7 +31,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 @Composable
 internal fun WorkReviewRequestsSheet(
     state: WorkPropertiesState,
-    viewModel: WorkInfoViewModel,
+    viewModel: WorkInfoViewModel?,
     onDismiss: () -> Unit,
 ) {
     val locale = LocalGithubStrings.current
@@ -41,7 +41,7 @@ internal fun WorkReviewRequestsSheet(
     var retained by remember { mutableStateOf<WorkPropertyEditor?>(null) }
     if (live != null) retained = live
     val editor = live ?: retained
-    LaunchedEffect(viewModel) { viewModel.edit(WorkProperty.Reviewers) }
+    LaunchedEffect(viewModel) { viewModel?.edit(WorkProperty.Reviewers) }
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
     val editable =
         live != null && live.editable && !live.loading && !live.failed &&
@@ -49,17 +49,17 @@ internal fun WorkReviewRequestsSheet(
     val shown = remember(editor) { editor?.reviewerGroups() }
     GithubSearchSelectionSheet(
         // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发。
-        visible = live != null || retained != null,
+        visible = true,
         title = strings.RequestReview,
         placeholder = strings.PropertySearch,
         queryKey = editor?.query.orEmpty(),
-        onQueryChange = viewModel::search,
+        onQueryChange = { viewModel?.search(it) },
         onDismiss = {
-            viewModel.closeEditor()
+            viewModel?.closeEditor()
             retained = null
             onDismiss()
         },
-        onConfirm = { viewModel.applyEditor() },
+        onConfirm = { viewModel?.applyEditor() },
         confirmEnabled = editable && editor?.reviewRequestsChanged() == true,
         showConfirm = editor?.editable == true,
         requestClose = live == null && retained != null,
@@ -84,7 +84,7 @@ internal fun WorkReviewRequestsSheet(
                                 editor.needsReconcile -> strings.PropertySaveFailed
                                 else -> strings.PropertyLoadFailed
                             },
-                        onClick = viewModel::retryEditor,
+                        onClick = { viewModel?.retryEditor() },
                         showTopSeparator = false,
                     )
                     if (state.uncertain) {
@@ -112,7 +112,7 @@ internal fun WorkReviewRequestsSheet(
                                     locale.Common.MutationAcknowledged,
                                     onClick = {
                                         acknowledgeVisible = false
-                                        viewModel.acknowledgeUncertain()
+                                        viewModel?.acknowledgeUncertain()
                                     },
                                     role = io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Default,
                                 ),
@@ -122,15 +122,15 @@ internal fun WorkReviewRequestsSheet(
                 }
             }
         } else {
-            reviewerGroup("pending", strings.ReviewPending, shown.pending, editable, viewModel::select)
-            reviewerGroup("reviewed", strings.ReviewCompleted, shown.reviewed, editable, viewModel::select)
-            reviewerGroup("available", strings.ReviewAvailable, shown.available, editable, viewModel::select)
+            reviewerGroup("pending", strings.ReviewPending, shown.pending, editable) { viewModel?.select(it) }
+            reviewerGroup("reviewed", strings.ReviewCompleted, shown.reviewed, editable) { viewModel?.select(it) }
+            reviewerGroup("available", strings.ReviewAvailable, shown.available, editable) { viewModel?.select(it) }
             if (editor.editable && (!editor.hasReviewerCandidates || editor.nextCursor != null)) {
                 item("review-candidates-page") {
                     if (editor.moreFailed) {
-                        GlasmioListRow(title = locale.Common.Retry, onClick = viewModel::more)
+                        GlasmioListRow(title = locale.Common.Retry, onClick = { viewModel?.more() })
                     } else {
-                        LaunchedEffect(editor.query, editor.nextCursor) { viewModel.more() }
+                        LaunchedEffect(editor.query, editor.nextCursor) { viewModel?.more() }
                         TextPlaceholder(Modifier.padding(16.dp), fraction = 0.45f)
                     }
                 }

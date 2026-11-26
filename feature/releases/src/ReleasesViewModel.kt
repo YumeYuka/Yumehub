@@ -103,14 +103,20 @@ internal class ReleasesViewModel(
         val current = state.value
         val release = current.result?.detail ?: return
         if (release.version.id != id || !release.canReact || current.loading) return
-        val coord = coordinator
-        val slotReactions = coord?.current(reactionKey(id))?.visible
         val previous = reactionUpdates.current(id, release.reactions)
-        val reactions = slotReactions ?: previous?.reactions ?: release.reactions
+        val coord = coordinator
+        if (coord != null) ensureReactionObserver(coord, id, release.reactions)
+        val key = reactionKey(id)
+        val slot = coord?.current(key)
+        if (slot?.phase == WritePhase.UNCERTAIN) {
+            coord.reconcile(key) { requireNotNull(repository.readVersion(account, id).detail).reactions }
+            mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
+            return
+        }
+        val reactions = slot?.visible ?: previous?.reactions ?: release.reactions
         if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
         val desired = reactions.withToggledReaction(content)
-        val pending = GithubReactionUpdate(release.reactions, desired, pending = true)
-        reactionUpdates.set(id, pending)
+        reactionUpdates.set(id, GithubReactionUpdate(release.reactions, desired, pending = true))
         mutableReactionFailure.value = null
         viewModelScope.launch {
             val activeCoord =
@@ -125,9 +131,27 @@ internal class ReleasesViewModel(
                         return@launch
                     }
             ensureReactionObserver(activeCoord, id, release.reactions)
+            val activeSlot = activeCoord.current(key)
+            if (activeSlot.phase == WritePhase.UNCERTAIN) {
+                activeCoord.reconcile(key) {
+                    requireNotNull(repository.readVersion(account, id).detail).reactions
+                }
+                activeSlot.visible?.let { confirmed ->
+                    reactionUpdates.set(
+                        id,
+                        GithubReactionUpdate(
+                            source = release.reactions,
+                            reactions = confirmed,
+                            pending = false,
+                        ),
+                    )
+                }
+                mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
+                return@launch
+            }
             val accepted =
                 activeCoord.submit(
-                    reactionKey(id),
+                    key,
                     confirmed = release.reactions,
                     desired = desired,
                     tags =
@@ -136,8 +160,12 @@ internal class ReleasesViewModel(
                             CacheTag(DataDomain.Content, null),
                         ),
                     send = { nextDesired ->
-                        val baseline = activeCoord.current(reactionKey(id)).confirmed ?: release.reactions
-                        convergeGithubReactions(baseline, nextDesired, { activeCoord.confirmStep(reactionKey(id), it) }) { targetContent, currentReacted ->
+                        val baseline = activeCoord.current(key).confirmed ?: release.reactions
+                        convergeGithubReactions(
+                            baseline,
+                            nextDesired,
+                            { activeCoord.confirmStep(key, it) },
+                        ) { targetContent, currentReacted ->
                             repository.toggleReaction(
                                 account,
                                 route.owner,
@@ -153,7 +181,25 @@ internal class ReleasesViewModel(
                     },
                 )
             if (!accepted) {
-                reactionUpdates.set(id, previous)
+                val latest = activeCoord.current(key)
+                val visible = latest.visible
+                if (visible != null) {
+                    reactionUpdates.set(
+                        id,
+                        GithubReactionUpdate(
+                            source = release.reactions,
+                            reactions = visible,
+                            pending = latest.phase == WritePhase.PENDING,
+                        ),
+                    )
+                } else {
+                    reactionUpdates.set(id, previous)
+                }
+                if (latest.phase == WritePhase.UNCERTAIN) {
+                    activeCoord.reconcile(key) {
+                        requireNotNull(repository.readVersion(account, id).detail).reactions
+                    }
+                }
                 mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
             }
         }

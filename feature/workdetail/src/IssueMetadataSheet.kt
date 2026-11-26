@@ -51,7 +51,7 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
         null -> ""
     }
     GithubSearchSelectionSheet(
-        visible = visible && panel != null && field == null && !state.closeChoices,
+        visible = visible && panel != null && field == null,
         title = title,
         placeholder = strings.PropertySearch,
         queryKey = query,
@@ -60,11 +60,11 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
         onConfirm = { editor.saveChoices(selected) },
         showConfirm = choices?.editable == true,
         confirmEnabled =
-            !state.saving && !state.closeChoices && !state.conflict &&
+            !state.saving && !state.uncertain && !state.conflict &&
                 choices != null && selected.toSet() != choices.selected.toSet(),
     ) {
         if (panel == null) return@GithubSearchSelectionSheet
-        if (state.loading || state.saving && field == null) {
+        if (state.loading) {
             item("loading") {
                 GlasmioGroupedList {
                     TextLinePlaceholder(GlasmioTheme.textStyles.body, Modifier.padding(16.dp), fraction = 0.55f)
@@ -99,7 +99,7 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
                                     )
                                 } else GithubAvatar(choice.avatarUrl, choice.title, size = 20.dp)
                             },
-                            onClick = if (choices.editable && choice.editable && !state.saving && !state.closeChoices && !state.conflict) {
+                            onClick = if (choices.editable && choice.editable && !state.saving && !state.uncertain && !state.conflict) {
                                 {
                                     editor.clearSaveError()
                                     selected = if (isType) {

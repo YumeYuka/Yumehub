@@ -96,6 +96,7 @@ enum class WorkProperty {
   Projects,
 }
 
+@Serializable
 data class WorkPropertyOption(
     val id: String,
     val title: String,

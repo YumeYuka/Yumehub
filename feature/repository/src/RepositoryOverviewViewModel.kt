@@ -245,25 +245,27 @@ internal class RepositoryOverviewViewModel(
         }
     }
 
-    /** 读取首页 pin 状态；已获取或进行中时不重复请求。 */
+    /** Read and seed the complete ordered pin set before exposing the pin action. */
     fun loadPinned() {
-        if (
-            !active() ||
-                mutableState.value.pinned != null ||
-                pinnedJob?.isActive == true
-        ) return
+        if (!active() || mutableState.value.pinned != null || pinnedJob?.isActive == true) return
         val overview = confirmedOverview ?: mutableState.value.overview ?: return
         pinnedJob = viewModelScope.launch {
             try {
-                val coord = coordinator
-                val stamp = coord?.beginRead(pinsKey)
+                val coord =
+                    coordinator
+                        ?: source.mutations(account).also {
+                            if (!active()) return@launch
+                            coordinator = it
+                            mutableState.value = mutableState.value.copy(coordinatorReady = true)
+                        }
+                val stamp = coord.beginRead(pinsKey)
                 val ids = source.dashboardFavoriteIds(account)
-                if (coord != null && stamp != null) {
-                    coord.publishConfirmed(pinsKey, stamp, ids)
-                }
-                val pinned = ids.contains(overview.id)
+                if (!active()) return@launch
+                coord.publishConfirmed(pinsKey, stamp, ids)
+                val visibleIds = coord.current(pinsKey).visible ?: ids
+                val pinned = overview.id in visibleIds
                 confirmedPinned = pinned
-                if (active()) mutableState.value = mutableState.value.copy(pinned = pinned)
+                mutableState.value = mutableState.value.copy(pinned = pinned)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -366,52 +368,32 @@ internal class RepositoryOverviewViewModel(
     fun pin(repository: RepositoryDto, selected: Boolean) {
         val state = confirmedOverview ?: mutableState.value.overview ?: return
         val coord = coordinator ?: return
+        val currentIds = coord.current(pinsKey).visible
+        if (currentIds == null) {
+            mutableEvents.trySend(
+                RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationPreparing),
+            )
+            return
+        }
+        val nextIds =
+            try {
+                updatedDashboardPins(currentIds, state.id, selected)
+            } catch (_: RepositoryFavoritesLimitException) {
+                mutableEvents.trySend(
+                    RepositoryOverviewEvent.Failed(
+                        GithubTxt.current.Repository.FavoriteLimitReached,
+                    ),
+                )
+                return
+            }
         viewModelScope.launch {
-            val currentIds =
-                coord.current(pinsKey).visible
-                    ?: try {
-                        val stamp = coord.beginRead(pinsKey)
-                        source.dashboardFavoriteIds(account).also {
-                            coord.publishConfirmed(pinsKey, stamp, it)
-                        }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Exception) {
-                        if (active()) {
-                            mutableEvents.trySend(
-                                RepositoryOverviewEvent.Failed(
-                                    GithubTxt.current.Repository.OperationFailed,
-                                ),
-                            )
-                        }
-                        return@launch
-                    }
-            val nextIds =
-                try {
-                    updatedDashboardPins(currentIds, state.id, selected)
-                } catch (_: RepositoryFavoritesLimitException) {
-                    if (active()) {
-                        mutableEvents.trySend(
-                            RepositoryOverviewEvent.Failed(
-                                GithubTxt.current.Repository.FavoriteLimitReached,
-                            ),
-                        )
-                    }
-                    return@launch
-                }
             val accepted =
                 coord.submit(
                     pinsKey,
                     confirmed = currentIds,
                     desired = nextIds,
                     tags = setOf(CacheTag(DataDomain.Repositories, null)),
-                    send = { ids ->
-                        source.writePinIds(
-                            account,
-                            ids,
-                            listOf(repository.copy(nodeId = state.id)),
-                        )
-                    },
+                    send = { source.setPinned(account, repository, state.id, selected) },
                     readBack = { source.dashboardFavoriteIds(account) },
                 )
             if (!accepted && active()) {

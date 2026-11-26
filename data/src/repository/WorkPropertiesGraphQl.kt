@@ -118,13 +118,13 @@ internal class WorkPropertiesGraphQl(
         val linked = async { currentValues(target, WorkProperty.LinkedItems) }
         val subIssues = async { currentValues(target, WorkProperty.SubIssues) }
         WorkProperties(
-            mapOf(
-                WorkProperty.Labels to labels.await(),
-                WorkProperty.Milestone to target.milestone(),
-                WorkProperty.Projects to projects.await(),
-                WorkProperty.LinkedItems to linked.await(),
-                WorkProperty.SubIssues to subIssues.await(),
-            ),
+            buildMap {
+                put(WorkProperty.Labels, labels.await())
+                put(WorkProperty.Milestone, target.milestone())
+                projects.await()?.let { put(WorkProperty.Projects, it) }
+                put(WorkProperty.LinkedItems, linked.await())
+                put(WorkProperty.SubIssues, subIssues.await())
+            },
             repo.canEdit(),
             labelsEditable = target.canLabel(),
         )
@@ -212,6 +212,9 @@ internal class WorkPropertiesGraphQl(
                 )
             }
 
+    suspend fun values(property: WorkProperty): List<WorkPropertyOption> =
+        currentValues(node(includeMilestone = property == WorkProperty.Milestone).target(), property)
+
     private suspend fun currentValues(
         target: JsonObject,
         property: WorkProperty,
@@ -267,25 +270,15 @@ internal class WorkPropertiesGraphQl(
 
     private suspend fun optional(
         block: suspend () -> List<WorkPropertyOption>,
-    ): List<WorkPropertyOption> =
+    ): List<WorkPropertyOption>? =
         try {
             block()
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            emptyList()
+            null
         }
 
-    /** 头部项目标签只需要名称；缺少权限时保持为空。 */
-    suspend fun headerProjectTitles(): List<String> =
-        try {
-            val target = node(includeMilestone = false).target()
-            currentValues(target, WorkProperty.Projects).map { it.title }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            emptyList()
-        }
 
     suspend fun linkedOptions(
         query: String,

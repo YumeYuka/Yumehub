@@ -433,7 +433,7 @@ fun RepositoryPage(
                             onClick = {
                                 close()
                                 expanded = false
-                                details?.nodeId?.let(listsViewModel::open)
+                                details?.let(listsViewModel::open)
                             },
                         )
                         val pinned = overview.pinned
@@ -441,7 +441,7 @@ fun RepositoryPage(
                             GlasmioMenuItem(
                                 title = if (pinned) strings.RemoveFavorite else strings.PinToHome,
                                 backdrop = backdrop,
-                                enabled = details != null && !overview.busy,
+                                enabled = details != null && overview.coordinatorReady && !overview.busy,
                                 icon = {
                                     GithubIcon(
                                         Lucide.Pin,
@@ -544,25 +544,17 @@ fun RepositoryPage(
     RepositoryListsSheet(
         state = repositoryLists,
         onDismiss = listsViewModel::dismiss,
-        onRetry = { details?.nodeId?.let(listsViewModel::open) },
+        onRetry = { details?.let(listsViewModel::open) },
+        onAcknowledge = listsViewModel::acknowledge,
         onToggle = listsViewModel::toggle,
         onSave = {
-            listsViewModel.save { success ->
-                if (success) {
-                    Toast.makeText(
-                            context,
-                            profileStrings.ListsSaved,
-                            Toast.LENGTH_SHORT,
-                        )
-                        .show()
-                } else {
-                    Toast.makeText(
-                            context,
-                            profileStrings.AddToListFailed,
-                            Toast.LENGTH_SHORT,
-                        )
-                        .show()
+            listsViewModel.save { phase ->
+                val message = when (phase) {
+                    moe.yumeyuka.yumehub.data.cache.WritePhase.IDLE -> profileStrings.ListsSaved
+                    moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN -> common.MutationUncertain
+                    else -> profileStrings.AddToListFailed
                 }
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             }
         },
     )

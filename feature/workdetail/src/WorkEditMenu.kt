@@ -11,6 +11,7 @@ import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
@@ -31,7 +32,7 @@ internal fun WorkEditMenu(
     val isPullRequest = viewModel.kind == CollaborationKind.PullRequest
     var expanded by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
-    val available = enabled && !state.submitting && !state.submissionUncertain
+    val available = enabled && !state.submitting
     GlasmioMenu(
         expanded = expanded,
         onExpandedChange = { expanded = it },
@@ -45,7 +46,7 @@ internal fun WorkEditMenu(
         GlasmioMenuItem(
             title = strings.EditTitle,
             backdrop = backdrop,
-            enabled = available && item?.viewerCanEdit == true,
+            enabled = available && item?.viewerCanEdit == true && !state.unknownField("title"),
             icon = { GithubIcon(Lucide.Pencil, contentDescription = null, size = 20.dp) },
             onClick = {
                 close()
@@ -56,7 +57,7 @@ internal fun WorkEditMenu(
             title =
                 if (item?.locked == true) strings.UnlockConversation else strings.LockConversation,
             backdrop = backdrop,
-            enabled = available && item?.viewerCanModerate == true,
+            enabled = available && item?.viewerCanModerate == true && !state.unknownField("locked"),
             icon = { GithubIcon(Lucide.Lock, contentDescription = null, size = 20.dp) },
             onClick = {
                 close()
@@ -69,7 +70,7 @@ internal fun WorkEditMenu(
             destructive = true,
             enabled =
                 available &&
-                    item?.viewerCanClose == true &&
+                    !state.unknownField("state") && state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN && item?.viewerCanClose == true &&
                     item.state == "open" &&
                     (!isPullRequest || !item.merged),
             icon = {

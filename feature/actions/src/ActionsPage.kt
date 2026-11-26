@@ -20,13 +20,7 @@ import io.github.yumeyucca.lucide.Package
 import io.github.yumeyucca.lucide.RefreshCw
 import io.github.yumeyucca.lucide.RotateCcw
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import moe.yumeyuka.yumehub.data.cache.CacheTag
-import moe.yumeyuka.yumehub.data.cache.CommandAccepted
-import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.download.DownloadStore
@@ -81,15 +75,7 @@ internal class ActionsDetailModel(
     var artifactsFailed by mutableStateOf(false)
         private set
 
-    var rerunning by mutableStateOf(false)
-        private set
-
-    var rerunUncertain by mutableStateOf(false)
-        private set
-
-    private var rerunUncertainOpId: String? = null
-    private val rerunResultsChannel = Channel<WritePhase>(Channel.CONFLATED)
-    val rerunResults = rerunResultsChannel.receiveAsFlow()
+    val commands = WorkflowCommands(repo.mutations(account), MutationKind.CHECK_RERUN, viewModelScope)
 
     private var artifactRequest: kotlinx.coroutines.Job? = null
     private var artifactObserver: kotlinx.coroutines.Job? = null
@@ -177,46 +163,8 @@ internal class ActionsDetailModel(
         }
     }
 
-    fun rerunFailed(suiteId: String, debug: Boolean) {
-        if (rerunning || rerunUncertain) return
-        rerunning = true
-        val key = MutationKey(MutationKind.CHECK_RERUN, suiteId, CommandAccepted.serializer())
-        viewModelScope.launch {
-            val coord = repo.mutations(account)
-            val receipt =
-                coord.submitCommand(
-                    key = key,
-                    tags = setOf(CacheTag(DataDomain.Work, null)),
-                    send = {
-                        repo.rerunFailed(account, suiteId, debug)
-                        CommandAccepted
-                    },
-                    readBack = { null },
-                )
-            val cmd = receipt?.await() ?: coord.currentCommand(key)
-            rerunning = false
-            rerunUncertain = cmd.phase == WritePhase.UNCERTAIN
-            rerunUncertainOpId = cmd.submissionId.takeIf { rerunUncertain }
-            rerunResultsChannel.trySend(if (receipt == null && !rerunUncertain) WritePhase.REJECTED else cmd.phase)
-        }
-    }
-
-    fun acknowledgeRerun(suiteId: String) {
-        val opId = rerunUncertainOpId
-        viewModelScope.launch {
-            val coord = repo.mutations(account)
-            val id =
-                opId
-                    ?: coord.pending.value
-                        .firstOrNull { it.kind == MutationKind.CHECK_RERUN && it.target == suiteId }
-                        ?.operationId
-            if (id == null) return@launch
-            coord.acknowledge(id).join()
-            if (coord.pending.value.any { it.operationId == id }) return@launch
-            rerunUncertain = false
-            rerunUncertainOpId = null
-        }
-    }
+    fun rerunFailed(suiteId: String, debug: Boolean): Boolean =
+        commands.submit(suiteId) { repo.rerunFailed(account, suiteId, debug) }
 }
 
 val actionsFeatureModule = module {
@@ -252,14 +200,15 @@ fun ActionsPage(
     val vm: ActionsDetailModel =
         koinViewModel(key = "$account:$route", parameters = { parametersOf(route, account) })
     val detail = vm.detail
+    val suite = detail?.suite ?: route.suite
+    val command = vm.commands.stateFor(suite)
     val downloads: DownloadStore = koinInject()
     val host = requireNotNull(LocalGithubPageHost.current)
     var confirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(vm, context, strings) {
-        vm.rerunResults.collect { phase ->
-            if (phase == WritePhase.IDLE) confirm = false
-            if (phase != WritePhase.REJECTED) vm.load()
+        vm.commands.results.collect { phase ->
+            if (phase == WritePhase.IDLE) vm.load()
             val message = when (phase) {
                 WritePhase.IDLE -> strings.Activity.RerunSubmitted
                 WritePhase.UNCERTAIN -> strings.Activity.RunUncertain
@@ -299,14 +248,22 @@ fun ActionsPage(
         actions = {
             GithubToolbarActions(
                 toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = vm::load),
-                if (detail?.canRerunFailed == true) toolbarIcon(Lucide.RotateCcw,
-                    strings.Activity.RerunFailed, enabled = !vm.rerunning) { confirm = true } else null,
+                if (detail?.canRerunFailed == true || command?.phase == WritePhase.UNCERTAIN) toolbarIcon(Lucide.RotateCcw,
+                    strings.Activity.RerunFailed, enabled = command?.phase != WritePhase.PENDING) { confirm = true } else null,
                 url?.let {
                     toolbarIcon(Lucide.ExternalLink, strings.Repository.OpenInBrowser) { browser(it) }
                 },
             )
         },
     ) {
+        if (command?.phase == WritePhase.PENDING || command?.phase == WritePhase.UNCERTAIN) {
+            item(key = "rerun-status") {
+                GlasmioGroupedList {
+                    GlasmioListRow(title = if (command.phase == WritePhase.PENDING) strings.Common.MutationPending else strings.Common.MutationUncertain,
+                        onClick = if (command.phase == WritePhase.UNCERTAIN) ({ confirm = true }) else null)
+                }
+            }
+        }
         if (showArtifactPlaceholder || files.isNotEmpty())
             item(key = "artifacts") {
                 GithubSection(strings.Release.Artifacts) {
@@ -387,13 +344,13 @@ fun ActionsPage(
             }
         }
     }
-    if (confirm && detail?.canRerunFailed == true) {
+    if (confirm && suite != null && (detail?.canRerunFailed == true || command?.phase == WritePhase.UNCERTAIN)) {
         WorkflowRerunSheet(
-            busy = vm.rerunning,
-            uncertain = vm.rerunUncertain,
+            busy = command?.phase == WritePhase.PENDING,
+            uncertain = command?.phase == WritePhase.UNCERTAIN,
             onClose = { confirm = false },
-            onRerun = { debug -> vm.rerunFailed(detail.suite, debug) },
-            onAcknowledgeUncertain = { vm.acknowledgeRerun(detail.suite) },
+            onRerun = { debug -> if (detail?.canRerunFailed == true && vm.rerunFailed(suite, debug)) confirm = false },
+            onAcknowledgeUncertain = { command?.submissionId?.let { vm.commands.acknowledge(suite, it) } },
         )
     }
 }

@@ -45,11 +45,15 @@ internal data class StatusEditorState(
     val expiry: StatusExpiry = StatusExpiry.Never,
     val organizationId: String? = null,
     val organizations: List<ProfileOrganizationDto> = emptyList(),
+    val preparing: Boolean = false,
     val submitting: Boolean = false,
     val failed: Boolean = false,
 ) {
-    val blocksRefresh: Boolean get() = visible || submitting
+    val isBusy: Boolean get() = preparing || submitting
+    val blocksRefresh: Boolean get() = visible || isBusy
 }
+
+
 
 internal enum class StatusExpiry(val millis: Long) {
     Never(0L),
@@ -102,11 +106,11 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                 mutableUiState.value = latestCached.toUiState()
                 mutableStatusEditor.update { editor ->
                     when (write.phase) {
-                        WritePhase.PENDING -> editor?.copy(submitting = true, failed = false)
+                        WritePhase.PENDING -> editor?.copy(preparing = false, submitting = true, failed = false)
                         WritePhase.IDLE -> if (editor?.submitting == true) null else editor
                         WritePhase.REJECTED,
                         WritePhase.UNCERTAIN ->
-                            editor?.copy(submitting = false, failed = true)
+                            editor?.copy(preparing = false, submitting = false, failed = true)
                     }
                 }
             }
@@ -180,26 +184,34 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     }
 
     fun setStatusEmoji(emoji: String) {
-        mutableStatusEditor.update { it?.copy(emoji = emoji, failed = false) }
+        mutableStatusEditor.update { editor ->
+            if (editor == null || editor.isBusy) editor else editor.copy(emoji = emoji, failed = false)
+        }
     }
 
     fun setStatusMessage(message: String) {
-        mutableStatusEditor.update { it?.copy(message = message, failed = false) }
+        mutableStatusEditor.update { editor ->
+            if (editor == null || editor.isBusy) editor else editor.copy(message = message, failed = false)
+        }
     }
 
     fun setStatusLimitedAvailability(enabled: Boolean) {
-        mutableStatusEditor.update { it?.copy(limitedAvailability = enabled) }
+        mutableStatusEditor.update { editor ->
+            if (editor == null || editor.isBusy) editor else editor.copy(limitedAvailability = enabled)
+        }
     }
 
     fun setStatusExpiry(expiry: StatusExpiry) {
-        mutableStatusEditor.update { it?.copy(expiry = expiry) }
+        mutableStatusEditor.update { editor ->
+            if (editor == null || editor.isBusy) editor else editor.copy(expiry = expiry)
+        }
     }
 
     fun setStatusOrganization(organizationId: String?) {
         mutableStatusEditor.update { editor ->
             if (
                 editor == null ||
-                    editor.submitting ||
+                    editor.isBusy ||
                     (organizationId != null &&
                         editor.organizations.none { it.id == organizationId })
             ) {
@@ -209,6 +221,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
             }
         }
     }
+
 
     fun saveStatus() {
         submitStatus(clear = false)
@@ -220,7 +233,8 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     private fun submitStatus(clear: Boolean) {
         val editor = mutableStatusEditor.value ?: return
-        if (!editor.visible || editor.submitting) return
+        if (!editor.visible || editor.isBusy) return
+        mutableStatusEditor.value = editor.copy(preparing = true, failed = false)
         val expiresAt =
             if (clear) null
             else editor.expiry.millis.takeIf { it > 0L }?.let { Instant.now().plusMillis(it).toString() }
@@ -248,11 +262,23 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
-                        mutableStatusEditor.update { it?.copy(submitting = false, failed = true) }
+                        mutableStatusEditor.update {
+                            it?.copy(preparing = false, submitting = false, failed = true)
+                        }
                         return@launch
                     }
+            if (coord.current(statusKey).phase == WritePhase.UNCERTAIN) {
+                coord.reconcile(statusKey) {
+                    NullableValue(repository.loadUserForAccount(account, account).status)
+                }
+                mutableStatusEditor.update {
+                    it?.copy(preparing = false, submitting = false, failed = true)
+                }
+                return@launch
+            }
             val currentConfirmed =
-                (uiState.value as? ProfileUiState.Content)?.profile?.status ?: latestCached.data?.status
+                (uiState.value as? ProfileUiState.Content)?.profile?.status
+                    ?: latestCached.data?.status
             val accepted =
                 coord.submit(
                     statusKey,
@@ -276,12 +302,22 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                     },
                 )
             if (accepted) {
-                mutableStatusEditor.value = editor.copy(visible = false, submitting = true, failed = false)
+                mutableStatusEditor.update {
+                    it?.copy(visible = false, preparing = false, submitting = true, failed = false)
+                }
             } else {
-                mutableStatusEditor.update { it?.copy(submitting = false, failed = true) }
+                if (coord.current(statusKey).phase == WritePhase.UNCERTAIN) {
+                    coord.reconcile(statusKey) {
+                        NullableValue(repository.loadUserForAccount(account, account).status)
+                    }
+                }
+                mutableStatusEditor.update {
+                    it?.copy(preparing = false, submitting = false, failed = true)
+                }
             }
         }
     }
+
 
     private fun expiryFrom(value: String?): StatusExpiry {
         if (value.isNullOrBlank()) return StatusExpiry.Never

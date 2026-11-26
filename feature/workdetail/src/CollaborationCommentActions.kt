@@ -3,6 +3,11 @@ package moe.yumeyuka.yumehub.feature.workdetail
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.ui.component.GithubMutationRecoveryRow
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
@@ -43,7 +48,7 @@ internal fun WorkDescriptionCard(
               onClick = { copy(work.CopyMarkdown, entry.body.orEmpty()) },
           ),
       )
-      if (state.canComment && !state.submissionUncertain && !state.submitting) {
+      if (state.canComment && !state.commentUncertain && !state.submitting) {
         add(
             GlasmioCascadingMenuItem(
                 title = work.QuoteReply,
@@ -52,7 +57,7 @@ internal fun WorkDescriptionCard(
         )
       }
     }
-    if (entry.viewerCanEdit && !state.submissionUncertain && !state.submitting) {
+    if (entry.viewerCanEdit && !state.unknownField("body") && !state.submitting) {
       add(GlasmioCascadingMenuItem(title = strings.Common.Edit, onClick = viewModel::openBodyEditor))
     }
   }
@@ -92,21 +97,15 @@ internal fun CommentDiscussionEntry(
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
 ) {
-  val projection = comment.nodeId?.let(state.commentProjections::get)
-  if (projection?.deleted == true) return
-  val shownComment =
-      if (projection == null) comment
-      else {
-        comment.copy(
-            body = projection.body ?: comment.body,
-            bodyHtml = if (projection.body != null && projection.body != comment.body) null else projection.bodyHtml ?: comment.bodyHtml,
-            isMinimized = projection.isMinimized,
-            minimizedReason = projection.minimizedReason ?: comment.minimizedReason,
-        )
-      }
+  val write = comment.nodeId?.let { id -> key(viewModel, id) {
+    remember { viewModel.commentWrites(id) }.collectAsStateWithLifecycle(null).value
+  } }
+  if (write?.deletion?.result != null) return
+  val shownComment = remember(write, comment) { write?.apply(comment) ?: comment }
   val strings = LocalGithubStrings.current.WorkDetail
-  val canEdit = viewModel.canManageComment(shownComment)
-  val canHide = viewModel.canHideComment(shownComment)
+  val mutable = write?.busy != true && write?.uncertain != true
+  val canEdit = mutable && viewModel.canManageComment(shownComment)
+  val canHide = mutable && viewModel.canHideComment(shownComment)
   val copy = rememberCopyText()
   val open = rememberGithubUriHandler()
   val navigationEnabled = LocalGithubPageHost.current?.navigationEnabled == true
@@ -134,6 +133,14 @@ internal fun CommentDiscussionEntry(
           onDelete = { viewModel.requestDeleteComment(shownComment) },
       )
   GithubReadingGroup {
+    val common = LocalGithubStrings.current.Common
+    val editMarker = write?.editOperationId
+    when {
+      write?.busy == true -> GlasmioListRow(title = common.MutationPending)
+      editMarker != null -> GithubMutationRecoveryRow(editMarker, common.MutationUncertain, viewModel::acknowledgeOperation)
+      write?.uncertain == true -> GlasmioListRow(title = common.MutationUncertain)
+      write?.edit?.phase == WritePhase.REJECTED -> GlasmioListRow(title = common.MutationNotSubmitted)
+    }
     GithubCommentAuthorHeader(
         shownComment.user?.login,
         shownComment.user?.avatarUrl,

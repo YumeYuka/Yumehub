@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
-import kotlinx.serialization.builtins.serializer
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import moe.yumeyuka.yumehub.data.api.dto.IssueField
 import moe.yumeyuka.yumehub.data.api.dto.IssueFieldValue
 import moe.yumeyuka.yumehub.data.api.dto.IssueFields
@@ -20,7 +20,6 @@ import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.NullableValue
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
-import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 
 internal enum class IssueMetadataPanel { Type, Assignees, Fields }
 
@@ -35,7 +34,6 @@ internal data class IssueMetadataState(
     val conflict: Boolean = false,
     val uncertain: Boolean = false,
     val uncertainOperationId: String? = null,
-    val closeChoices: Boolean = false,
 )
 
 internal class IssueMetadataEditor(
@@ -45,261 +43,99 @@ internal class IssueMetadataEditor(
 ) {
     private val mutableState = MutableStateFlow(IssueMetadataState())
     val state = mutableState.asStateFlow()
+    private val coord get() = detail.mutations()
     private var loadJob: Job? = null
 
-    private fun typeKey() =
-        MutationKey(
-            MutationKind.ISSUE_FIELD,
-            "${detail.workTarget}:issue-type",
-            NullableValue.serializer(String.serializer()),
-        )
-
-    private fun fieldKey(fieldId: String) =
-        MutationKey(
-            MutationKind.ISSUE_FIELD,
-            "${detail.workTarget}:issue-field:$fieldId",
-            NullableValue.serializer(String.serializer()),
-        )
-
     fun open(panel: IssueMetadataPanel) {
-        if (state.value.saving) return
         loadJob?.cancel()
         mutableState.value = IssueMetadataState(panel = panel, loading = true)
         loadJob = scope.launch {
             try {
-                val coord = detail.mutations()
-                val (choices, fields, activeKey) =
-                    when (panel) {
-                        IssueMetadataPanel.Type -> {
-                            val key = typeKey()
-                            Triple(detail.issueTypes(), null, key)
-                        }
-                        IssueMetadataPanel.Assignees -> {
-                            val key = detail.propertyMutationKey(WorkProperty.Assignees)
-                            Triple(detail.issueAssignees(), null, key)
-                        }
-                        IssueMetadataPanel.Fields ->
-                            Triple(null, detail.issueFields(), null)
+                when (panel) {
+                    IssueMetadataPanel.Type -> {
+                        val choices = detail.issueTypes()
+                        observeChoices(panel, choices, detail.keys.issueType) { listOfNotNull(it.value) }
                     }
-                val opId =
-                    when (panel) {
-                        IssueMetadataPanel.Type,
-                        IssueMetadataPanel.Assignees ->
-                            activeKey?.let { coord.findUncertainOperationId(it.kind, it.target) }
-                        IssueMetadataPanel.Fields ->
-                            fields?.fields
-                                ?.firstNotNullOfOrNull {
-                                    val key = fieldKey(it.id)
-                                    coord.findUncertainOperationId(key.kind, key.target)
-                                }
+                    IssueMetadataPanel.Assignees -> {
+                        val choices = detail.issueAssignees()
+                        observeChoices(panel, choices, detail.keys.property(WorkProperty.Assignees)) { it }
                     }
-                mutableState.value =
-                    IssueMetadataState(
-                        panel = panel,
-                        choices = choices,
-                        fields = fields,
-                        uncertain = opId != null,
-                        uncertainOperationId = opId,
-                    )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                mutableState.value = IssueMetadataState(panel, loadFailed = true)
-            }
+                    IssueMetadataPanel.Fields -> {
+                        val fields = detail.issueFields()
+                        combine(detail.projectedFields(fields), coord.pending) { shown, pending ->
+                            val marker = pending.firstOrNull { it.kind == MutationKind.ISSUE_FIELD && it.target.startsWith(detail.keys.fieldPrefix) }
+                            IssueMetadataState(panel, fields = shown, uncertain = marker != null, uncertainOperationId = marker?.operationId)
+                        }.collect { next -> mutableState.update { next.copy(saveFailed = it.saveFailed, conflict = it.conflict) } }
+                    }
+                }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { mutableState.value = IssueMetadataState(panel, loadFailed = true) }
         }
+    }
+
+    private suspend fun <T : Any> observeChoices(panel: IssueMetadataPanel, base: IssuePropertyChoices, key: MutationKey<T>, options: (T) -> List<WorkPropertyOption>) {
+        combine(coord.observe(key), coord.pending) { write, pending ->
+            val selected = write.visible?.let(options) ?: base.selected
+            val marker = pending.firstOrNull { it.kind == key.kind && it.target == key.target }
+            IssueMetadataState(panel, choices = base.copy(selected = selected, options = (base.options + selected).distinctBy { it.id }),
+                saving = write.phase == WritePhase.PENDING, saveFailed = write.phase == WritePhase.REJECTED,
+                uncertain = write.phase == WritePhase.UNCERTAIN, uncertainOperationId = marker?.operationId)
+        }.collect { mutableState.value = it }
     }
 
     fun dismiss() {
         loadJob?.cancel()
-        val current = state.value
-        mutableState.value = IssueMetadataState(saving = current.saving)
+        mutableState.value = IssueMetadataState()
     }
 
     fun saveChoices(selected: List<WorkPropertyOption>) {
         val snapshot = state.value
-        val baseline = snapshot.choices ?: return
-        if (!baseline.editable || snapshot.closeChoices || snapshot.uncertain) return
+        val base = snapshot.choices ?: return
+        if (!base.editable || snapshot.saving || snapshot.uncertain) return
         when (snapshot.panel) {
             IssueMetadataPanel.Type -> {
                 if (selected.size > 1) return
-                val id = selected.singleOrNull()?.id
-                save(closeChoices = true) {
-                    val coord = detail.mutations()
-                    var failure: Exception? = null
-                    val key = typeKey()
-                    val result =
-                        coord.submitAndAwait(
-                            key = key,
-                            confirmed = NullableValue(baseline.selected.singleOrNull()?.id),
-                            desired = NullableValue(id),
-                            tags = detail.mutationTags,
-                            send = { desired ->
-                                try {
-                                    detail.saveIssueType(baseline, desired.value)
-                                    NullableValue(detail.issueTypes().selected.singleOrNull()?.id)
-                                } catch (error: WorkDetailReviewChangedException) {
-                                    failure = error
-                                    throw error
-                                }
-                            },
-                            readBack = {
-                                NullableValue(detail.issueTypes().selected.singleOrNull()?.id)
-                            },
-                        )
-                    handleWriteOutcome(coord, key.kind, key.target, result.phase, failure, closeChoices = true)
-                }
+                val key = detail.keys.issueType
+                val accepted = coord.submit(key, NullableValue(base.selected.singleOrNull()), NullableValue(selected.singleOrNull()), detail.mutationTags,
+                    send = { detail.saveIssueType(base, it.value) }, readBack = { detail.readIssueType() })
+                if (accepted) dismiss()
+                reportOutcome(key)
             }
             IssueMetadataPanel.Assignees -> {
-                save(closeChoices = true) {
-                    val coord = detail.mutations()
-                    var failure: Exception? = null
-                    val key = detail.propertyMutationKey(WorkProperty.Assignees)
-                    val desiredIds = selected.map { it.id }
-                    val result =
-                        coord.submitAndAwait(
-                            key = key,
-                            confirmed = baseline.selected.map { it.id },
-                            desired = desiredIds,
-                            tags = detail.mutationTags,
-                            send = { _ ->
-                                try {
-                                    detail.saveIssueAssignees(baseline, selected)
-                                    detail.issueAssignees().selected.map { it.id }
-                                } catch (error: WorkDetailReviewChangedException) {
-                                    failure = error
-                                    throw error
-                                }
-                            },
-                            readBack = { detail.issueAssignees().selected.map { it.id } },
-                        )
-                    handleWriteOutcome(coord, key.kind, key.target, result.phase, failure, closeChoices = true)
-                }
+                val accepted = detail.submitProperty(WorkProperty.Assignees, base.selected, selected, base.issueId)
+                if (accepted) dismiss()
+                // Work property failures are reported by the detail's shared observer.
             }
-            else -> return
+            else -> Unit
         }
     }
 
     fun saveField(field: IssueField, value: IssueFieldValue?): Boolean {
-        val baseline = state.value.fields ?: return false
-        if (!baseline.editable || baseline.fields.none { it.id == field.id } || state.value.uncertain) {
-            return false
-        }
-        return save {
-            val coord = detail.mutations()
-            var failure: Exception? = null
-            val key = fieldKey(field.id)
-            var observed: IssueField? = null
-            val result =
-                coord.submitAndAwait(
-                    key = key,
-                    confirmed = NullableValue(field.value?.toMutationToken()),
-                    desired = NullableValue(value?.toMutationToken()),
-                    tags = detail.mutationTags,
-                    send = { desired ->
-                        try {
-                            detail.saveIssueField(baseline.issueId, field, value)
-                            val updated = detail.issueFields().fields.first { it.id == field.id }
-                            observed = updated
-                            NullableValue(updated.value?.toMutationToken())
-                        } catch (error: WorkDetailReviewChangedException) {
-                            failure = error
-                            throw error
-                        }
-                    },
-                    readBack = {
-                        val refreshed = detail.issueFields().fields.first { it.id == field.id }
-                        NullableValue(refreshed.value?.toMutationToken())
-                    },
-                )
-            if (result.phase == WritePhase.IDLE) {
-                mutableState.update { current ->
-                    val active = current.fields ?: return@update current
-                    if (active.issueId != baseline.issueId) current
-                    else current.copy(fields = active.copy(fields = active.fields.map {
-                        if (it.id == field.id) observed ?: it else it
-                    }))
-                }
-            } else {
-                handleWriteOutcome(coord, key.kind, key.target, result.phase, failure, closeChoices = false)
+        val fields = state.value.fields ?: return false
+        if (!fields.editable || fields.fields.none { it == field }) return false
+        val key = detail.keys.field(field.id)
+        val write = coord.current(key)
+        if (write.phase == WritePhase.PENDING || write.phase == WritePhase.UNCERTAIN) return false
+        val accepted = coord.submit(key, NullableValue(field.value), NullableValue(value), detail.mutationTags,
+            send = { desired -> NullableValue(detail.saveIssueField(fields.issueId, field, desired.value)) },
+            readBack = { NullableValue(detail.readFieldValue(fields.issueId, field.id)) })
+        reportOutcome(key)
+        return accepted
+    }
+
+    private fun <T : Any> reportOutcome(key: MutationKey<T>) {
+        scope.launch {
+            val outcome = coord.observe(key).first { it.phase != WritePhase.PENDING }
+            if (outcome.phase == WritePhase.REJECTED || outcome.phase == WritePhase.UNCERTAIN) {
+                mutableState.update { it.copy(saveFailed = true) }
+                onSaveFailure(IllegalStateException(outcome.message))
             }
         }
     }
 
     fun acknowledgeUncertain() {
-        val opId = state.value.uncertainOperationId ?: return
-        scope.launch {
-            val coord = detail.mutations()
-            coord.acknowledge(opId).join()
-            if (coord.pending.value.any { it.operationId == opId } || state.value.uncertainOperationId != opId) return@launch
-            mutableState.update {
-                it.copy(uncertain = false, uncertainOperationId = null, saveFailed = false)
-            }
-        }
+        state.value.uncertainOperationId?.let(coord::acknowledge)
     }
 
-    fun clearSaveError() {
-        mutableState.update { if (!it.saving) it.copy(saveFailed = false) else it }
-    }
-
-    private fun handleWriteOutcome(
-        coord: moe.yumeyuka.yumehub.data.cache.MutationCoordinator,
-        kind: MutationKind,
-        target: String,
-        phase: WritePhase,
-        failure: Exception?,
-        closeChoices: Boolean,
-    ) {
-        when (phase) {
-            WritePhase.IDLE -> {
-                if (closeChoices) mutableState.value = IssueMetadataState()
-            }
-            WritePhase.REJECTED -> {
-                if (failure is WorkDetailReviewChangedException) {
-                    mutableState.update { it.copy(conflict = true, closeChoices = false) }
-                    onSaveFailure(failure)
-                } else {
-                    mutableState.update { it.copy(saveFailed = true, closeChoices = false) }
-                    onSaveFailure(failure ?: IllegalStateException("Save rejected"))
-                }
-            }
-            WritePhase.UNCERTAIN -> {
-                val opId = coord.findUncertainOperationId(kind, target)
-                mutableState.update {
-                    it.copy(
-                        saveFailed = true,
-                        uncertain = true,
-                        uncertainOperationId = opId,
-                        closeChoices = false,
-                    )
-                }
-                onSaveFailure(IllegalStateException("Save unconfirmed"))
-            }
-            WritePhase.PENDING -> Unit
-        }
-    }
-
-    private fun save(closeChoices: Boolean = false, write: suspend () -> Unit): Boolean {
-        if (state.value.saving || state.value.uncertain) return false
-        mutableState.update {
-            it.copy(saving = true, saveFailed = false, conflict = false, closeChoices = closeChoices)
-        }
-        scope.launch {
-            try {
-                // 先提交 UI 状态并让出主线程，再开始可能较慢的 GraphQL 写请求。
-                yield()
-                write()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: WorkDetailReviewChangedException) {
-                mutableState.update { it.copy(conflict = true, closeChoices = false) }
-                onSaveFailure(error)
-            } catch (error: Exception) {
-                mutableState.update { it.copy(saveFailed = true, closeChoices = false) }
-                onSaveFailure(error)
-            } finally {
-                mutableState.update { it.copy(saving = false) }
-            }
-        }
-        return true
-    }
+    fun clearSaveError() { mutableState.update { it.copy(saveFailed = false) } }
 }

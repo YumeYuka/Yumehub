@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.collect
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
@@ -298,7 +299,8 @@ fun WorkDetailPage(
     }
     val canChangeBase =
         kind == CollaborationKind.PullRequest && state.item?.viewerCanChangeBase == true &&
-            state.item?.state == "open" && !state.submitting && !state.submissionUncertain &&
+            state.item?.state == "open" && !state.submitting && !state.unknownField("base") &&
+            state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN &&
             presentation.interactive && host.navigationEnabled
     WorkInfoSheet(
         visible = currentPage && infoVisible,
@@ -376,9 +378,7 @@ fun WorkDetailPage(
         onDismiss = { mergeVisible = false },
         loadMessage = viewModel::mergeMessage,
         onMerge = { item, method, message ->
-            if (host.navigationEnabled) {
-                viewModel.mergePullRequest(item, method, message) { mergeVisible = false }
-            }
+            if (host.navigationEnabled && viewModel.mergePullRequest(item, method, message)) mergeVisible = false
         },
     )
     CollaborationDeleteCommentDialog(state, viewModel)

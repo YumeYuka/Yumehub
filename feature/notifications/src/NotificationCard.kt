@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +28,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.yumeyucca.lucide.*
+import moe.yumeyuka.yumehub.core.model.CollaborationKind
+import moe.yumeyuka.yumehub.core.model.WorkTarget
+import moe.yumeyuka.yumehub.ui.component.rememberWorkRowProjection
+import moe.yumeyuka.yumehub.ui.component.workMergeProgress
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -97,19 +102,22 @@ private fun NotificationCardContent(
             lineHeight = NotificationRowTokens.TitleLineHeight,
             fontWeight = FontWeight.Medium,
         )
-    val title = notification.subject?.title?.takeIf(String::isNotBlank) ?: strings.Untitled
+    val work = remember(notification) {
+        when (val target = notification.toTarget()) {
+            is NotificationTarget.Issue -> WorkTarget(target.owner, target.repository, target.number, CollaborationKind.Issue)
+            is NotificationTarget.PullRequest -> WorkTarget(target.owner, target.repository, target.number, CollaborationKind.PullRequest)
+            else -> null
+        }
+    }
+    val write = rememberWorkRowProjection(work)
+    val title = write.title ?: write.confirmed?.title ?: notification.subject?.title?.takeIf(String::isNotBlank) ?: strings.Untitled
     val statusSlotSize =
         maxOf(
             GithubWorkStatusTokens.IconSize,
             with(LocalDensity.current) { titleStyle.lineHeight.toDp() },
         )
     val statusAlignment = with(LocalDensity.current) { statusSlotSize.roundToPx() / 2 }
-    val number =
-        when (val target = notification.toTarget()) {
-            is NotificationTarget.Issue -> target.number
-            is NotificationTarget.PullRequest -> target.number
-            else -> null
-        }
+    val number = work?.number
     val repository = notification.repository?.fullName ?: strings.Repository
     val activityText = preview?.body?.takeIf(String::isNotBlank)
     val hasActivity = preview?.author != null || activityText != null
@@ -142,6 +150,8 @@ private fun NotificationCardContent(
                         notification.subject?.type,
                         preview,
                         GithubWorkStatusTokens.IconSize,
+                        merged = write.merged || write.confirmed?.merged == true,
+                        state = write.state ?: write.confirmed?.state,
                     )
                 }
                 if (!isSelecting && notification.unread) {
@@ -195,6 +205,7 @@ private fun NotificationCardContent(
                         GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
                     }
                 }
+                workMergeProgress(write.mergePhase)?.let { Text(it, style = metadataStyle, color = colors.secondaryContent) }
                 if (hasActivity) {
                     NotificationPreviewContent(
                         preview = preview,
@@ -259,17 +270,19 @@ private fun NotificationSubjectIcon(
     type: String?,
     preview: NotificationPreviewDto?,
     iconSize: Dp,
+    merged: Boolean,
+    state: String?,
 ) {
     if (type == "CheckSuite" || type == "WorkflowRun") {
         GithubWorkflowStatusIcon(preview?.state, contentDescription = null, size = iconSize)
         return
     }
     val pullRequest = type == "PullRequest"
-    val closed = preview?.state == "CLOSED"
-    val completed = closed && preview.stateReason == "COMPLETED"
+    val closed = (state ?: preview?.state).equals("CLOSED", ignoreCase = true)
+    val completed = closed && preview?.stateReason == "COMPLETED"
     val icon =
         when {
-            pullRequest && preview?.merged == true -> Lucide.GitMerge
+            pullRequest && (merged || preview?.merged == true) -> Lucide.GitMerge
             pullRequest && closed -> Lucide.GitPullRequestClosed
             pullRequest && preview?.draft == true -> Lucide.GitPullRequestDraft
             pullRequest -> Lucide.GitPullRequest
@@ -289,7 +302,7 @@ private fun NotificationSubjectIcon(
         }
     val color =
         when {
-            pullRequest && preview?.merged == true || completed -> GithubWorkColors.merged
+            pullRequest && (merged || preview?.merged == true) || completed -> GithubWorkColors.merged
             pullRequest && closed -> GithubWorkColors.closed
             closed || preview?.draft == true -> GithubWorkColors.draft
             type in listOf("Issue", "PullRequest") && preview?.state == "OPEN" ->

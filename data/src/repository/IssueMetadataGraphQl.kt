@@ -141,6 +141,8 @@ internal class IssueMetadataGraphQl(
         }
     }
 
+    suspend fun fieldValue(issueId: String, fieldId: String): IssueFieldValue? = values(issueId)[fieldId]
+
     private suspend fun values(id: String): Map<String, IssueFieldValue> =
         collectNodes { after ->
             val issue = execute(

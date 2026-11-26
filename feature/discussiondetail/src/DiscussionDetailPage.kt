@@ -683,67 +683,98 @@ internal class DiscussionDetailViewModel(
     }
   }
 
+  private fun ensureReactionObserver(subjectId: String, baseline: List<GithubReactionGroup>) {
+    if (reactionObservers[subjectId]?.isActive == true) return
+    val key = reactionKey(subjectId)
+    reactionObservers[subjectId] =
+        viewModelScope.launch {
+          coordinator.observe(key).collect { write ->
+            val sourceReactions = state.value.reactableGroups(subjectId) ?: baseline
+            val value = write.visible
+            if (value != null) {
+              reactionUpdates.set(
+                  subjectId,
+                  GithubReactionUpdate(
+                      source = sourceReactions,
+                      reactions = value,
+                      pending = write.phase == WritePhase.PENDING,
+                  ),
+              )
+            }
+            if (write.phase == WritePhase.REJECTED || write.phase == WritePhase.UNCERTAIN) {
+              mutableReactionFailure.value =
+                  IllegalStateException(write.message ?: "Reaction failed")
+            }
+          }
+        }
+  }
+
   fun toggleReaction(
       subjectId: String,
       content: GithubReactionContent,
       reacted: Boolean,
   ) {
     val sourceReactions = state.value.reactableGroups(subjectId) ?: return
-    val coord = coordinator
-    val slotReactions = coord.current(reactionKey(subjectId)).visible
+    val key = reactionKey(subjectId)
+    val slot = coordinator.current(key)
     val previous = reactionUpdates.current(subjectId, sourceReactions)
-    val reactions = slotReactions ?: previous?.reactions ?: sourceReactions
+    ensureReactionObserver(subjectId, sourceReactions)
+    if (slot.phase == WritePhase.UNCERTAIN) {
+      coordinator.reconcile(key) { source.reactions(account, subjectId) }
+      mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
+      return
+    }
+    val reactions = slot.visible ?: previous?.reactions ?: sourceReactions
     if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
     val desired = reactions.withToggledReaction(content)
-    val pending = GithubReactionUpdate(sourceReactions, desired, pending = true)
-    reactionUpdates.set(subjectId, pending)
+    reactionUpdates.set(
+        subjectId,
+        GithubReactionUpdate(sourceReactions, desired, pending = true),
+    )
     mutableReactionFailure.value = null
     viewModelScope.launch {
-      val activeCoord = coord
-      if (reactionObservers[subjectId]?.isActive != true) {
-        reactionObservers[subjectId] =
-            launch {
-              activeCoord.observe(reactionKey(subjectId)).collect { write ->
-                val baseline = state.value.reactableGroups(subjectId) ?: sourceReactions
-                val value = write.visible
-                if (value != null) {
-                  reactionUpdates.set(
-                      subjectId,
-                      GithubReactionUpdate(
-                          source = baseline,
-                          reactions = value,
-                          pending = write.phase == WritePhase.PENDING,
-                      ),
-                  )
-                }
-                if (write.phase == WritePhase.REJECTED || write.phase == WritePhase.UNCERTAIN) {
-                  mutableReactionFailure.value =
-                      IllegalStateException(write.message ?: "Reaction failed")
-                }
-              }
-            }
-      }
+      val activeCoord = coordinator
       val accepted =
           activeCoord.submit(
-              reactionKey(subjectId),
+              key,
               confirmed = sourceReactions,
               desired = desired,
               tags = setOf(workTag),
               send = { nextDesired ->
-                val baseline =
-                    activeCoord.current(reactionKey(subjectId)).confirmed ?: sourceReactions
-                convergeGithubReactions(baseline, nextDesired, { activeCoord.confirmStep(reactionKey(subjectId), it) }) { targetContent, currentReacted ->
+                val baseline = activeCoord.current(key).confirmed ?: sourceReactions
+                convergeGithubReactions(
+                    baseline,
+                    nextDesired,
+                    { activeCoord.confirmStep(key, it) },
+                ) { targetContent, currentReacted ->
                   source.toggleReaction(account, subjectId, targetContent, currentReacted)
                 }
               },
               readBack = { source.reactions(account, subjectId) },
           )
       if (!accepted) {
-        reactionUpdates.set(subjectId, previous)
+        val latest = activeCoord.current(key)
+        val visible = latest.visible
+        if (visible != null) {
+          reactionUpdates.set(
+              subjectId,
+              GithubReactionUpdate(
+                  source = sourceReactions,
+                  reactions = visible,
+                  pending = latest.phase == WritePhase.PENDING,
+              ),
+          )
+        } else {
+          reactionUpdates.set(subjectId, previous)
+        }
+        if (latest.phase == WritePhase.UNCERTAIN) {
+          activeCoord.reconcile(key) { source.reactions(account, subjectId) }
+        }
         mutableReactionFailure.value = IllegalStateException("Result unconfirmed")
       }
     }
   }
+
 
   fun commentEditor(title: String): GithubEditorSession? {
     val detail = state.value.detail ?: return null
