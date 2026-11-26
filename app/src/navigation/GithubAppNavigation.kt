@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.navigation
 
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -30,58 +30,21 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.backhandler.BackEvent
 import com.arkivanov.essenty.backhandler.BackHandler
 import moe.yumeyuka.yumehub.core.model.githubWebUri
-import moe.yumeyuka.yumehub.feature.editor.EditorRoute
 import moe.yumeyuka.yumehub.ui.component.LocalGithubEditorFocusReady
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPageChromeTransition
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageChromeTransition
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 private const val MinPredictiveBackPercent = 1f
 private const val MaxPredictiveBackPercent = 100f
 
-/** 全部页面共用同一导航转场；编辑器仅延迟自动聚焦到入场结束。 */
+/** 复用页面的占位直到普通入场结束，编辑器随后才请求焦点。 */
 internal fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> {
-    // 两个不透明的页面同步滑动，交接时不露出宿主底色。
-    val routeAnimator = slide(tween(400, easing = FastOutSlowInEasing))
-    val pageAnimator = PageChromeAnimator(routeAnimator)
-    val editorAnimator = EditorFocusAnimator(pageAnimator)
-    return stackAnimation(
-        selector = { child ->
-            if (child.configuration.route is EditorRoute) editorAnimator else pageAnimator
-        },
-    )
+    // Scaling around the window center moves the toolbar into the status bar during entry.
+    val routeAnimator = slide(tween(400, easing = CubicBezierEasing(0.48f, 0.19f, 0.05f, 1.03f)))
+    return stackAnimation(animator = RouteEntryAnimator(routeAnimator))
 }
 
-/** 将顶栏和底栏交给共享图层动画，页面内容仍使用统一路由转场。 */
-private class PageChromeAnimator(private val delegate: StackAnimator) : StackAnimator {
-    @Composable
-    override fun invoke(
-        direction: Direction,
-        isInitial: Boolean,
-        onFinished: () -> Unit,
-        content: @Composable (Modifier) -> Unit,
-    ) {
-        val animateChrome = !isInitial
-        var pageFinished by remember(direction, isInitial) { mutableStateOf(false) }
-        val entering = direction == Direction.ENTER_FRONT || direction == Direction.ENTER_BACK
-        delegate(
-            direction,
-            isInitial,
-            if (animateChrome) ({ pageFinished = true }) else onFinished,
-        ) { modifier ->
-            val chrome =
-                if (animateChrome)
-                    GithubPageChromeTransition(modifier, entering, pageFinished, onFinished)
-                else null
-            CompositionLocalProvider(LocalGithubPageChromeTransition provides chrome) {
-                content(if (animateChrome) Modifier else modifier)
-            }
-        }
-    }
-}
-
-/** 编辑器使用统一页面动画，入场完成前不请求输入焦点。 */
-private class EditorFocusAnimator(private val delegate: StackAnimator) : StackAnimator {
+private class RouteEntryAnimator(private val delegate: StackAnimator) : StackAnimator {
     @Composable
     override fun invoke(
         direction: Direction,
@@ -99,7 +62,10 @@ private class EditorFocusAnimator(private val delegate: StackAnimator) : StackAn
                 onFinished()
             },
         ) { modifier ->
-            CompositionLocalProvider(LocalGithubEditorFocusReady provides (entering && finished)) {
+            CompositionLocalProvider(
+                LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
+                LocalGithubEditorFocusReady provides (entering && finished),
+            ) {
                 content(modifier)
             }
         }
@@ -233,10 +199,13 @@ internal class GithubAppNavigationComponent(
     /** 只从 AppRoot 的账号作用域绑定一次，绝不比较每个 tab 的 owner 包装对象。 */
     fun bindSession(session: GithubNavigationSession, login: String) {
         if (this.session === session) return
-        if (this.session != null) pendingLink = null
+        val previousSession = this.session
+        val accountChanged = sessionLogin != null && sessionLogin != login
+        if (previousSession != null) pendingLink = null
         this.session = session
         sessionLogin = login
-        resetStacks()
+        // The initial route is already an empty MainTabsRoute; avoid replacing it from the first ViewModel factory.
+        if (previousSession != null || accountChanged) resetStacks()
     }
 
     fun endSession(session: GithubNavigationSession) {

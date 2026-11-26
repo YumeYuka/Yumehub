@@ -64,25 +64,19 @@ internal fun GithubTopBar(
             contentModifier = contentModifier,
             navigationIcon = {
                 // 只补偿原按钮的 16dp 边距和 27dp 中心，不移动原生标题。
-                GithubPageChrome(
+                GlasmioToolbarActionGroup(
                     modifier = Modifier.padding(start = 4.dp).offset(y = 1.dp),
-                    toolbar = true,
+                    style = GlasmioToolbarActionStyle.Merged,
                 ) {
-                    GlasmioToolbarActionGroup(style = GlasmioToolbarActionStyle.Merged) {
-                        navigation()
-                    }
+                    navigation()
                 }
             },
             actions = {
-                GithubPageChrome(
+                GlasmioToolbarActionGroup(
                     modifier = Modifier.padding(end = 4.dp).offset(y = 1.dp),
-                    toolbar = true,
-                ) {
-                    GlasmioToolbarActionGroup(
-                        style = GlasmioToolbarActionStyle.Merged,
-                        content = actions,
-                    )
-                }
+                    style = GlasmioToolbarActionStyle.Merged,
+                    content = actions,
+                )
             },
         )
     }

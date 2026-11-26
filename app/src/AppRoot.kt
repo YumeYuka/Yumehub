@@ -88,16 +88,7 @@ internal fun AppRoot(
         }
 
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
-    val openInBrowser = rememberExternalUriHandler()
-    val pending = navigationComponent.pendingLink
-    LaunchedEffect(authState, pending, loginOpen) {
-        if (pending == null || loginOpen) return@LaunchedEffect
-        val needsSession = parseGithubLink(pending) != null
-        if (needsSession && authState !is AuthUiState.Authenticated) return@LaunchedEffect
-        snapshotFlow { navigationComponent.state.locked }.first { !it }
-        if (!navigationComponent.consumeLink(pending)) return@LaunchedEffect
-        if (!navigationComponent.openLink(pending)) openInBrowser(pending)
-    }
+    GithubPendingLinkEffect(navigationComponent, authState, loginOpen)
     val twoFactorState by twoFactorViewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
     val accentArgb by settingsViewModel.accentColor.collectAsStateWithLifecycle()
@@ -234,6 +225,24 @@ internal fun AppRoot(
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun GithubPendingLinkEffect(
+    navigationComponent: GithubAppNavigationComponent,
+    authState: AuthUiState,
+    loginOpen: Boolean,
+) {
+    val openInBrowser = rememberExternalUriHandler()
+    val pending = navigationComponent.pendingLink
+    LaunchedEffect(authState, pending, loginOpen) {
+        if (pending == null || loginOpen) return@LaunchedEffect
+        val needsSession = parseGithubLink(pending) != null
+        if (needsSession && authState !is AuthUiState.Authenticated) return@LaunchedEffect
+        snapshotFlow { navigationComponent.state.locked }.first { !it }
+        if (!navigationComponent.consumeLink(pending)) return@LaunchedEffect
+        if (!navigationComponent.openLink(pending)) openInBrowser(pending)
     }
 }
 

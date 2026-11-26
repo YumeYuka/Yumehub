@@ -24,7 +24,6 @@ import io.github.neoruaa.glasmio.scaffold.rememberGlasmioNavigationScrollState
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import moe.yumeyuka.yumehub.feature.profile.ProfileRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPageChrome
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
@@ -37,8 +36,7 @@ private class GithubMainPageStateViewModel : ViewModel() {
 /**
  * 主根路由的全部内容：三个主标签的 Pager 和悬浮底栏。
  *
- * 底栏在普通进退栈时独立淡入淡出。返回时页号取自保留组件，收缩状态由 saveable 恢复。 此处不读路由栈，栈顶归属只经 [RouteChild.isTop] 的子 dispatcher
- * 生效。
+ * 返回时页号取自保留组件，底栏与当前页面一起转场。
  */
 @Composable
 internal fun GithubMainScreen(navigator: GithubNavigator) {
@@ -95,30 +93,31 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
             key = { mainNavigationTabs[it].name },
             userScrollEnabled = !component.state.locked,
             overscrollEffect = null,
+            // 与 InstallerX-Revived 首页一致：相邻标签预先组合，滑动时内容已经就绪。
+            beyondViewportPageCount = 1,
             modifier =
                 Modifier.fillMaxSize().nestedScroll(navigationScrollState.nestedScrollConnection),
         ) { index ->
             GithubMainTabPage(tab = mainNavigationTabs[index], navigator = navigator)
         }
         if (!topTabs) {
-            GithubPageChrome(Modifier.align(Alignment.BottomCenter)) {
-                GithubBottomBar(
-                    selectedTab = currentTab,
-                    onSelected = selectTab,
-                    backdrop = args.bottomBarBackdrop,
-                    onOpenProfile = {
-                        if (child.isTop && !component.state.locked) navigator.push(ProfileRoute)
-                    },
-                    accounts = args.accounts,
-                    compactProgress =
-                        if (args.keepBottomBarExpanded) expandedProgress
-                        else navigationScrollState.compactProgress,
-                    scrollHintProgress =
-                        if (args.keepBottomBarExpanded) expandedProgress
-                        else navigationScrollState.scrollHintProgress,
-                    onExpand = navigationScrollState::expand,
-                )
-            }
+            GithubBottomBar(
+                selectedTab = currentTab,
+                onSelected = selectTab,
+                backdrop = args.bottomBarBackdrop,
+                onOpenProfile = {
+                    if (child.isTop && !component.state.locked) navigator.push(ProfileRoute)
+                },
+                accounts = args.accounts,
+                compactProgress =
+                    if (args.keepBottomBarExpanded) expandedProgress
+                    else navigationScrollState.compactProgress,
+                scrollHintProgress =
+                    if (args.keepBottomBarExpanded) expandedProgress
+                    else navigationScrollState.scrollHintProgress,
+                onExpand = navigationScrollState::expand,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -128,10 +127,8 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
 private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
     val component = LocalGithubShellArgs.current.component
     val isActive = component.mainTab == tab
-    val lifecycleOwner =
-        rememberLifecycleOwner(
-            maxLifecycle = if (isActive) Lifecycle.State.RESUMED else Lifecycle.State.CREATED,
-        )
+    // 预组合的标签页保持 RESUMED，只有返回 dispatcher 与刷新归属跟随当前标签。
+    val lifecycleOwner = rememberLifecycleOwner(maxLifecycle = Lifecycle.State.RESUMED)
     val dispatcherOwner =
         rememberChildDispatcherOwner(
             parent = checkNotNull(LocalNavigationEventDispatcherOwner.current),

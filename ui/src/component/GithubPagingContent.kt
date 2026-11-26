@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.paging.LoadState
 import androidx.paging.PagingData
@@ -35,6 +36,7 @@ import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubListFrameActive
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
 
 private val LocalPagingContentKey = staticCompositionLocalOf<Any?> { null }
@@ -167,11 +169,22 @@ fun <T : Any> rememberGithubPagingSlots(
         remember(page, frameKey) { page?.pagingKeys(frameKey) ?: GithubPagingSlotKeys(frameKey) }
     val previous =
         remember(items, frameKey) { mutableStateOf(page?.pagingFrame<T>("slots:$frameKey")) }
+    val entryReady = LocalGithubRouteEntryReady.current
+    val firstPresentation = remember(items, frameKey) { mutableStateOf(previous.value != null) }
+    if (!firstPresentation.value && entryReady) {
+        LaunchedEffect(items, frameKey) {
+            withFrameNanos {}
+            withFrameNanos {}
+            firstPresentation.value = true
+        }
+    }
+    val showEntrySkeleton = !firstPresentation.value
     val current = items.itemSnapshotList
     val retain =
         !contentReady || current.isEmpty() && items.loadState.refresh !is LoadState.NotLoading
     val snapshot =
-        retainedPagingSnapshot(previous.value, current, items.loadState.refresh, contentReady)
+        if (showEntrySkeleton) emptyList()
+        else retainedPagingSnapshot(previous.value, current, items.loadState.refresh, contentReady)
     SideEffect {
         if (!retain && (current.isNotEmpty() || items.loadState.refresh is LoadState.NotLoading)) {
             previous.value = current
@@ -200,7 +213,7 @@ fun <T : Any> rememberGithubPagingSlots(
             showInitialSlots.value = true
         }
     }
-    val showSkeleton = showInitialSlots.value
+    val showSkeleton = showEntrySkeleton || showInitialSlots.value
     val appending = append is LoadState.Loading
     val ids = remember(allocator, snapshot) { snapshot.map { it?.let(itemKey) } }
     val keys =

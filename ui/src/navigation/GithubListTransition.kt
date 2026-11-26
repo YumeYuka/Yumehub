@@ -1,6 +1,8 @@
 package moe.yumeyuka.yumehub.ui.navigation
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
@@ -48,15 +50,20 @@ internal fun GithubAnimatedListContent(
                 else targetState.transition.order.compareTo(initialState.transition.order)
             val direction = if (rtl) -delta else delta
             val timing = tween<Float>(300, easing = FastOutSlowInEasing)
-            ((fadeIn(timing) +
-                    slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) {
-                        direction * it / 8
-                    }) togetherWith
-                    (fadeOut(timing) +
-                        slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) {
-                            -direction * it / 8
-                        }))
-                .using(null)
+            // 启动占位帧换到首帧正文不换分类，直接交接；交叉淡化会让固定入口闪一下。
+            if (initialState.transition.loading) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else {
+                ((fadeIn(timing) +
+                        slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) {
+                            direction * it / 8
+                        }) togetherWith
+                        (fadeOut(timing) +
+                            slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) {
+                                -direction * it / 8
+                            }))
+                    .using(null)
+            }
         },
     ) { displayed ->
         val active = displayed.transition.source == frame.transition.source

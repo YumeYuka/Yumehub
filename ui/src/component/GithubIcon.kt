@@ -4,14 +4,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.LayerOutsets
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.Group
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.Path
@@ -27,7 +23,6 @@ import io.github.neoruaa.glasmio.core.LocalGroupedListIconColor
 import io.github.neoruaa.glasmio.icons.GlasmioIconResolver
 import io.github.neoruaa.glasmio.icons.MaterialGlasmioIconResolver
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubToolbarProgress
 
 @Composable
 fun GithubIcon(
@@ -38,19 +33,6 @@ fun GithubIcon(
     tint: Color = LocalGroupedListIconColor.current ?: GlasmioTheme.colors.content,
     filled: Boolean = false,
 ) {
-    val toolbarProgress = LocalGithubToolbarProgress.current
-    val iconModifier =
-        if (toolbarProgress == null) modifier
-        else
-            modifier.graphicsLayer {
-                val progress = toolbarProgress.value
-                alpha = progress.coerceIn(0f, 1f)
-                scaleX = 0.2f + 0.8f * progress
-                scaleY = scaleX
-                outsets = LayerOutsets(32.dp, 32.dp, 32.dp, 32.dp)
-                val blur = 10.dp.toPx() * (1f - progress).coerceIn(0f, 1f)
-                renderEffect = if (blur > 0.1f) BlurEffect(blur, blur, TileMode.Decal) else null
-            }
     if (filled) {
         val painter =
             rememberVectorPainter(
@@ -62,8 +44,8 @@ fun GithubIcon(
             ) { _, _ ->
                 FilledLucideGroup(imageVector.root, tint)
             }
-        Icon(painter, contentDescription, iconModifier.size(size), tint)
-    } else Icon(imageVector, contentDescription, iconModifier.size(size), tint)
+        Icon(painter, contentDescription, modifier.size(size), tint)
+    } else Icon(imageVector, contentDescription, modifier.size(size), tint)
 }
 
 /** 复用 Lucide 原始路径，仅改变填充画刷，不定义或修改图标几何。 */

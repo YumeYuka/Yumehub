@@ -29,8 +29,6 @@ import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import moe.yumeyuka.yumehub.feature.editor.EditorRoute
-import moe.yumeyuka.yumehub.ui.navigation.GithubPageChromeHost
-import moe.yumeyuka.yumehub.ui.navigation.GithubPageChromeOverlay
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
@@ -98,11 +96,9 @@ internal class RouteChild(
             LocalGithubRouteChild provides this,
             LocalGithubPageState provides pageState,
         ) {
-            GithubPageChromeHost {
-                Box(Modifier.fillMaxSize().background(GlasmioTheme.colors.groupedBackground)) {
-                    if (route is MainTabsRoute) GithubMainScreen(navigator)
-                    else GithubRouteContent(route, navigator)
-                }
+            Box(Modifier.fillMaxSize().background(GlasmioTheme.colors.groupedBackground)) {
+                if (route is MainTabsRoute) GithubMainScreen(navigator)
+                else GithubRouteContent(route, navigator)
             }
         }
     }
@@ -141,10 +137,7 @@ internal fun GithubRouteStackHost(
     val childStack by stack.value.subscribeAsState()
     // 内容 lambda 不能捕获任何外壳状态：预测返回以它为 key 记住 movableContent，实例一变整棵页面树就会重建。
     // 页面需要的环境都经 CompositionLocal 读取。
-    GithubPageChromeOverlay(modifier.fillMaxSize()) {
-        Children(stack = childStack, modifier = Modifier.fillMaxSize(), animation = animation) {
-            child ->
-            child.instance.Content()
-        }
+    Children(stack = childStack, modifier = modifier.fillMaxSize(), animation = animation) { child ->
+        child.instance.Content()
     }
 }

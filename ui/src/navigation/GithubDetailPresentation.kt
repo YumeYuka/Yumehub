@@ -125,6 +125,9 @@ enum class GithubDetailKind {
 
 val LocalGithubDetailPresentation = staticCompositionLocalOf<GithubDetailPresentation?> { null }
 
+/** While a route is entering, existing skeletons can postpone their first content handoff. */
+val LocalGithubRouteEntryReady = staticCompositionLocalOf { true }
+
 @Composable
 fun rememberGithubDetailPresentation(
     key: Any,
@@ -153,7 +156,7 @@ fun rememberGithubDetailPresentation(
         }
     state.dataReady = dataReady
     state.dataFailure = failed
-    val ready = state.canReveal
+    val ready = LocalGithubRouteEntryReady.current && state.canReveal
     LaunchedEffect(state, ready) {
         if (state.revealed || !ready) return@LaunchedEffect
         // 让 LazyColumn 的可见条目完成放置和文档登记，再检查一次；不等待屏外项。

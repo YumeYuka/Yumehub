@@ -69,7 +69,7 @@ internal val NavigationBarClearance = NavigationBarSurfaceHeight + BottomBarBott
 /**
  * 已登录外壳：只负责脚手架、玻璃采样源和路由环境。
  *
- * 外壳的组合体不读路由栈，也不持有底栏。底栏属于主根路由（见 [GithubMainScreen]），在该页控件层独立淡入淡出。
+ * 外壳不订阅路由栈。底栏属于主根路由（见 [GithubMainScreen]），随主根一起转场。
  */
 @Composable
 internal fun GithubAppShell(

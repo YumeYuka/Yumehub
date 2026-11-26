@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.IntSize
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubDetailPresentation
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 private val FadeSpec = tween<Float>(PlaceholderTokens.TransitionMillis)
 private val SizeSpec = tween<IntSize>(PlaceholderTokens.TransitionMillis)
@@ -48,7 +49,7 @@ fun GithubLoadingContent(
 ) {
     val detail = LocalGithubDetailPresentation.current
     AnimatedContent(
-        targetState = loading,
+        targetState = loading || !LocalGithubRouteEntryReady.current,
         modifier = modifier,
         transitionSpec = {
             if (detail != null && !detail.interactive) {
