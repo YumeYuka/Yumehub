@@ -277,7 +277,6 @@ class ProfileRepository(
         val confirmed =
             user["viewerIsFollowing"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
                 ?: throw ProfileException()
-        if (confirmed != selected) throw ProfileException()
         synchronized(tokenStore.responseCacheSession.lock) {
             session.ensureCurrent()
             cache.changes(expected).publish(DataDomain.Relationships, DataDomain.Profile)

@@ -284,8 +284,9 @@ private fun FeedAction(
     var confirm by remember { mutableStateOf(false) }
     val selected = state.selected == true
     val label =
-        if (state.selected == null) {
-            strings.Common.Retry
+        if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN) strings.Common.MutationReconcile
+        else if (state.selected == null) {
+            if (state.busy) strings.Common.MutationPreparing else strings.Common.Retry
         } else if (following) {
             if (selected) strings.Explore.FollowingUser else strings.Profile.FollowUser
         } else {
@@ -311,7 +312,8 @@ private fun FeedAction(
         )
     GlasmioButton(
         onClick = {
-            if (state.selected == null) onRetry()
+            if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.UNCERTAIN) onToggle()
+            else if (state.selected == null) onRetry()
             else if (following && selected) confirm = true else onToggle()
         },
         modifier = Modifier.fillMaxWidth(),
@@ -360,7 +362,7 @@ private fun FeedAction(
                     label = "feed-action-label",
                 ) { text ->
                     Text(
-                        text,
+                        if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.PENDING) "$text · ${strings.Common.MutationPending}" else text,
                         style = style,
                         color = GlasmioTheme.colors.content,
                         maxLines = 1,

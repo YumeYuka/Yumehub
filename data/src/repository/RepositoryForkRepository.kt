@@ -13,9 +13,7 @@ import moe.yumeyuka.yumehub.data.api.dto.ForkRepositoryRequest
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.auth.SessionFailures
-import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
-import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import retrofit2.HttpException
@@ -110,16 +108,6 @@ class RepositoryForkRepository(
                                 it.fork == true,
                         )
                     }
-            }
-            .also {
-                synchronized(tokens.responseCacheSession.lock) {
-                    checkSession(session)
-                    cache.invalidateAndPersist(
-                        session.account,
-                        setOf(CacheTag(DataDomain.Repositories, "my-repositories")),
-                    )
-                    cache.changes(session.account).publish(DataDomain.Repositories)
-                }
             }
 
     private fun checkSession(session: Session) {

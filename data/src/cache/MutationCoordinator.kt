@@ -3,8 +3,12 @@ package moe.yumeyuka.yumehub.data.cache
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +55,7 @@ enum class MutationKind {
     WORKFLOW_DISPATCH,
     CHECK_RERUN,
     FEED_FILTERS,
+    TWO_FACTOR_DECISION,
 }
 
 enum class WritePhase { IDLE, PENDING, UNCERTAIN, REJECTED }
@@ -71,12 +76,16 @@ data class WriteState<T : Any>(
     val desired: T? = null,
     val phase: WritePhase = WritePhase.IDLE,
     val message: String? = null,
-)
+) {
+    /** An uncertain intent is a hint, not an observed remote value. */
+    val visible: T? get() = if (phase == WritePhase.PENDING) desired ?: confirmed else confirmed
+}
 
 data class CommandState<R : Any>(
     val result: R? = null,
     val phase: WritePhase = WritePhase.IDLE,
     val message: String? = null,
+    val submissionId: String? = null,
 )
 
 data class PendingMutationSummary(
@@ -110,11 +119,27 @@ internal fun Throwable.isDefiniteMutationRejection(): Boolean =
         is MutationRejectedException,
         is WorkDetailReviewChangedException,
         is WorkDetailCommentChangedException -> true
-        is DashboardFeedException -> errors.isNotEmpty()
         is GithubPageException -> definiteRejection
+        is moe.yumeyuka.yumehub.data.twofactor.TwoFactorException -> definiteRejection
         is HttpException -> code() in setOf(400, 401, 403, 404, 409, 422)
         else -> false
     }
+
+/** Only cache entries actually updated by this server call participate in its durability fence. */
+internal class ConfirmedWrites(val operationId: String) {
+    var checkpointed = false
+    private val entries = mutableSetOf<CachedResource<*>>()
+    fun record(resource: CachedResource<*>) { synchronized(entries) { entries.add(resource) } }
+    private var cleanups: MutableList<() -> Unit>? = null
+    fun onCommit(cleanup: () -> Unit) {
+        synchronized(this) { (cleanups ?: mutableListOf<() -> Unit>().also { cleanups = it }).add(cleanup) }
+    }
+    fun committed() { synchronized(this) { cleanups }?.forEach { it() } }
+    suspend fun persist() {
+        for (entry in synchronized(entries) { entries.toList() }) entry.persistConfirmed()
+    }
+    companion object { val current = ThreadLocal<ConfirmedWrites?>() }
+}
 
 /**
  * 会话级写状态与未确认操作恢复。
@@ -136,6 +161,7 @@ internal constructor(
         var epoch = 0L
         var readSequence = 0L
         var confirmedKnown = false
+        var requiresFreshRead = false
         var inFlight = false
         var operationId: String? = null
         var tags: Set<CacheTag> = emptySet()
@@ -164,12 +190,16 @@ internal constructor(
     }
 
     private class CommandPending<R : Any>(
+        val id: String,
         val tags: Set<CacheTag>,
+        val result: CompletableDeferred<CommandState<R>>,
+        val onConfirmed: ((R) -> Unit)?,
         val send: suspend () -> R,
         val readBack: suspend () -> R?,
     )
 
     private val lock = Any()
+    private val syncMarkers: () -> Unit = store::sync
     private val slots = mutableMapOf<String, Slot<*>>()
     private val commands = mutableMapOf<String, CommandSlot<*>>()
     // 恢复出的未知项在页面首次订阅前也必须出现在待核对列表。
@@ -208,18 +238,18 @@ internal constructor(
         send: suspend (T) -> T,
         readBack: suspend () -> T,
     ): Boolean {
+        if (!isCurrent()) return false
         val slot = slot(key)
         return synchronized(slot) {
             if (slot.state.value.phase == WritePhase.UNCERTAIN) {
-                // 未知期间同目标不发排队意图；只更新投影，等待用户核对。
-                slot.state.value = slot.state.value.copy(desired = desired, message = null)
-                slot.tags = tags
+                // The previous action may still complete. An unaccepted tap is not a new intent.
                 return@synchronized false
             }
-            if (!slot.confirmedKnown && confirmed != null) {
+            if (!slot.confirmedKnown && !slot.requiresFreshRead && confirmed != null) {
                 slot.confirmedKnown = true
                 slot.state.value = slot.state.value.copy(confirmed = confirmed)
             }
+            slot.epoch++
             slot.tags = tags
             slot.startedAt = System.currentTimeMillis()
             val pending = Pending(desired, tags, send, readBack)
@@ -258,32 +288,36 @@ internal constructor(
         }
     }
 
+    /** The slot describes the target; the returned receipt settles exactly this submission, even after another writer arrives. */
     fun <R : Any> submitCommand(
         key: MutationKey<R>,
         tags: Set<CacheTag>,
+        onConfirmed: ((R) -> Unit)? = null,
         send: suspend () -> R,
         readBack: suspend () -> R?,
-    ): Boolean {
+    ): Deferred<CommandState<R>>? {
+        if (!isCurrent()) return null
         val slot = commandSlot(key)
         return synchronized(slot) {
-            if (slot.state.value.phase == WritePhase.UNCERTAIN) return@synchronized false
-            if (slot.inFlight) return@synchronized false
+            if (slot.state.value.phase == WritePhase.UNCERTAIN || slot.operationId != null || slot.inFlight || slot.pending != null) return@synchronized null
+            val submissionId = UUID.randomUUID().toString()
             if (mutableRecoveryFailed.value) {
                 slot.pending = null
                 slot.state.value =
                     CommandState(
                         phase = WritePhase.REJECTED,
                         message = MutationRecoveryFailed,
+                        submissionId = submissionId,
                     )
-                return@synchronized false
+                return@synchronized null
             }
             slot.tags = tags
             slot.startedAt = System.currentTimeMillis()
-            slot.pending = CommandPending(tags, send, readBack)
-            slot.state.value = CommandState(phase = WritePhase.PENDING)
-            if (!mutableReady.value) return@synchronized true
-            startCommand(slot)
-            true
+            val result = CompletableDeferred<CommandState<R>>(scope.coroutineContext[Job])
+            slot.pending = CommandPending(submissionId, tags, result, onConfirmed, send, readBack)
+            slot.state.value = CommandState(phase = WritePhase.PENDING, submissionId = submissionId)
+            if (mutableReady.value) startCommand(slot)
+            result
         }
     }
 
@@ -351,6 +385,8 @@ internal constructor(
             synchronized(lock) {
                 recovered.entries.firstOrNull { it.value.operationId == operationId }?.value
             }
+        if (!isCurrent() || (marker == null && slot?.state?.value?.phase != WritePhase.UNCERTAIN &&
+                command?.state?.value?.phase != WritePhase.UNCERTAIN)) return@launch
         val tags =
             synchronized(lock) {
                 slot?.tags.orEmpty() + command?.tags.orEmpty()
@@ -403,7 +439,10 @@ internal constructor(
                         known.pending = null
                         known.epoch++
                         known.confirmedKnown = false
-                        @Suppress("UNCHECKED_CAST") (known as Slot<Any>).state.value = WriteState()
+                        known.requiresFreshRead = true
+                        @Suppress("UNCHECKED_CAST")
+                        val typed = known as Slot<Any>
+                        typed.state.value = WriteState()
                     }
                 }
             commands.values
@@ -434,6 +473,32 @@ internal constructor(
         }
     }
 
+    /** A verified intermediate response owns only the active request's baseline, not a newer intent. */
+    fun <T : Any> confirmStep(key: MutationKey<T>, confirmed: T) {
+        val writes = checkNotNull(ConfirmedWrites.current.get())
+        if (!isCurrent()) throw expiredSession()
+        val slot = slot(key)
+        synchronized(slot) {
+            check(slot.operationId == writes.operationId && slot.inFlight)
+            slot.epoch++
+            slot.confirmedKnown = true
+            slot.state.value = slot.state.value.copy(confirmed = confirmed)
+            writes.checkpointed = true
+        }
+    }
+
+    /** Hydration may seed a new slot, but never supersedes a network read or a user intent. */
+    fun <T : Any> seedFromCache(key: MutationKey<T>, value: T) {
+        if (!isCurrent()) return
+        val slot = slot(key)
+        synchronized(slot) {
+            if (slot.epoch == 0L && !slot.confirmedKnown && slot.state.value.phase == WritePhase.IDLE) {
+                slot.confirmedKnown = true
+                slot.state.value = slot.state.value.copy(confirmed = value)
+            }
+        }
+    }
+
     fun <T : Any> publishConfirmed(
         key: MutationKey<T>,
         stamp: MutationReadStamp,
@@ -450,6 +515,7 @@ internal constructor(
             )
                 return@synchronized false
             slot.confirmedKnown = true
+            slot.requiresFreshRead = false
             slot.state.value = slot.state.value.copy(confirmed = value)
             true
         }
@@ -516,15 +582,16 @@ internal constructor(
                             }
                             commands.values.forEach { cmd ->
                                 synchronized(cmd) {
-                                    cmd.pending = null
                                     if (cmd.state.value.phase == WritePhase.PENDING) {
                                         @Suppress("UNCHECKED_CAST")
-                                        (cmd as CommandSlot<Any>).state.value =
-                                            CommandState(
-                                                phase = WritePhase.REJECTED,
-                                                message = MutationRecoveryFailed,
-                                            )
+                                        val typed = cmd as CommandSlot<Any>
+                                        typed.state.value = typed.state.value.copy(
+                                            phase = WritePhase.REJECTED,
+                                            message = MutationRecoveryFailed,
+                                        )
+                                        typed.pending?.result?.complete(typed.state.value)
                                     }
+                                    cmd.pending = null
                                 }
                             }
                         }
@@ -548,18 +615,21 @@ internal constructor(
 
     private fun <R : Any> applyRecoveredCommand(slot: CommandSlot<R>, marker: MutationMarker) {
         slot.operationId = marker.operationId
-        slot.pending = null
         slot.markerTags = marker.tags
         slot.startedAt = marker.startedAt
         slot.state.value =
-            CommandState(phase = WritePhase.UNCERTAIN, message = MutationUncertain)
+            CommandState(phase = WritePhase.UNCERTAIN, message = MutationUncertain, submissionId = marker.operationId)
+        slot.pending?.result?.complete(slot.state.value)
+        slot.pending = null
     }
 
     private fun <T : Any> start(slot: Slot<T>) {
-        val pending = synchronized(slot) { slot.pending } ?: return
-        synchronized(slot) {
+        val pending = synchronized(slot) {
+            if (slot.inFlight || slot.operationId != null) return
+            val next = slot.pending ?: return
             slot.pending = null
             slot.inFlight = true
+            next
         }
         scope.launch {
             var latest: Pending<T>? = pending
@@ -568,6 +638,8 @@ internal constructor(
                 try {
                     stopLoop = !perform(slot, latest)
                 } catch (error: CancellationException) {
+                    synchronized(slot) { slot.inFlight = false; slot.pending = null }
+                    if (isCurrent() && slot.operationId == null) reject(slot, error)
                     throw error
                 } catch (error: Exception) {
                     if (error.isDefiniteMutationRejection()) {
@@ -599,7 +671,10 @@ internal constructor(
                                     slot.inFlight = true
                                     next
                                 }
-                            } else null
+                            } else {
+                                slot.state.value = slot.state.value.copy(desired = null, phase = WritePhase.IDLE)
+                                null
+                            }
                         }
                     }
             }
@@ -609,8 +684,9 @@ internal constructor(
 
     private suspend fun <T : Any> perform(slot: Slot<T>, pending: Pending<T>): Boolean {
         if (!isCurrent()) return false
-        if (!slot.confirmedKnown) {
+        if (synchronized(slot) { !slot.confirmedKnown || slot.requiresFreshRead }) {
             // 首次无 confirmed：立即显示提交中，强读 baseline；读失败不发送。
+            val stamp = beginRead(slot.key)
             val baseline =
                 try {
                     pending.readBack()
@@ -621,9 +697,12 @@ internal constructor(
                     return false
                 }
             if (!isCurrent()) return false
-            synchronized(slot) {
-                slot.confirmedKnown = true
-                slot.state.value = slot.state.value.copy(confirmed = baseline)
+            if (!publishConfirmed(slot.key, stamp, baseline)) {
+                if (synchronized(slot) { slot.pending != null }) return true
+                if (synchronized(slot) { !slot.confirmedKnown }) {
+                    reject(slot, MutationRejectedException(MutationNotSubmitted))
+                    return false
+                }
             }
         }
         val key = slot.key
@@ -656,9 +735,8 @@ internal constructor(
         try {
             // 发送前必须等失效屏障持久完成。
             cache.prepareInvalidation(account, pending.tags)
-            cache.writeQueue.run {
+            cache.writeQueue.run(syncMarkers) {
                 store.updatePhase(account, operationId, MarkerPhase.MAY_HAVE_SENT)
-                store.sync()
             }
         } catch (error: CancellationException) {
             throw error
@@ -669,16 +747,24 @@ internal constructor(
             reject(slot, error)
             return false
         }
+        val writes = ConfirmedWrites(operationId)
         val confirmed =
             try {
-                pending.send(pending.desired)
+                withContext(ConfirmedWrites.current.asContextElement(writes)) { pending.send(pending.desired) }
             } catch (error: CancellationException) {
                 // 发送后取消：结果未知，保留 marker。
                 markUnknown(slot, pending)
                 throw error
             } catch (error: Exception) {
+                if (writes.checkpointed && isCurrent()) {
+                    cache.invalidate(account, pending.tags)
+                    publish(pending.tags)
+                }
                 if (error.isDefiniteMutationRejection()) {
-                    cache.writeQueue.run { store.remove(account, operationId) }
+                    if (writes.checkpointed) {
+                        writes.persist()
+                        finishMarker(operationId, pending.tags)
+                    } else cache.writeQueue.run(syncMarkers) { store.remove(account, operationId) }
                     synchronized(slot) { slot.operationId = null }
                     reject(slot, error)
                     return false
@@ -686,27 +772,40 @@ internal constructor(
                 markUnknown(slot, pending)
                 return false
             }
+        if (!isCurrent()) return false
+        synchronized(slot) {
+            slot.epoch++
+            slot.confirmedKnown = true
+            val queued = slot.pending?.desired?.takeIf { it != confirmed }
+            slot.state.value = WriteState(confirmed, queued, WritePhase.PENDING)
+        }
+        cache.invalidate(account, pending.tags)
+        publish(pending.tags)
+        try {
+            writes.persist()
+            finishMarker(operationId, pending.tags)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            synchronized(slot) {
+                slot.pending = null
+                slot.state.value = WriteState(confirmed = confirmed, phase = WritePhase.UNCERTAIN, message = MutationUncertain)
+            }
+            publishPending()
+            return false
+        }
+        synchronized(slot) { slot.operationId = null }
+        writes.committed()
+        return true
+    }
+
+    private suspend fun finishMarker(operationId: String, tags: Set<CacheTag>) {
         cache.writeQueue.run {
+            if (tags.isNotEmpty()) cache.invalidationStore.mark(account, tags, System.currentTimeMillis().coerceAtLeast(1L))
             cache.syncCacheStores()
             store.remove(account, operationId)
             store.sync()
         }
-        synchronized(slot) {
-            slot.epoch++
-            slot.operationId = null
-            slot.confirmedKnown = true
-            val queued = slot.pending?.desired?.takeIf { it != confirmed }
-            slot.state.value =
-                WriteState(
-                    confirmed = confirmed,
-                    desired = queued,
-                    phase = if (queued != null) WritePhase.PENDING else WritePhase.IDLE,
-                    message = null,
-                )
-        }
-        publish(pending.tags)
-        cache.invalidate(account, pending.tags)
-        return true
     }
 
     private fun <T : Any> markUnknown(slot: Slot<T>, pending: Pending<T>) {
@@ -714,7 +813,7 @@ internal constructor(
             slot.state.value =
                 WriteState(
                     confirmed = slot.state.value.confirmed,
-                    desired = pending.desired,
+                    desired = slot.pending?.desired ?: pending.desired,
                     phase = WritePhase.UNCERTAIN,
                     message = MutationUncertain,
                 )
@@ -730,14 +829,14 @@ internal constructor(
                 else -> error.message ?: MutationNotSubmitted
             }
         synchronized(slot) {
-            val nextDesired = slot.pending?.desired?.takeIf { it != slot.state.value.confirmed }
+            val unsent = slot.pending?.desired
             slot.pending = null
             slot.operationId = null
             slot.epoch++
             slot.state.value =
                 WriteState(
                     confirmed = slot.state.value.confirmed,
-                    desired = nextDesired,
+                    desired = unsent,
                     phase = WritePhase.REJECTED,
                     message = message,
                 )
@@ -746,118 +845,77 @@ internal constructor(
     }
 
     private fun <R : Any> startCommand(slot: CommandSlot<R>) {
-        val pending = synchronized(slot) { slot.pending } ?: return
-        synchronized(slot) { slot.inFlight = true }
+        val pending = synchronized(slot) {
+            if (slot.inFlight || slot.operationId != null) return
+            val next = slot.pending ?: return
+            slot.pending = null
+            slot.inFlight = true
+            next
+        }
         scope.launch {
+            val id = pending.id
+            var prepared = false
+            var mayHaveSent = false
+            var committed = false
+            var confirmed: R? = null
+            fun finish(phase: WritePhase, message: String? = null) {
+                synchronized(slot) {
+                    if (phase != WritePhase.UNCERTAIN) slot.operationId = null
+                    slot.inFlight = false
+                    slot.state.value = CommandState(confirmed, phase, message, id)
+                    pending.result.complete(slot.state.value)
+                }
+            }
             try {
                 if (!isCurrent()) return@launch
-                val operationId = UUID.randomUUID().toString()
-                val marker =
-                    MutationMarker(
-                        operationId = operationId,
-                        kind = slot.key.kind.name,
-                        target = slot.key.target,
-                        tags = pending.tags.map { it.diskValue() },
-                        desiredDigest = null,
-                        startedAt = System.currentTimeMillis(),
-                        phase = MarkerPhase.PREPARED,
-                    )
+                val marker = MutationMarker(id, slot.key.kind.name, slot.key.target,
+                    pending.tags.map { it.diskValue() }, null, System.currentTimeMillis(), MarkerPhase.PREPARED)
                 cache.writeQueue.run { store.put(account, marker) }
+                prepared = true
                 synchronized(slot) {
-                    slot.operationId = operationId
+                    slot.operationId = id
                     slot.markerTags = marker.tags
                     slot.startedAt = marker.startedAt
                 }
-                try {
-                    cache.prepareInvalidation(account, pending.tags)
-                    cache.writeQueue.run {
-                        store.updatePhase(account, operationId, MarkerPhase.MAY_HAVE_SENT)
-                        store.sync()
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    cache.writeQueue.run { store.remove(account, operationId) }
-                    synchronized(slot) {
-                        slot.operationId = null
-                        slot.pending = null
-                        slot.state.value =
-                            CommandState(
-                                phase = WritePhase.REJECTED,
-                                message = error.message ?: MutationNotSubmitted,
-                            )
-                    }
-                    return@launch
-                }
-                val result =
-                    try {
-                        pending.send()
-                    } catch (error: CancellationException) {
-                        synchronized(slot) {
-                            slot.state.value =
-                                CommandState(
-                                    phase = WritePhase.UNCERTAIN,
-                                    message = MutationUncertain,
-                                )
-                        }
-                        publishPending()
-                        throw error
-                    } catch (error: Exception) {
-                        if (error.isDefiniteMutationRejection()) {
-                            cache.writeQueue.run { store.remove(account, operationId) }
-                            synchronized(slot) {
-                                slot.operationId = null
-                                slot.pending = null
-                                slot.state.value =
-                                    CommandState(
-                                        phase = WritePhase.REJECTED,
-                                        message = error.message ?: MutationNotSubmitted,
-                                    )
-                            }
-                            return@launch
-                        }
-                        synchronized(slot) {
-                            slot.state.value =
-                                CommandState(
-                                    phase = WritePhase.UNCERTAIN,
-                                    message = MutationUncertain,
-                                )
-                        }
-                        publishPending()
-                        if (isCurrent()) reconcileCommand(slot.key, pending.readBack)
-                        return@launch
-                    }
-                cache.writeQueue.run {
-                    cache.syncCacheStores()
-                    store.remove(account, operationId)
-                    store.sync()
-                }
-                synchronized(slot) {
-                    slot.operationId = null
-                    slot.pending = null
-                    slot.state.value = CommandState(result = result, phase = WritePhase.IDLE)
-                }
-                publish(pending.tags)
+                cache.prepareInvalidation(account, pending.tags)
+                cache.writeQueue.run(syncMarkers) { store.updatePhase(account, id, MarkerPhase.MAY_HAVE_SENT) }
+                val writes = ConfirmedWrites(id)
+                mayHaveSent = true
+                confirmed = withContext(ConfirmedWrites.current.asContextElement(writes)) { pending.send() }
+                if (!isCurrent()) return@launch
                 cache.invalidate(account, pending.tags)
+                publish(pending.tags)
+                writes.persist()
+                finishMarker(id, pending.tags)
+                writes.committed()
+                committed = true
             } catch (error: CancellationException) {
+                if (isCurrent()) finish(if (prepared) WritePhase.UNCERTAIN else WritePhase.REJECTED,
+                    if (prepared) MutationUncertain else MutationNotSubmitted)
                 throw error
             } catch (error: Exception) {
-                val message =
-                    when (error) {
-                        is MutationLimitException -> "$MutationNotSubmitted: $MutationLimit"
-                        else -> error.message ?: MutationNotSubmitted
-                    }
-                synchronized(slot) {
-                    slot.pending = null
-                    slot.state.value =
-                        CommandState(
-                            phase = WritePhase.REJECTED,
-                            message = message,
-                        )
+                val rejected = !mayHaveSent || confirmed == null && error.isDefiniteMutationRejection()
+                val cleared = if (rejected && prepared) {
+                    try {
+                        cache.writeQueue.run(syncMarkers) { store.remove(account, id) }
+                        true
+                    } catch (cancel: CancellationException) {
+                        if (isCurrent()) finish(WritePhase.UNCERTAIN, MutationNotSubmitted)
+                        throw cancel
+                    } catch (_: Exception) { false }
+                } else !prepared
+                if (rejected && cleared) {
+                    finish(WritePhase.REJECTED, if (error is MutationLimitException) "$MutationNotSubmitted: $MutationLimit"
+                        else error.message ?: MutationNotSubmitted)
+                } else {
+                    finish(WritePhase.UNCERTAIN, if (rejected) MutationNotSubmitted else MutationUncertain)
+                    if (!rejected && confirmed == null && isCurrent()) reconcileCommand(slot.key, pending.readBack)
                 }
             } finally {
-                synchronized(slot) { slot.inFlight = false }
-                publishPending()
+                if (committed) {
+                    try { pending.onConfirmed?.invoke(checkNotNull(confirmed)) }
+                    finally { finish(WritePhase.IDLE); publishPending() }
+                } else publishPending()
             }
         }
     }

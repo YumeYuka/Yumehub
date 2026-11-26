@@ -25,7 +25,7 @@ class CachedDataRepository(
     tokenStore: TokenStore,
     provider: MMKVProvider,
     internal val json: Json,
-    private val syncSecondaryStores: () -> Unit = {},
+    private val pagingStore: moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotStore,
 ) : AutoCloseable {
     private val session = tokenStore.responseCacheSession
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -87,7 +87,7 @@ class CachedDataRepository(
                     )
                     .also { resources[identity] = ResourceReference(identity, it, collected) }
             }
-        rememberRecent(identity, resource)
+        recent[identity] // Touch the LRU without erasing its encoded size.
         resource
     }
 
@@ -109,18 +109,18 @@ class CachedDataRepository(
         }
     }
 
-    internal fun recordRecentSize(account: String, key: String, bytes: Long) {
+    internal fun recordRecentSize(account: String, key: String, resource: CachedResource<*>, bytes: Long) {
         locked {
             if (closed) return@locked
             val identity = ResourceKey(normalizeAccount(account), key)
-            val existing = recent[identity]?.first ?: resources[identity]?.get() ?: return@locked
-            rememberRecent(identity, existing, bytes)
+            if (resources[identity]?.get() === resource) rememberRecent(identity, resource, bytes)
         }
     }
 
     internal fun syncCacheStores() {
         store.sync()
-        syncSecondaryStores()
+        pagingStore.sync()
+        invalidationStore.sync()
     }
 
     /**
@@ -206,10 +206,10 @@ class CachedDataRepository(
     private suspend fun clearOldSnapshots() {
         val stamp = locked { session.id?.let { it to session.generation } } ?: return
         try {
-            store.clearOtherSessions(stamp.first) {
-                locked {
-                    !closed && session.id == stamp.first && session.generation == stamp.second
-                }
+            val valid = { locked { !closed && session.id == stamp.first && session.generation == stamp.second } }
+            writeQueue.run {
+                store.clearOtherSessions(stamp.first, valid)
+                pagingStore.disk.clearOtherSessions(stamp.first, valid)
             }
         } catch (error: CancellationException) {
             throw error
@@ -222,22 +222,9 @@ class CachedDataRepository(
         sessionResource(account, "data-changes-v1") { DataChanges() }
 
     /** 每账号一个会话级写协调器；页面只订阅其状态，不创建第二套队列。 */
-    suspend fun mutations(account: String): MutationCoordinator =
-        withContext(Dispatchers.IO) {
-            val generation = locked {
-                if (!isCurrent(account, session.generation)) throw expiredSession()
-                session.generation
-            }
-            sessionResource(account, "mutation-coordinator-v1") { scope ->
-                MutationCoordinator(
-                    normalizeAccount(account),
-                    generation,
-                    this@CachedDataRepository,
-                    pendingMutations,
-                    json,
-                    scope,
-                )
-            }
+    fun mutations(account: String): MutationCoordinator =
+        sessionResource(account, "mutation-coordinator-v1") { scope ->
+            MutationCoordinator(normalizeAccount(account), session.generation, this, pendingMutations, json, scope)
         }
 
     /**
@@ -270,12 +257,14 @@ class CachedDataRepository(
         locked { invalidationListeners.add(listener) }
     }
 
+    private val syncInvalidations: () -> Unit = invalidationStore::sync
+
     /** 等待失效屏障持久完成后再返回；网络写入必须在发送前等待它。 */
     suspend fun persistInvalidation(account: String, tags: Set<CacheTag>) {
         if (tags.isEmpty()) return
         val at = System.currentTimeMillis().coerceAtLeast(1L)
         invalidate(account, tags)
-        writeQueue.run { invalidationStore.mark(account, tags, at) }
+        writeQueue.run(syncInvalidations) { invalidationStore.mark(account, tags, at) }
     }
 
     /** 发送前屏障：失效内存读，但列表重读等确认后的失效再触发。 */
@@ -283,7 +272,7 @@ class CachedDataRepository(
         if (tags.isEmpty()) return
         val at = System.currentTimeMillis().coerceAtLeast(1L)
         invalidate(account, tags, notifyListeners = false)
-        writeQueue.run { invalidationStore.mark(account, tags, at) }
+        writeQueue.run(syncInvalidations) { invalidationStore.mark(account, tags, at) }
     }
 
     /** 已确认操作后的失效：内存立即生效，磁盘屏障由单写队列异步落盘。 */

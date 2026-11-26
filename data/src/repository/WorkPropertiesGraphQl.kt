@@ -541,6 +541,7 @@ internal class WorkPropertiesGraphQl(
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
         expectedIssueId: String? = null,
+        onStep: ((List<String>) -> Unit)? = null,
     ) {
         val repo =
             node(
@@ -591,13 +592,14 @@ internal class WorkPropertiesGraphQl(
             return
         }
         if (property == WorkProperty.SubIssues) {
-            if (kind != CollaborationKind.Issue) throw GithubPageException()
-            val desired = selected.map { it.id }.toSet()
-            val existing = actual.map { it.id }.toSet()
+            if (kind != CollaborationKind.Issue) throw WorkDetailReviewChangedException()
+            val publish = checkNotNull(onStep)
+            val desired = selected.mapTo(hashSetOf()) { it.id }
+            val existing = actual.mapTo(linkedSetOf()) { it.id }
             actual
                 .filter { it.id !in desired }
                 .forEach { subIssueId ->
-                    execute(
+                    val removed = execute(
                             """
                             mutation RemoveSubIssue(${'$'}issueId: ID!, ${'$'}subIssueId: ID!) {
                                 removeSubIssue(input: {issueId: ${'$'}issueId, subIssueId: ${'$'}subIssueId}) {
@@ -615,11 +617,14 @@ internal class WorkPropertiesGraphQl(
                         .graphObject("removeSubIssue")
                         .graphObject("subIssue")
                         .graphRequiredText("id")
+                    if (removed != subIssueId.id) throw GithubPageException()
+                    existing.remove(removed)
+                    publish(existing.toList())
                 }
             selected
                 .filter { it.id !in existing }
                 .forEach { subIssue ->
-                    execute(
+                    val added = execute(
                             """
                             mutation AddSubIssue(${'$'}issueId: ID!, ${'$'}subIssueId: ID!) {
                                 addSubIssue(input: {issueId: ${'$'}issueId, subIssueId: ${'$'}subIssueId}) {
@@ -637,6 +642,9 @@ internal class WorkPropertiesGraphQl(
                         .graphObject("addSubIssue")
                         .graphObject("subIssue")
                         .graphRequiredText("id")
+                    if (added != subIssue.id) throw GithubPageException()
+                    existing.add(added)
+                    publish(existing.toList())
                 }
             return
         }
@@ -682,13 +690,15 @@ internal class WorkPropertiesGraphQl(
             return
         }
         if (property == WorkProperty.Projects) {
-            val desired = selected.map { it.id }.toSet()
-            val existing = actual.map { it.id }.toSet()
+            val publish = checkNotNull(onStep)
+            val desired = selected.mapTo(hashSetOf()) { it.id }
+            val existing = actual.mapTo(linkedSetOf()) { it.id }
+            if (actual.any { it.id !in desired && (!it.editable || it.itemId == null) } ||
+                selected.any { it.id !in existing && !it.editable }) throw WorkDetailReviewChangedException()
             actual
                 .filter { it.id !in desired }
                 .forEach { project ->
-                    if (!project.editable) throw GithubPageException()
-                    execute(
+                    val removed = execute(
                             """
                             mutation RemoveWorkProject(${'$'}project: ID!, ${'$'}item: ID!) {
                                 deleteProjectV2Item(input: {projectId: ${'$'}project, itemId: ${'$'}item}) { deletedItemId }
@@ -703,15 +713,19 @@ internal class WorkPropertiesGraphQl(
                         )
                         .graphObject("deleteProjectV2Item")
                         .graphRequiredText("deletedItemId")
+                    if (removed != project.itemId) throw GithubPageException()
+                    existing.remove(project.id)
+                    publish(existing.toList())
                 }
             selected
                 .filter { it.id !in existing }
                 .forEach { project ->
-                    if (!project.editable) throw GithubPageException()
-                    execute(
+                    val added = execute(
                             """
                             mutation AddWorkProject(${'$'}project: ID!, ${'$'}id: ID!) {
-                                addProjectV2ItemById(input: {projectId: ${'$'}project, contentId: ${'$'}id}) { item { id } }
+                                addProjectV2ItemById(input: {projectId: ${'$'}project, contentId: ${'$'}id}) {
+                                    item { project { id } content { ... on Issue { id } ... on PullRequest { id } } }
+                                }
                             }
                             """
                                 .trimIndent(),
@@ -723,7 +737,10 @@ internal class WorkPropertiesGraphQl(
                         )
                         .graphObject("addProjectV2ItemById")
                         .graphObject("item")
-                        .graphRequiredText("id")
+                    if (added.graphObject("project").graphRequiredText("id") != project.id ||
+                        added.graphObject("content").graphRequiredText("id") != id) throw GithubPageException()
+                    existing.add(project.id)
+                    publish(existing.toList())
                 }
             return
         }

@@ -1,16 +1,14 @@
 package moe.yumeyuka.yumehub.data.repository
 
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.diskValue
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotStore
+import moe.yumeyuka.yumehub.data.storage.mmkv.ResponseCacheStore
 
 /**
  * 分页列表的首屏快照配置。
@@ -25,69 +23,53 @@ class PagingSnapshot<T : Any>(
     internal val context: PagingContext? = null,
     val tags: Set<CacheTag> = emptySet(),
 ) {
-    private val initial = AtomicBoolean(true)
+    private var session: String? = null
+    private var diskKey: String? = null
+    private var revision = -1L
+    private var diskTags: List<String> = emptyList()
 
     internal fun bind(context: PagingContext): PagingSnapshot<T> =
         PagingSnapshot(store, account, key, serializer, context, tags)
 
     suspend fun initialPage(pageSize: Int): PagingSnapshotPage<T>? {
-        // 无会话上下文的旧调用不能恢复账号级私有快照。
         val bound = context ?: return null
-        // Background revalidation already fetched the next generation's first page.
-        if (!bound.initialSnapshot && bound.forceRefresh) return null
-        if (!initial.compareAndSet(true, false)) return null
         bound.ensureCurrent()
-        if (!bound.persistenceEnabled()) return null
-        val diskKey = bound.snapshotKey(key)
-        val page =
-            try {
-                withContext(Dispatchers.IO) {
-                    currentCoroutineContext().ensureActive()
-                    store.loadPageNow(
-                        account,
-                        diskKey,
-                        serializer,
-                        bound::ensureCurrent,
-                        bound::tagsStale,
-                    )
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                null
-            }
-        bound.ensureCurrent()
-        return page?.takeIf { it.pageSize == pageSize }
-    }
-
-    /** 首屏已可显示时，磁盘快照在同一分页代际后台写入。 */
-    fun saveInBackground(page: PagingSnapshotPage<T>) {
-        context?.persist { save(page) }
-    }
-
-    suspend fun save(page: PagingSnapshotPage<T>) {
-        val bound = context ?: return
-        if (!bound.persistenceEnabled()) return
-        val diskKey = bound.snapshotKey(key)
-        try {
+        val id = bound.sessionId()
+        val identity = ResponseCacheStore.key(id, account.lowercase(), key, pageSize.toString(), serializer.descriptor.toString())
+        val labels = (bound.snapshotTags + tags).map { it.diskValue() }
+        session = id
+        diskKey = identity
+        diskTags = labels
+        val page = try {
             withContext(Dispatchers.IO) {
-                val coroutine = currentCoroutineContext()
-                coroutine.ensureActive()
-                store.savePageNow(
-                    account,
-                    diskKey,
-                    serializer,
-                    page,
-                    tags.map { it.diskValue() },
-                ) { write ->
-                    coroutine.ensureActive()
-                    bound.commit(write)
-                }
+                revision = bound.cache.invalidationStore.revision(account, labels)
+                bound.state.frame<T>(revision) ?: if (bound.persistenceEnabled()) {
+                    store.load(id, identity, serializer, revision) { bound.active() }
+                } else null
             }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            // 快照写入失败不能使已成功的网络分页变成错误页。
+            null
+        }
+        bound.ensureCurrent()
+        if (page == null || page.pageSize != pageSize) return null
+        return when {
+            page.boundaryInvalid -> page.copy(prevKey = null, nextKey = null, nextCursor = null)
+            !bound.initialSnapshot && bound.forceRefresh -> page.copy(updatedAt = 0L)
+            else -> page
         }
     }
+
+    /** 首屏已可显示时，磁盘快照在同一分页代际后台写入。 */
+    fun saveInBackground(page: PagingSnapshotPage<T>) {
+        val bound = context ?: return
+        val sequence = bound.commit { bound.state.remember(page, revision) }
+        val id = session ?: return
+        val key = diskKey ?: return
+        if (revision < 0 || !bound.persistenceEnabled()) return
+        store.save(bound.cache.writeQueue, id, key, serializer, page, diskTags, revision) { bound.validFrame(sequence) }
+    }
+
+    fun save(page: PagingSnapshotPage<T>) = saveInBackground(page)
 }

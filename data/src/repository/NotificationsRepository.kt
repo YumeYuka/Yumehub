@@ -13,9 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.json.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
@@ -45,14 +46,12 @@ enum class NotificationThreadAction(internal val operation: String, internal val
     MarkDone("MarkNotificationAsDone", "markNotificationAsDone"),
     MarkUndone("MarkNotificationAsUndone", "markNotificationAsUndone");
 
-    internal val inverse: NotificationThreadAction
-        get() =
-            when (this) {
-                MarkRead -> MarkUnread
-                MarkUnread -> MarkRead
-                MarkDone -> MarkUndone
-                MarkUndone -> MarkDone
-            }
+    fun project(base: NotificationThreadState): NotificationThreadState = when (this) {
+        MarkRead -> base.copy(unread = false)
+        MarkUnread -> base.copy(unread = true)
+        MarkDone -> base.copy(done = true)
+        MarkUndone -> base.copy(done = false)
+    }
 }
 
 /** 页码只用于本地窗口；网络请求使用其对应的服务端游标。 */
@@ -78,7 +77,7 @@ class NotificationsRepository(
 
     fun changes(account: String) = cache.changes(account)
 
-    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
     fun confirmedPreview(
         account: String,
@@ -105,7 +104,7 @@ class NotificationsRepository(
                     serializer = NotificationsSnapshot.serializer(),
                     // 可见页面负责刷新节流；不要在网络完成后再叠加 60 秒 TTL。
                     maxAgeMillis = 0L,
-                    tags = setOf(CacheTag(DataDomain.Notifications, null)),
+                    tags = setOf(CacheTag(DataDomain.Notifications, identity.query.repository)),
                 )
                 .also { resources[identity] = WeakReference(it) }
         }
@@ -188,11 +187,29 @@ class NotificationsRepository(
             .await()
     }
 
-    suspend fun markRead(account: String, threadId: String) =
-        markThread(account, threadId, NotificationThreadAction.MarkRead)
-
-    suspend fun markThread(account: String, threadId: String, action: NotificationThreadAction) =
-        markThread(account, session(account), threadId, action)
+    /** Only positive membership in a server-filtered connection proves DONE versus inbox. */
+    suspend fun readThreadState(account: String, threadId: String): NotificationThreadState {
+        val session = session(account)
+        return withTimeoutOrNull(30_000L) {
+            for (done in listOf(false, true)) {
+                var after: String? = null
+                val seen = mutableSetOf<String>()
+                for (page in 1..10) {
+                    val statuses = if (done) "DONE" else "READ, UNREAD"
+                    val connection = session.execute(
+                        "query ThreadStates(\u0024after: String) { viewer { notificationThreads(first: 100, after: \u0024after, filterBy: {statuses: [$statuses]}) { nodes { id isUnread } pageInfo { hasNextPage endCursor } } } }",
+                        buildJsonObject { after?.let { put("after", it) } },
+                    ).graphObject("viewer").graphObject("notificationThreads")
+                    connection.graphNodes().firstOrNull { it.graphRequiredText("id") == threadId }?.let {
+                        return@withTimeoutOrNull NotificationThreadState(it.graphRequiredText("isUnread").toBooleanStrict(), done)
+                    }
+                    after = connection.graphCursor(after) ?: break
+                    if (!seen.add(after)) throw GithubPageException()
+                }
+            }
+            null
+        } ?: throw WorkNotificationUnavailableException()
+    }
 
     /** 仅发送服务端写请求；仅在确认成功后再更新已确认快照与失效筛选。 */
     suspend fun sendThreadAction(
@@ -204,57 +221,22 @@ class NotificationsRepository(
         val session = session(account)
         val affectedRuntime = runtime(account)
         val field = action.field
-        val result =
-            session
-                .execute(
-                    "mutation ${action.operation}(${'$'}id: ID!) { $field(input: {id: ${'$'}id}) { success } }",
-                    buildJsonObject { put("id", threadId) },
-                    write = true,
-                )
-                .graphObject(field)
-        if (result["success"] != JsonPrimitive(true)) {
-            throw MutationRejectedException("Notification action rejected by GitHub")
+        val result = affectedRuntime.submissions.withPermit {
+            session.execute(
+                "mutation ${action.operation}(${'$'}id: ID!) { $field(input: {id: ${'$'}id}) { success } }",
+                buildJsonObject { put("id", threadId) }, write = true,
+            ).graphObject(field)
         }
-        currentCoroutineContext().ensureActive()
-        session.ensureCurrent()
-        updateThreads(account, threadId, action, affectedRuntime, invalidate = true)
-    }
-
-    private suspend fun markThread(
-        account: String,
-        session: GithubGraphQlSession,
-        threadId: String,
-        action: NotificationThreadAction,
-    ) {
-        require(threadId.isNotBlank())
-        val affectedRuntime = runtime(account)
-        val field = action.field
-        // 点击只负责本地投影；网络结果稍后确认或回滚。
-        updateThreads(account, threadId, action, affectedRuntime, invalidate = false)
-        val result =
-            try {
-                session
-                    .execute(
-                        "mutation ${action.operation}(${'$'}id: ID!) { $field(input: {id: ${'$'}id}) { success } }",
-                        buildJsonObject { put("id", threadId) },
-                        write = true,
-                    )
-                    .graphObject(field)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                // 网络结果未知时保留投影，交由下一次窗口重读核对。
-                throw error
-            }
-        if (result["success"] != JsonPrimitive(true)) {
-            // 服务端明确未应用：保留列表结构，随后重读窗口核对真实状态。
-            updateThreads(account, threadId, action.inverse, affectedRuntime, invalidate = true)
-            throw GithubPageException(definiteRejection = true)
+        when (result["success"]) {
+            JsonPrimitive(false) -> throw MutationRejectedException("Notification action rejected by GitHub")
+            JsonPrimitive(true) -> Unit
+            else -> throw GithubPageException()
         }
         currentCoroutineContext().ensureActive()
         session.ensureCurrent()
         updateThreads(account, threadId, action, affectedRuntime)
     }
+
 
     suspend fun resolveWorkThreadId(account: String, target: WorkTarget): String {
         val session = session(account)
@@ -280,40 +262,14 @@ class NotificationsRepository(
         throw WorkNotificationUnavailableException()
     }
 
-    suspend fun markWorkDone(account: String, target: WorkTarget) {
-        val session = session(account)
-        val expectedRepository = "${target.owner}/${target.repository}"
-        require(validRepository(expectedRepository) && target.number > 0)
-        val runtime = runtime(account)
-        val identity = target.normalized()
-        val knownThreadId = synchronized(runtime.resources) { runtime.workThreadIds[identity] }
-        if (knownThreadId != null) {
-            markThread(account, session, knownThreadId, NotificationThreadAction.MarkDone)
-            return
-        }
-        // 工作项编号和工作项的 GraphQL ID 都不能当作通知线程 ID。
-        val query = NotificationsQuery(includeRead = true, repository = expectedRepository)
-        val seen = mutableSetOf<String>()
-        var after: String? = null
-        for (page in 1..10) {
-            val result = loadNotificationPage(session, query, after)
-            val notification = result.items.firstOrNull { it.workTarget() == identity }
-            notification?.id?.let { threadId ->
-                markThread(account, session, threadId, NotificationThreadAction.MarkDone)
-                return
-            }
-            val next = result.nextCursor ?: break
-            if (!seen.add(next)) throw GithubPageException()
-            after = next
-        }
-        throw WorkNotificationUnavailableException()
-    }
 
     /** 页面返回后仍由会话级仓库完成通知写入，不让详情页的锁阻塞返回。 */
     fun enqueueWorkDone(account: String, target: WorkTarget): Job =
         runtime(account).scope.launch {
             try {
                 val threadId = resolveWorkThreadId(account, target)
+                val baseline = readThreadState(account, threadId)
+                if (baseline.done) return@launch
                 val coord = cache.mutations(account)
                 coord.submit(
                     moe.yumeyuka.yumehub.data.cache.MutationKey(
@@ -321,16 +277,14 @@ class NotificationsRepository(
                         threadId,
                         NotificationThreadState.serializer(),
                     ),
-                    confirmed = NotificationThreadState(unread = false, done = false),
-                    desired = NotificationThreadState(unread = false, done = true),
+                    confirmed = baseline,
+                    desired = baseline.copy(done = true),
                     tags = setOf(CacheTag(DataDomain.Notifications, null)),
                     send = {
                         sendThreadAction(account, threadId, NotificationThreadAction.MarkDone)
-                        NotificationThreadState(unread = false, done = true)
+                        it
                     },
-                    readBack = {
-                        NotificationThreadState(unread = false, done = false)
-                    },
+                    readBack = { readThreadState(account, threadId) },
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -384,14 +338,6 @@ class NotificationsRepository(
             repository = repository.lowercase(Locale.ROOT),
         )
 
-    fun pausePaging(account: String, query: NotificationsQuery) {
-        val resources = runtime(account).resources
-        synchronized(resources) {
-            val resource = resource(account, query)
-            resource.cached?.let { resource.update(it.copy(pagingPaused = true)) }
-            resource.invalidate()
-        }
-    }
 
     private suspend fun loadWindow(
         account: String,
@@ -446,7 +392,6 @@ class NotificationsRepository(
         threadId: String,
         action: NotificationThreadAction,
         runtime: Runtime,
-        invalidate: Boolean = true,
     ) {
         val resources = runtime.resources
         synchronized(resources) {
@@ -469,12 +414,6 @@ class NotificationsRepository(
                     }
                     .distinctRepositories()
             val affectedRepositories = repositories.map { it.lowercase(Locale.ROOT) }.toSet()
-            // 尚未驻留内存的筛选也要标记磁盘快照过期，防止之后命中新鲜的旧页码。
-            for (repository in listOf(null) + repositories) {
-                for ((includeRead, isDone) in listOf(false to false, true to false, true to true)) {
-                    resource(account, NotificationsQuery(includeRead, isDone, repository))
-                }
-            }
             resources
                 .filterKeys {
                     it.account == normalizedAccount &&
@@ -505,14 +444,9 @@ class NotificationsRepository(
                             }
                         resource.update(snapshot.copy(notifications = records, pagingPaused = true))
                     }
-                    // 线程状态改变后从首个游标重读窗口，不继续使用旧位置。
-                    if (invalidate) {
-                        resource.invalidate()
-                        runtime.cancelRefresh(key.query)
-                    }
+                    runtime.cancelRefresh(key.query)
                 }
         }
-        cache.changes(account).publish(DataDomain.Notifications)
     }
 
     private fun checkAccount(expected: String) {
@@ -535,6 +469,7 @@ class NotificationsRepository(
         cache.sessionResource(account, "notifications-registry-v1") { Runtime(it) }
 
     private class Runtime(val scope: CoroutineScope) {
+        val submissions = Semaphore(3)
         val workThreadIds = LinkedHashMap<WorkTarget, String>(16, 0.75f, true)
         val resources =
             mutableMapOf<ResourceKey, WeakReference<CachedResource<NotificationsSnapshot>>>()

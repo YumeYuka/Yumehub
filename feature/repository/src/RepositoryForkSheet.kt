@@ -114,7 +114,7 @@ internal fun RepositoryForkSheet(
                                 }
                             }
                         },
-                        enabled = state?.visible == true && !submitting && !uncertain && !checking,
+                        enabled = state?.draftReady == true && state.visible && !submitting && !uncertain && !checking,
                     ) {
                         GithubLoadingContent(
                             loading = checking,
@@ -151,7 +151,7 @@ internal fun RepositoryForkSheet(
                                 onName(name)
                             }
                         },
-                        enabled = !submitting && !uncertain,
+                        enabled = state.draftReady && !submitting && !uncertain,
                         modifier = Modifier.semantics { contentDescription = strings.ForkName },
                     )
                 }
@@ -177,7 +177,7 @@ internal fun RepositoryForkSheet(
                                 GlasmioSwitch(
                                     checked = state.defaultBranchOnly,
                                     onCheckedChange = onDefaultBranchOnly,
-                                    enabled = !submitting && !uncertain,
+                                    enabled = state.draftReady && !submitting && !uncertain,
                                     onTintColor = colors.accent,
                                     modifier =
                                         Modifier.semantics {

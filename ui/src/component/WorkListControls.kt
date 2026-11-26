@@ -26,6 +26,7 @@ fun WorkListControls(
     milestones: List<String> = emptyList(),
     issueTypes: List<CollaborationLabelDto> = emptyList(),
     discussionCategories: List<String> = emptyList(),
+    onShowFilters: (() -> Unit)? = null,
     content: @Composable (actions: @Composable () -> Unit, searching: Boolean) -> Unit,
 ) {
     val common = LocalGithubStrings.current.Common
@@ -65,6 +66,7 @@ fun WorkListControls(
                     onShowFilterSheet = {
                         focus.clearFocus(force = true)
                         keyboard?.hide()
+                        onShowFilters?.invoke()
                         sheetVisible = true
                     },
                 )

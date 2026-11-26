@@ -2,6 +2,10 @@ package moe.yumeyuka.yumehub.feature.worklist
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.paging.compose.LazyPagingItems
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.Flow
 import io.github.yumeyucca.lucide.CircleDot
 import io.github.yumeyucca.lucide.GitPullRequest
 import io.github.yumeyucca.lucide.Lucide
@@ -18,13 +22,15 @@ internal fun LazyListScope.CollaborationListScreen(
     items: LazyPagingItems<CollaborationItemDto>,
     slots: GithubPagingSlots<CollaborationItemDto>,
     onOpenItem: (Int) -> Unit,
+    card: (CollaborationItemDto) -> Flow<CollaborationItemDto>,
 ) {
     githubPagingItems(
         slots,
         contentType = "work-card",
         placeholder = { GithubWorkItemPlaceholder() },
     ) { entry ->
-        GithubWorkItemCard(entry, kind) { onOpenItem(entry.number) }
+        val rich by remember(entry) { card(entry) }.collectAsStateWithLifecycle(entry)
+        GithubWorkItemCard(rich, kind) { onOpenItem(entry.number) }
     }
     collaborationPagingStatus(
         items = items,

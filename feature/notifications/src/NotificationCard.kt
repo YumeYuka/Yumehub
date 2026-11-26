@@ -48,6 +48,7 @@ internal fun NotificationCard(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
+    pending: Boolean,
     uncertain: Boolean = false,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
@@ -62,6 +63,7 @@ internal fun NotificationCard(
                 preview,
                 isSelecting,
                 isSelected,
+                pending,
                 uncertain,
                 onClick,
                 onLongClick,
@@ -76,6 +78,7 @@ private fun NotificationCardContent(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
+    pending: Boolean,
     uncertain: Boolean,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
@@ -199,13 +202,13 @@ private fun NotificationCardContent(
                         metadataStyle = metadataStyle,
                     )
                 }
-                if (uncertain) {
+                if (uncertain || pending) {
                     Text(
-                        LocalGithubStrings.current.Common.MutationUncertain,
+                        if (uncertain) LocalGithubStrings.current.Common.MutationUncertain else LocalGithubStrings.current.Common.MutationPending,
                         style = metadataStyle,
                         color =
                             readableForeground(
-                                colors.destructive,
+                                if (uncertain) colors.destructive else colors.secondaryContent,
                                 colors.elevatedBackground,
                                 colors.content,
                             ),

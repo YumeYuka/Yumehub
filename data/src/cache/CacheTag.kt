@@ -43,6 +43,9 @@ private const val Subject = "1"
 fun repositoryCacheTag(owner: String, name: String): CacheTag =
     CacheTag(DataDomain.Repositories, "${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}")
 
+fun workListCacheTag(owner: String, repository: String): CacheTag =
+    CacheTag(DataDomain.Work, "${owner.lowercase(Locale.ROOT)}/${repository.lowercase(Locale.ROOT)}")
+
 /** 关系状态（star/follow）按具体对象区分。 */
 fun relationshipCacheTag(subject: String): CacheTag =
     CacheTag(DataDomain.Relationships, subject.lowercase(Locale.ROOT))

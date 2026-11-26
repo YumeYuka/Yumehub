@@ -47,6 +47,7 @@ fun IssueSearchPage(
               items,
               "work-search:$filter",
               paging.initialLoading,
+              refreshDomains = emptySet(),
           ) {
             it.target.toString()
           }
@@ -57,7 +58,7 @@ fun IssueSearchPage(
           itemSpacing = 12.dp,
           actions = actions,
       ) {
-        IssueSearchScreen(kind, items, slots, onOpenWork)
+        IssueSearchScreen(kind, items, slots, onOpenWork, viewModel::card)
         pageSearchClearance(searching)
       }
     }

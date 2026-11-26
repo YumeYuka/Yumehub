@@ -1,6 +1,16 @@
 package moe.yumeyuka.yumehub.data.repository
 
 import java.util.Locale
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.mapNotNull
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.CollaborationListFilter
@@ -18,12 +28,13 @@ import moe.yumeyuka.yumehub.data.api.dto.IssueTemplateOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueTypeOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.MilestoneOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
+import moe.yumeyuka.yumehub.data.api.dto.WorkCreationDraft
 import moe.yumeyuka.yumehub.data.api.dto.workTarget
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
-import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
+import moe.yumeyuka.yumehub.data.cache.workListCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 class WorkListRepository(
@@ -36,7 +47,12 @@ class WorkListRepository(
 
   suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
 
-  suspend fun createIssue(
+  suspend fun create(account: String, owner: String, repository: String, kind: CollaborationKind, draft: WorkCreationDraft): Int =
+      if (kind == CollaborationKind.Issue) createIssue(account, owner, repository, draft.title.trim(), draft.body,
+          draft.issueTypeId, draft.milestoneId, draft.labelIds, draft.assignees.map { it.id }, draft.issueTemplate)
+      else createPullRequest(account, owner, repository, draft.base.trim(), draft.head.trim(), draft.title.trim(), draft.body)
+
+  private suspend fun createIssue(
       account: String,
       owner: String,
       repository: String,
@@ -88,7 +104,7 @@ class WorkListRepository(
         ?.jsonPrimitive
         ?.intOrNull
         ?.takeIf { it > 0 }
-        ?.also { invalidateWork(account, owner, repository) }
+        ?.also { filterOptionsCache.invalidate(owner, repository) }
         ?: throw GithubPageException()
   }
 
@@ -122,7 +138,7 @@ class WorkListRepository(
     }
   }
 
-  suspend fun createPullRequest(
+  private suspend fun createPullRequest(
       account: String,
       owner: String,
       repository: String,
@@ -166,18 +182,10 @@ class WorkListRepository(
         ?.jsonPrimitive
         ?.intOrNull
         ?.takeIf { it > 0 }
-        ?.also { invalidateWork(account, owner, repository) }
+        ?.also { filterOptionsCache.invalidate(owner, repository) }
         ?: throw GithubPageException()
   }
 
-  private suspend fun invalidateWork(account: String, owner: String, repository: String) {
-    filterOptionsCache.invalidate(owner, repository)
-    cache.invalidateAndPersist(
-        account,
-        setOf(CacheTag(DataDomain.Work, null), repositoryCacheTag(owner, repository)),
-    )
-    cache.changes(account).publish(DataDomain.Work)
-  }
 
   private suspend fun repositoryId(
       session: GithubGraphQlSession,
@@ -231,7 +239,7 @@ class WorkListRepository(
       name: String,
       kind: CollaborationKind,
       filter: CollaborationListFilter,
-  ): String = "repository-work-search.v2:$owner/$name:${kind.name}:$filter"
+  ): String = "repository-work.v3:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}:${kind.name}:$filter:size=30"
 
   fun personalItems(
       account: String,
@@ -281,7 +289,7 @@ class WorkListRepository(
                             orderBy: {field: UPDATED_AT, direction: DESC},
                             filterBy: {$filterField: ${'$'}login}) {
                             pageInfo { hasNextPage endCursor }
-                            nodes { $WorkIssueListItemFields }
+                            nodes { $IssueRowFields }
                         }
                     }
                 }
@@ -345,7 +353,7 @@ class WorkListRepository(
         load
       }
 
-  /** 仓库议题／拉取请求列表统一走 GraphQL `search`，这样状态、范围和排序都只由一个请求 完成，不必为每种筛选组合维护并行连接。 */
+  /** Simple repository lists use the ordered repository connection; search owns complex filters. */
   fun repositoryItems(
       account: String,
       owner: String,
@@ -359,7 +367,7 @@ class WorkListRepository(
           paging,
           identity = { it: CollaborationItemDto -> requireNotNull(it.nodeId) },
           serializer = CollaborationItemDto.serializer(),
-          tags = setOf(CacheTag(DataDomain.Work, null)),
+          tags = setOf(workListCacheTag(owner, name)),
           mapItem = { item ->
             val merged = cache.changes(account).isMerged(WorkTarget(owner, name, item.number, kind))
             when {
@@ -370,20 +378,47 @@ class WorkListRepository(
           },
       ) {
         val session = GithubGraphQlSession(api, tokens, account)
-        val query = workSearchQuery(account, kind, filter, repository = "$owner/$name")
+        val direct = filter.sort != CollaborationSortOrder.Comments &&
+            filter == CollaborationListFilter(state = filter.state, sort = filter.sort)
+        val query = if (direct) null else workSearchQuery(account, kind, filter, repository = "$owner/$name")
+        val pull = kind == CollaborationKind.PullRequest
+        val field = if (pull) "pullRequests" else "issues"
+        val order = if (filter.sort == CollaborationSortOrder.Created) "CREATED_AT" else "UPDATED_AT"
+        val states = when (filter.state) {
+            CollaborationStateFilter.All -> if (pull) "[OPEN,CLOSED,MERGED]" else "[OPEN,CLOSED]"
+            CollaborationStateFilter.Open -> "[OPEN]"
+            CollaborationStateFilter.Closed -> if (pull) "[CLOSED,MERGED]" else "[CLOSED]"
+        }
+        val connectionQuery = if (direct) """query WorkRows(${'$'}owner:String!, ${'$'}name:String!, ${'$'}after:String) {
+            repository(owner:${'$'}owner,name:${'$'}name) { $field(first:30,after:${'$'}after,states:$states,
+            orderBy:{field:$order,direction:DESC}) { pageInfo { hasNextPage endCursor }
+            nodes { ${if (pull) PullRowFields else IssueRowFields} } } } }""" else WorkSearchQuery
         val load: suspend (String?) -> GithubGraphQlPage<CollaborationItemDto> = { after ->
           val variables = buildJsonObject {
-            put("query", query)
+            if (direct) { put("owner", owner); put("name", name) } else put("query", query)
             put("after", after?.let(::JsonPrimitive) ?: JsonNull)
           }
-          val data = session.execute(WorkSearchQuery, variables)
-          val search = data.graphObject("search")
-          val items =
-              search.safeNodes().mapNotNull { it.toCollaborationItem(kind) }
+          val data = session.execute(connectionQuery, variables)
+          val search = if (direct) data.graphObject("repository").graphObject(field) else data.graphObject("search")
+          val items = search.graphNodes().map { it.toCollaborationItem(kind) ?: throw GithubPageException() }
           GithubGraphQlPage(items, search.graphCursor(after))
         }
         load
       }
+
+  fun card(account: String, row: CollaborationItemDto): Flow<CollaborationItemDto> {
+    val id = row.nodeId ?: return kotlinx.coroutines.flow.flowOf(row)
+    val tag = CacheTag(DataDomain.Work, row.repositoryName?.lowercase())
+    val resource = cache.resource(account, "work-card.v1:$id:${row.updatedAt}", CollaborationItemDto.serializer(), tags = setOf(tag))
+    return resource.observe {
+        val batch = cache.sessionResource(account, "work-card-batch") { scope ->
+            WorkCardBatch(scope, GithubGraphQlSession(api, tokens, account))
+        }
+        RemoteFetch.Fresh(batch.read(id))
+    }.mapNotNull { state -> state.data?.takeIf { it.updatedAt == row.updatedAt }?.let { rich ->
+        if (row.merged && !rich.merged) rich.copy(merged = true, state = row.state) else rich
+    } }
+  }
 
   /** 筛选菜单按账号与仓库短时缓存；读取失败由调用方保留空选项。 */
   suspend fun filterOptions(
@@ -613,7 +648,7 @@ private fun JsonObject.toCollaborationItem(
       number = count("number").takeIf { it > 0 } ?: return null,
       title = graphText("title") ?: return null,
       state = state,
-      nodeId = graphText("id"),
+      nodeId = graphText("id") ?: return null,
       htmlUrl = graphText("url"),
       createdAt = graphText("createdAt"),
       updatedAt = graphText("updatedAt"),
@@ -641,6 +676,45 @@ private fun JsonObject.toCollaborationItem(
       merged = pull && (get("merged")?.jsonPrimitive?.booleanOrNull ?: false),
       reviewDecision = if (pull) graphText("reviewDecision") else null,
   )
+}
+
+private const val CommonRowFields = "__typename id number title url createdAt updatedAt author { login avatarUrl __typename } repository { nameWithOwner }"
+private const val IssueRowFields = "$CommonRowFields issueState: state stateReason comments { totalCount }"
+private const val PullRowFields = "$CommonRowFields pullRequestState: state isDraft merged headRefName baseRefName totalCommentsCount"
+
+private class WorkCardBatch(scope: CoroutineScope, private val session: GithubGraphQlSession) {
+    private class Request(val id: String, val result: CompletableDeferred<CollaborationItemDto>)
+    private val requests = Channel<Request>(64)
+
+    init {
+        scope.launch {
+            for (first in requests) {
+                val batch = arrayListOf(first)
+                delay(16)
+                while (batch.size < 30) batch.add(requests.tryReceive().getOrNull() ?: break)
+                batch.removeAll { !it.result.isActive }
+                if (batch.isEmpty()) continue
+                try {
+                    val nodes = session.execute(WorkCardDetailsQuery, buildJsonObject {
+                        putJsonArray("ids") { batch.forEach { add(it.id) } }
+                    })["nodes"] as? JsonArray ?: throw GithubPageException()
+                    val byId = nodes.mapNotNull { (it as? JsonObject)?.toCollaborationItem() }.associateBy { it.nodeId }
+                    batch.forEach { req ->
+                        val row = byId[req.id]
+                        if (row != null) req.result.complete(row) else req.result.completeExceptionally(GithubPageException())
+                    }
+                } catch (error: Exception) {
+                    batch.forEach { it.result.completeExceptionally(error) }
+                    currentCoroutineContext().ensureActive()
+                }
+            }
+        }.invokeOnCompletion { requests.cancel() }
+    }
+
+    suspend fun read(id: String): CollaborationItemDto {
+        val reply = CompletableDeferred<CollaborationItemDto>()
+        try { requests.send(Request(id, reply)); return reply.await() } finally { reply.cancel() }
+    }
 }
 
 /** `assignedActors` 的节点是 Assignee union，字段必须放进 Actor 片段内。 */
@@ -682,21 +756,24 @@ private val WorkSearchQuery =
     """
     query RepositoryWorkSearch(${'$'}query: String!, ${'$'}after: String) {
         search(query: ${'$'}query, type: ISSUE, first: 30, after: ${'$'}after) {
-            issueCount
             pageInfo { hasNextPage endCursor }
             nodes {
                 __typename
                 ... on Issue {
-                    $WorkIssueListItemFields
+                    $IssueRowFields
                 }
                 ... on PullRequest {
-                    $WorkPullListItemFields
+                    $PullRowFields
                 }
             }
         }
     }
 """
         .trimIndent()
+
+private const val WorkCardDetailsQuery = """query WorkCardDetails(${'$'}ids:[ID!]!) {
+    nodes(ids:${'$'}ids) { __typename ... on Issue { $WorkIssueListItemFields } ... on PullRequest { $WorkPullListItemFields } }
+}"""
 
 private val FilterOptionsQuery =
     """

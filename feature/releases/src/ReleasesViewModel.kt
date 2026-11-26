@@ -30,7 +30,7 @@ import org.koin.dsl.module
 internal data class ReleaseState(
     val result: GithubReleaseResult? = null,
     val loading: Boolean = true,
-    val failure: Exception? = null,
+    val failure: Throwable? = null,
     val selectedVersionId: String? = null,
 )
 
@@ -46,11 +46,6 @@ internal class ReleasesViewModel(
     val reactionFailure = mutableReactionFailure.asStateFlow()
     private var coordinator: MutationCoordinator? = null
     private val reactionObservers = mutableMapOf<String, Job>()
-    private val reactionPending: Boolean
-        get() =
-            state.value.result?.detail?.let {
-                reactionUpdates.current(it.version.id, it.reactions)?.pending
-            } == true
 
     val timeline by lazy {
         repository.versions(account, route.owner, route.name).cachedIn(viewModelScope)
@@ -91,20 +86,13 @@ internal class ReleasesViewModel(
         MutationKey(MutationKind.REACTION, id, ListSerializer(GithubReactionGroup.serializer()))
 
     fun select(id: String) {
-        if (reactionPending) return
-        if (id == state.value.result?.detail?.version?.id) {
-            request?.cancel()
-            mutableState.value =
-                state.value.copy(selectedVersionId = id, loading = false, failure = null)
-            return
-        }
-        if (state.value.selectedVersionId == id && state.value.loading) return
+        if (id == state.value.selectedVersionId && state.value.failure == null) return
         load(id = id)
     }
 
     fun retry() {
         val current = state.value
-        if (!reactionPending && current.failure != null) {
+        if (current.failure != null) {
             load(id = current.selectedVersionId)
         }
     }
@@ -116,7 +104,7 @@ internal class ReleasesViewModel(
         val release = current.result?.detail ?: return
         if (release.version.id != id || !release.canReact || current.loading) return
         val coord = coordinator
-        val slotReactions = coord?.current(reactionKey(id))?.let { it.desired ?: it.confirmed }
+        val slotReactions = coord?.current(reactionKey(id))?.visible
         val previous = reactionUpdates.current(id, release.reactions)
         val reactions = slotReactions ?: previous?.reactions ?: release.reactions
         if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
@@ -149,7 +137,7 @@ internal class ReleasesViewModel(
                         ),
                     send = { nextDesired ->
                         val baseline = activeCoord.current(reactionKey(id)).confirmed ?: release.reactions
-                        convergeGithubReactions(baseline, nextDesired) { targetContent, currentReacted ->
+                        convergeGithubReactions(baseline, nextDesired, { activeCoord.confirmStep(reactionKey(id), it) }) { targetContent, currentReacted ->
                             repository.toggleReaction(
                                 account,
                                 route.owner,
@@ -161,7 +149,7 @@ internal class ReleasesViewModel(
                         }
                     },
                     readBack = {
-                        repository.loadVersion(account, id).detail?.reactions ?: release.reactions
+                        requireNotNull(repository.readVersion(account, id).detail).reactions
                     },
                 )
             if (!accepted) {
@@ -182,7 +170,7 @@ internal class ReleasesViewModel(
                 coord.observe(reactionKey(id)).collect { write ->
                     val source = state.value.result?.detail?.takeIf { it.version.id == id }?.reactions
                         ?: baseline
-                    val reactions = write.desired ?: write.confirmed
+                    val reactions = write.visible
                     if (reactions != null) {
                         reactionUpdates.set(
                             id,
@@ -204,26 +192,18 @@ internal class ReleasesViewModel(
     private fun load(id: String? = null) {
         request?.cancel()
         mutableReactionFailure.value = null
-        mutableState.value =
-            state.value.copy(
-                selectedVersionId = id,
-                loading = true,
-                failure = null,
-            )
+        val cached = state.value.result?.takeIf { state.value.selectedVersionId == id || it.detail?.version?.id == id }
+        mutableState.value = ReleaseState(result = cached, selectedVersionId = id, loading = cached == null)
         request = viewModelScope.launch {
             try {
-                val result =
-                    if (id == null) {
-                        repository.load(account, route.owner, route.name, route.tag)
-                    } else {
-                        repository.loadVersion(account, id)
-                    }
-                ensureActive()
-                val current = state.value
-                mutableState.value = current.copy(result = result, loading = false)
-                val previousId = current.result?.detail?.version?.id
-                if (previousId != null && previousId != result.detail?.version?.id) {
-                    reactionUpdates.set(previousId, null)
+                repository.observe(account, route.owner, route.name, route.tag, id).collect { frame ->
+                    val content = frame.data ?: cached
+                    mutableState.value = ReleaseState(
+                        result = content,
+                        loading = content == null && frame.error == null,
+                        failure = frame.error,
+                        selectedVersionId = id,
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error

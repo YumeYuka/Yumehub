@@ -78,10 +78,7 @@ val dataModule = module {
     single { ReleasePreviewImages() }
     single { HomeFavoritesStore(get(), get()) }
     single { PagingSnapshotStore(get(), get()) }
-    single {
-        val snapshots: PagingSnapshotStore = get()
-        CachedDataRepository(get(), get(), get()) { snapshots.sync() }
-    }
+    single { CachedDataRepository(get(), get(), get(), get()) }
     single { PagingRepository(get(), get()) }
     single { MyRepositoriesRepository(get(), get(), get()) }
     single { DashboardFeedRepository(get(), get(), get()) }

@@ -140,7 +140,19 @@ data class IssueTypeOptionDto(val id: String, val name: String, val color: Strin
 
 data class MilestoneOptionDto(val id: String, val title: String)
 
+@Serializable
 data class AssigneeOptionDto(val id: String, val login: String, val name: String? = null)
+
+@Serializable
+data class WorkCreationDraft(
+    val title: String = "", val body: String = "", val base: String = "", val head: String = "",
+    val issueTypeId: String? = null, val milestoneId: String? = null,
+    val labelIds: List<String> = emptyList(), val assignees: List<AssigneeOptionDto> = emptyList(),
+    val issueTemplate: String? = null,
+)
+
+@Serializable
+data class DiscussionCreationDraft(val title: String = "", val body: String = "", val categoryId: String? = null)
 
 data class IssueTemplateOptionDto(
     val name: String,

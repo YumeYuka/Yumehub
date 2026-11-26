@@ -14,6 +14,7 @@ import kotlinx.serialization.json.*
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlError
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
+import moe.yumeyuka.yumehub.data.api.dto.GraphQlResponse
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.network.SingleSubmission
 import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
@@ -77,7 +78,9 @@ internal class GithubGraphQlSession(
                         cause = error,
                     )
                 }
-                throw error
+                // A failed read, including read-back after a write, is not proof of a rejected mutation.
+                if (moe.yumeyuka.yumehub.data.cache.ConfirmedWrites.current.get() == null) throw error
+                throw GithubPageException(message = error.message(), stage = GraphQlRequestStage.RESPONSE, cause = error)
             }
         currentCoroutineContext().ensureActive()
         ensureCurrent()
@@ -88,21 +91,7 @@ internal class GithubGraphQlSession(
                     .distinct()
                     .joinToString("; ")
                     .takeIf(String::isNotBlank)
-            val dataObj = response.data as? JsonObject
-            val noExecutedPayload =
-                response.data == null ||
-                    response.data == JsonNull ||
-                    (dataObj != null && dataObj.values.all { it == JsonNull })
-            val definite =
-                write &&
-                    noExecutedPayload &&
-                    response.errors.all { error ->
-                        val type =
-                            error.type
-                                ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
-                                ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
-                        type in DefiniteGraphQlRejectionTypes
-                    }
+            val definite = write && response.definitelyRejected()
             throw GithubPageException(
                 message = message,
                 stage = GraphQlRequestStage.RESPONSE,
@@ -116,20 +105,24 @@ internal class GithubGraphQlSession(
 
     private companion object {
         val DefiniteHttpRejectionCodes = setOf(400, 401, 403, 404, 409, 422)
-        val DefiniteGraphQlRejectionTypes =
-            setOf(
-                "FORBIDDEN",
-                "UNPROCESSABLE",
-                "BAD_USER_INPUT",
-                "NOT_FOUND",
-                "UNAUTHORIZED",
-                "UNAUTHENTICATED",
-                "INSUFFICIENT_SCOPES",
-                "VALIDATION_ERROR",
-                "CONFLICT",
-                "MAX_NODE_LIMIT_EXCEEDED",
-            )
     }
+}
+
+private val rejectionTypes = setOf("FORBIDDEN", "UNPROCESSABLE", "BAD_USER_INPUT", "NOT_FOUND",
+    "UNAUTHORIZED", "UNAUTHENTICATED", "INSUFFICIENT_SCOPES", "VALIDATION_ERROR", "CONFLICT")
+
+internal fun GraphQlResponse.definitelyRejected(): Boolean {
+    if (errors.isEmpty() || !(data == null || data == JsonNull ||
+            (data is JsonObject && data.values.all { it == JsonNull }))) return false
+    return errors.all { error ->
+        (error.type ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
+            ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
+            ?: (error.extensions?.get("classification") as? JsonPrimitive)?.contentOrNull) in rejectionTypes
+    }
+}
+
+internal fun GraphQlResponse.checkWriteErrors() {
+    if (errors.isNotEmpty()) throw GithubPageException(errors = errors, definiteRejection = definitelyRejected())
 }
 
 /** 页码仅作本地索引，网络翻页只使用真实 cursor；同一 Source 的加载串行化。 */
@@ -181,7 +174,7 @@ internal class GithubGraphQlPagingSource<T : Any>(
     private val mutex = Mutex()
     private val cursors = mutableMapOf<Int, String?>(1 to null)
     private val seen = mutableMapOf<String, Int>()
-    private var request: (suspend (String?) -> GithubGraphQlPage<T>)? = null
+    private val request by lazy(LazyThreadSafetyMode.NONE, loader)
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, T> =
         mutex.withLock {
@@ -197,7 +190,7 @@ internal class GithubGraphQlPagingSource<T : Any>(
                     } else null
                 val result =
                     if (cached == null) {
-                        requestPage(cursors[page])
+                        pageRead { requestPage(cursors[page], request) }
                     } else GithubGraphQlPage(cached.items, cached.nextCursor)
                 currentCoroutineContext().ensureActive()
                 ensureCurrent()
@@ -225,9 +218,9 @@ internal class GithubGraphQlPagingSource<T : Any>(
                 if (cached == null && page == 1) firstPageCache?.save?.invoke(firstPage(result))
                 if (cached != null && firstPageCache != null && !cached.isFresh()) {
                     firstPageCache.revalidate(this) {
-                        // 只与首屏比较。后台校验不能修改旧 Source 正在使用的游标。
-                        val updated = mutex.withLock { requestPage(null) }
-                        firstPage(updated) to (updated != result)
+                        // A validation read owns its loader, never the active cursor chain or its mutex.
+                        val updated = requestPage(null, loader())
+                        firstPage(updated) to (cached.boundaryInvalid || updated != result)
                     }
                 }
                 LoadResult.Page(
@@ -243,9 +236,8 @@ internal class GithubGraphQlPagingSource<T : Any>(
             }
         }
 
-    private suspend fun requestPage(after: String?): GithubGraphQlPage<T> {
+    private suspend fun requestPage(after: String?, load: suspend (String?) -> GithubGraphQlPage<T>): GithubGraphQlPage<T> {
         ensureCurrent()
-        val load = request ?: loader().also { request = it }
         return load(after).also { result ->
             currentCoroutineContext().ensureActive()
             ensureCurrent()

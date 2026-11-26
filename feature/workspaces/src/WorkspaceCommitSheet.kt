@@ -18,47 +18,49 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.GitCommitHorizontal
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
+import moe.yumeyuka.yumehub.data.repository.WorkspaceCommitDraft
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubCommitMessageFields
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
 
 @Composable
 internal fun WorkspaceCommitSheet(
     visible: Boolean,
     editor: GithubEditorSession,
-    initialRef: String,
+    draft: WorkspaceCommitDraft?,
+    baseChanged: Boolean,
+    onDraftChange: (WorkspaceCommitDraft) -> Unit,
     branches: WorkspaceBranches,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit,
+    onConfirm: (WorkspaceCommitDraft) -> Unit,
 ) {
     val strings = LocalGithubStrings.current
     val work = strings.Workspaces
-    val busy = editor.submitting
-    var branch by rememberSaveable(editor.id, visible) { mutableStateOf(initialRef) }
-    var headline by
-        rememberSaveable(editor.id, visible) { mutableStateOf(work.UpdateFile(editor.title)) }
-    var body by rememberSaveable(editor.id, visible) { mutableStateOf("") }
+    val busy = editor.submitting || draft == null
     var choosing by rememberSaveable(editor.id, visible) { mutableStateOf(false) }
+    var reviewed by rememberSaveable(editor.id, editor.filePath, visible, baseChanged) { mutableStateOf(false) }
+    val browser = rememberExternalUriHandler()
     GlasmioBottomSheet(
         visible = visible && !choosing && !editor.closeRequested,
-        onDismissRequest = { if (!busy && !choosing) onDismiss() },
-        dismissOnBackPress = !busy,
-        dismissOnClickOutside = !busy,
+        onDismissRequest = { if (!choosing) onDismiss() },
+        dismissOnBackPress = true,
+        dismissOnClickOutside = true,
         fitContent = true,
         title = work.CommitChanges,
         topBar = {
             GlasmioTopBar(
                 title = work.CommitChanges,
                 navigation = {
-                    GlasmioIconButton(onClick = onDismiss, enabled = !busy) {
+                    GlasmioIconButton(onClick = onDismiss) {
                         GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
                     GlasmioIconButton(
-                        enabled = editor.submitEnabled && !busy && headline.isNotBlank(),
-                        onClick = { onConfirm(branch, headline, body) },
+                        enabled = editor.submitEnabled && !busy && (!baseChanged || reviewed) && !draft?.headline.isNullOrBlank(),
+                        onClick = { draft?.let(onConfirm) },
                     ) {
                         GithubIcon(
                             Lucide.GitCommitHorizontal,
@@ -76,10 +78,17 @@ internal fun WorkspaceCommitSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (baseChanged) GlasmioGroupedList {
+                GlasmioListRow(title = work.DraftBaseChanged, detail = strings.Repository.OpenInBrowser,
+                    onClick = editor.pageUrl?.let { url -> { browser(url) } })
+                GlasmioListRow(title = work.ReviewedFile, trailing = {
+                    GlasmioSwitch(checked = reviewed, enabled = !busy, onCheckedChange = { reviewed = it })
+                })
+            }
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = work.CommitBranch,
-                    detail = branch.removePrefix("refs/heads/"),
+                    detail = draft?.branch?.removePrefix("refs/heads/"),
                     onClick =
                         if (busy) null
                         else
@@ -90,10 +99,10 @@ internal fun WorkspaceCommitSheet(
                 )
             }
             GithubCommitMessageFields(
-                headline = headline,
-                onHeadlineChange = { headline = it },
-                body = body,
-                onBodyChange = { body = it },
+                headline = draft?.headline.orEmpty(),
+                onHeadlineChange = { text -> draft?.let { onDraftChange(it.copy(headline = text)) } },
+                body = draft?.body.orEmpty(),
+                onBodyChange = { text -> draft?.let { onDraftChange(it.copy(body = text)) } },
                 enabled = !busy,
             )
         }
@@ -102,13 +111,13 @@ internal fun WorkspaceCommitSheet(
     WorkspaceBranchSheet(
         visible = visible && choosing,
         branches = choices,
-        selectedBranch = branch,
+        selectedBranch = draft?.branch.orEmpty(),
         onDismiss = { choosing = false },
         onRetry = branches::retry,
         onLoadMore = branches::loadMore,
         onQueryChange = branches::search,
         onSelect = {
-            branch = it
+            draft?.let { current -> onDraftChange(current.copy(branch = it)) }
             choosing = false
         },
     )

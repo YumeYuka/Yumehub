@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -12,6 +11,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.MessagesSquare
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.serialization.json.Json
+import moe.yumeyuka.yumehub.data.api.dto.DiscussionCreationDraft
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,7 +34,6 @@ import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
-import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityRepository
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
@@ -59,7 +60,6 @@ internal fun DiscussionListPage(
     account: String,
     onOpenDiscussion: (owner: String, name: String, number: Int) -> Unit,
 ) {
-    var creationVisible by rememberSaveable { mutableStateOf(route.createInitially) }
     val viewModel: DiscussionListViewModel =
         koinViewModel(
             key = "repository-discussions:$account:$route",
@@ -68,9 +68,6 @@ internal fun DiscussionListPage(
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val filterOptions by viewModel.options.collectAsStateWithLifecycle()
     val creationState by viewModel.creationState.collectAsStateWithLifecycle()
-    androidx.compose.runtime.LaunchedEffect(creationVisible) {
-        viewModel.setCreationVisible(creationVisible)
-    }
     val strings = LocalGithubStrings.current
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = rememberGithubUriHandler()
@@ -87,6 +84,7 @@ internal fun DiscussionListPage(
                 items,
                 "discussions:$filter",
                 paging.initialLoading,
+                refreshDomains = emptySet(),
             ) {
                 it.nodeId ?: "${it.repository}#${it.number}"
             }
@@ -143,28 +141,22 @@ internal fun DiscussionListPage(
             pageSearchClearance(searching)
           }
         }
-        androidx.compose.runtime.LaunchedEffect(creationState.createdNumber) {
-            val number = creationState.createdNumber ?: return@LaunchedEffect
-            val wasVisible = creationVisible
-            viewModel.consumeCreatedDiscussion()
-            creationVisible = false
-            items.refresh()
-            if (wasVisible && host.navigationEnabled) {
-                onOpenDiscussion(route.owner, route.name, number)
-            }
+        androidx.compose.runtime.LaunchedEffect(host, viewModel) {
+            viewModel.created.collect { number -> if (host.navigationEnabled) onOpenDiscussion(route.owner, route.name, number) }
         }
         DiscussionCreationSheet(
-            visible = creationVisible && route.name.isNotBlank(),
+            visible = creationState.visible && route.name.isNotBlank(),
             creationState = creationState,
             categories = filterOptions.discussionCategories,
             optionsFailed = viewModel.optionsFailed,
             onRetry = viewModel::loadFilterOptions,
             onTitleChange = viewModel::updateCreationTitle,
+            onCategoryChange = viewModel::updateCategory,
             body = viewModel.creationBody,
             onEditBody = {
                 host.onOpenEditor(viewModel.bodyEditor(strings.WorkList.CreationBody, strings.Common.Save))
             },
-            onDismiss = { creationVisible = false },
+            onDismiss = { viewModel.setCreationVisible(false) },
             onSubmit = { categoryId, title, body ->
                 viewModel.submitDiscussion(categoryId, title, body)
             },
@@ -175,20 +167,21 @@ internal fun DiscussionListPage(
 
 internal data class DiscussionCreationState(
     val title: String = "",
+    val categoryId: String? = null,
+    val formRevision: Long = 0L,
     val draftRestored: Boolean = false,
     val visible: Boolean = false,
     val submitting: Boolean = false,
     val failed: Boolean = false,
     val uncertain: Boolean = false,
     val uncertainOperationId: String? = null,
-    val createdNumber: Int? = null,
 )
 
 internal class DiscussionListViewModel(
     private val source: RepositoryActivityRepository,
     private val route: RepositoryActivityRoute,
     private val account: String,
-    private val draftStore: CommentDraftStore? = null,
+    private val draftStore: CommentDraftStore,
 ) : ViewModel() {
     private val personal = route.kind == RepositoryActivityKind.PersonalDiscussions
     val scopes =
@@ -231,6 +224,9 @@ internal class DiscussionListViewModel(
     private val mutableCreationState = MutableStateFlow(DiscussionCreationState())
     val creationState = mutableCreationState.asStateFlow()
     private var creationObserverStarted = false
+    val created = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    private var submittingHere = false
+    private var navigateOnSuccess = false
 
     fun itemsFor(filter: CollaborationListFilter) =
         source.discussionItems(account, route.owner, route.name, personal, filter)
@@ -250,26 +246,27 @@ internal class DiscussionListViewModel(
         )
     }
 
-    fun clearCreationBody() {
-        creationBody = ""
-        draftStore?.remove(account, "$draftPrefix/body")
-        draftStore?.remove(account, "$draftPrefix/title")
+    private fun saveDraft() {
+        val state = mutableCreationState.value
+        val draft = DiscussionCreationDraft(state.title, creationBody, state.categoryId)
+        draftStore.saveEncoded(account, draftPrefix) { Json.encodeToString(draft) }
     }
 
     fun setCreationVisible(visible: Boolean) {
+        if (!visible) navigateOnSuccess = false
         mutableCreationState.update { it.copy(visible = visible) }
         if (visible && !mutableCreationState.value.draftRestored) {
             viewModelScope.launch {
-                val restoredTitle = draftStore?.loadOrNull(account, "$draftPrefix/title").orEmpty()
-                val restoredBody = draftStore?.loadOrNull(account, "$draftPrefix/body").orEmpty()
-                if (creationBody.isBlank() && restoredBody.isNotBlank()) creationBody = restoredBody
-                mutableCreationState.update { current ->
-                    if (current.draftRestored) current
-                    else
-                        current.copy(
-                            title = current.title.ifBlank { restoredTitle },
-                            draftRestored = true,
-                        )
+                try {
+                    val encoded = draftStore.loadOrNull(account, draftPrefix)
+                    val restored = if (encoded != null) Json.decodeFromString<DiscussionCreationDraft>(encoded)
+                        else DiscussionCreationDraft(draftStore.load(account, "$draftPrefix/title"), draftStore.load(account, "$draftPrefix/body"))
+                    if (!mutableCreationState.value.draftRestored) {
+                        creationBody = restored.body
+                        mutableCreationState.update { it.copy(title = restored.title, categoryId = restored.categoryId, draftRestored = true) }
+                    }
+                } catch (_: kotlinx.serialization.SerializationException) {
+                    mutableCreationState.update { it.copy(failed = true) }
                 }
             }
         }
@@ -277,9 +274,17 @@ internal class DiscussionListViewModel(
     }
 
     fun updateCreationTitle(title: String) {
-        if (mutableCreationState.value.submitting) return
+        val current = mutableCreationState.value
+        if (!current.draftRestored || current.submitting || current.uncertain || current.title == title) return
         mutableCreationState.update { it.copy(title = title, failed = false) }
-        draftStore?.save(account, "$draftPrefix/title", title)
+        saveDraft()
+    }
+
+    fun updateCategory(id: String) {
+        val current = mutableCreationState.value
+        if (!current.draftRestored || current.submitting || current.uncertain || current.categoryId == id) return
+        mutableCreationState.update { it.copy(categoryId = id) }
+        saveDraft()
     }
 
     fun bodyEditor(title: String, saveLabel: String): GithubEditorSession {
@@ -291,7 +296,7 @@ internal class DiscussionListViewModel(
             repositoryRootUrl = "https://github.com/${route.owner}/${route.name}",
             onSourceChange = {
                 creationBody = it
-                draftStore?.save(account, "$draftPrefix/body", it)
+                saveDraft()
             },
             submitLabel = saveLabel,
             submitEnabled = true,
@@ -302,6 +307,7 @@ internal class DiscussionListViewModel(
 
     init {
         loadFilterOptions()
+        if (!personal) setCreationVisible(route.createInitially)
     }
 
     fun loadFilterOptions() {
@@ -333,14 +339,23 @@ internal class DiscussionListViewModel(
 
     fun submitDiscussion(categoryId: String, title: String, body: String) {
         val current = mutableCreationState.value
-        if (current.submitting || current.uncertain) return
+        if (!current.draftRestored || current.submitting || current.uncertain || title.isBlank()) return
+        val repoId = mutableOptions.value.repositoryId ?: return
+        submittingHere = true
+        navigateOnSuccess = current.visible
         mutableCreationState.update {
-            it.copy(title = title, submitting = true, failed = false, createdNumber = null)
+            it.copy(title = title, categoryId = categoryId, submitting = true, failed = false)
         }
         viewModelScope.launch {
-            val savedTitle = draftStore?.saveConfirmed(account, "$draftPrefix/title", title) ?: true
-            val savedBody = draftStore?.saveConfirmed(account, "$draftPrefix/body", body) ?: true
-            if (!savedTitle || !savedBody) {
+            val store = draftStore
+            val key = draftPrefix
+            val login = account
+            val repo = source
+            val encoded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                Json.encodeToString(DiscussionCreationDraft(title, body, categoryId))
+            }
+            if (!store.saveConfirmed(login, key, encoded)) {
+                submittingHere = false
                 mutableCreationState.update { it.copy(submitting = false, failed = true) }
                 return@launch
             }
@@ -351,33 +366,35 @@ internal class DiscussionListViewModel(
                     CacheTag(DataDomain.Work, null),
                     repositoryCacheTag(route.owner, route.name),
                 )
-            val accepted =
+            val receipt =
                 coord.submitCommand(
                     key = creationKey,
                     tags = tags,
-                    send = { createDiscussion(categoryId, title.trim(), body) },
+                    onConfirmed = {
+                        store.removeIfUnchanged(login, key, encoded)
+                        store.removeIfUnchanged(login, "$key/title", title)
+                        store.removeIfUnchanged(login, "$key/body", body)
+                    },
+                    send = { repo.createDiscussion(login, repoId, categoryId, title.trim(), body) },
                     readBack = { null },
                 )
-            if (!accepted) {
-                val opId =
-                    coord.pending.value.firstOrNull {
-                        it.kind == creationKey.kind && it.target == creationKey.target
-                    }?.operationId
-                mutableCreationState.update {
-                    it.copy(
-                        submitting = false,
-                        failed = true,
-                        uncertain = true,
-                        uncertainOperationId = opId,
-                    )
-                }
+            val command = receipt?.await() ?: coord.currentCommand(creationKey)
+            submittingHere = false
+            val number = command.result
+            if (receipt != null && command.phase == WritePhase.IDLE && number != null) {
+                val navigate = navigateOnSuccess && mutableCreationState.value.visible
+                creationBody = ""
+                mutableCreationState.value = DiscussionCreationState(draftRestored = true, formRevision = mutableCreationState.value.formRevision + 1,
+                    visible = mutableCreationState.value.visible && !navigate)
+                if (navigate) created.tryEmit(number)
+            } else {
+                mutableCreationState.update { it.copy(submitting = command.phase == WritePhase.PENDING,
+                    failed = command.phase != WritePhase.PENDING, uncertain = command.phase == WritePhase.UNCERTAIN,
+                    uncertainOperationId = command.submissionId) }
             }
         }
     }
 
-    fun consumeCreatedDiscussion() {
-        mutableCreationState.update { it.copy(createdNumber = null) }
-    }
 
     fun acknowledgeDiscussionUncertain() {
         val opId = mutableCreationState.value.uncertainOperationId
@@ -389,9 +406,6 @@ internal class DiscussionListViewModel(
                         .firstOrNull { it.kind == creationKey.kind && it.target == creationKey.target }
                         ?.operationId
             if (id != null) coord.acknowledge(id)
-            mutableCreationState.update {
-                it.copy(uncertain = false, uncertainOperationId = null, failed = false)
-            }
         }
     }
 
@@ -403,55 +417,13 @@ internal class DiscussionListViewModel(
         viewModelScope.launch {
             val coord = existing ?: source.mutations(account)
             coord.observeCommand(creationKey).collect { cmd ->
-                when (cmd.phase) {
-                    WritePhase.PENDING ->
-                        mutableCreationState.update { it.copy(submitting = true, failed = false) }
-                    WritePhase.IDLE -> {
-                        val number = cmd.result
-                        if (number != null) {
-                            clearCreationBody()
-                            val showCreated = mutableCreationState.value.visible
-                            mutableCreationState.value =
-                                DiscussionCreationState(
-                                    draftRestored = true,
-                                    visible = false,
-                                    createdNumber = number.takeIf { showCreated },
-                                )
-                        } else {
-                            mutableCreationState.update {
-                                it.copy(submitting = false, uncertain = false, uncertainOperationId = null)
-                            }
-                        }
-                    }
-                    WritePhase.REJECTED ->
-                        mutableCreationState.update {
-                            it.copy(submitting = false, failed = true, uncertain = false)
-                        }
-                    WritePhase.UNCERTAIN -> {
-                        val opId =
-                            coord.pending.value.firstOrNull {
-                                it.kind == creationKey.kind && it.target == creationKey.target
-                            }?.operationId
-                        mutableCreationState.update {
-                            it.copy(
-                                submitting = false,
-                                failed = true,
-                                uncertain = true,
-                                uncertainOperationId = opId,
-                            )
-                        }
-                    }
+                if (!submittingHere) mutableCreationState.update { state ->
+                    state.copy(submitting = cmd.phase == WritePhase.PENDING, uncertain = cmd.phase == WritePhase.UNCERTAIN,
+                        uncertainOperationId = cmd.submissionId.takeIf { cmd.phase == WritePhase.UNCERTAIN },
+                        failed = state.failed && !state.uncertain)
                 }
             }
         }
     }
 
-    suspend fun createDiscussion(categoryId: String, title: String, body: String): Int =
-        source.createDiscussion(
-            account,
-            mutableOptions.value.repositoryId ?: throw GithubPageException(),
-            categoryId,
-            title,
-            body,
-        )
 }

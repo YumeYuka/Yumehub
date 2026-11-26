@@ -8,7 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * 缓存磁盘写入的单写队列。
@@ -19,142 +20,106 @@ import kotlinx.coroutines.withContext
  */
 internal class CacheWriteQueue(private val scope: CoroutineScope) {
     private class CriticalWork(
-        val block: suspend () -> Unit,
-        val done: CompletableDeferred<Unit>,
+        val block: suspend () -> Unit, val done: CompletableDeferred<Unit>, val queuedAt: Long,
+        val sync: (() -> Unit)?,
     )
-
-    private class SnapshotWork(val block: suspend () -> Unit)
-
-    private val lock = Any()
-    private val criticalChannel = Channel<CriticalWork>(MaxCritical)
-    private val snapshots = LinkedHashMap<String, SnapshotWork>(16, 0.75f, false)
-    private var unkeyedCounter = 0L
-    private var draining = false
+    private val critical = Channel<CriticalWork>(128)
+    private val ready = Channel<CriticalWork>(2)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val encoding = Channel<Unit>(2)
+    private val snapshots = LinkedHashMap<String, suspend () -> (suspend () -> Unit)?>()
     private var closed = false
+    internal val lastCriticalQueueNanos = AtomicLong()
+    internal val lastSyncNanos = AtomicLong()
+    internal val snapshotExecuted = AtomicInteger()
 
-    internal val criticalExecuted = AtomicInteger(0)
-    internal val snapshotSubmitted = AtomicInteger(0)
-    internal val snapshotCoalesced = AtomicInteger(0)
-    internal val snapshotExecuted = AtomicInteger(0)
-    internal val snapshotEvicted = AtomicInteger(0)
-    internal val lastCriticalQueueNanos = AtomicLong(0L)
-
-    /** 可合并的后台快照写入；队列满时淘汰最早的可重建项。 */
-    fun submit(coalesceKey: String?, block: suspend () -> Unit) {
-        val start =
-            synchronized(lock) {
-                if (closed) return
-                snapshotSubmitted.incrementAndGet()
-                val key = coalesceKey ?: "\u0000anon:${++unkeyedCounter}"
-                if (snapshots.remove(key) != null) {
-                    snapshotCoalesced.incrementAndGet()
+    init {
+        repeat(2) {
+            scope.launch(Dispatchers.IO) {
+                for (signal in encoding) while (true) {
+                    val prepare = synchronized(snapshots) {
+                        val iterator = snapshots.values.iterator()
+                        if (iterator.hasNext()) iterator.next().also { iterator.remove() } else null
+                    } ?: break
+                    try {
+                        val commit = prepare() ?: continue
+                        snapshotExecuted.incrementAndGet()
+                        val done = CompletableDeferred<Unit>()
+                        ready.send(CriticalWork(commit, done, 0L, null))
+                        wake.trySend(Unit)
+                        done.await()
+                    } catch (error: CancellationException) {
+                        currentCoroutineContext().ensureActive()
+                    } catch (_: Exception) {
+                        // A rebuildable snapshot is never a prerequisite for a read or mutation.
+                    }
                 }
-                while (snapshots.size >= MaxSnapshots) {
-                    val oldest = snapshots.keys.firstOrNull() ?: break
-                    snapshots.remove(oldest)
-                    snapshotEvicted.incrementAndGet()
-                }
-                snapshots[key] = SnapshotWork(block)
-                if (!draining) {
-                    draining = true
-                    true
-                } else false
             }
-        if (start) launchDrain()
+        }
+        scope.launch(Dispatchers.IO) {
+            for (signal in wake) {
+                var next = critical.tryReceive().getOrNull()
+                while (true) {
+                    val work = next ?: critical.tryReceive().getOrNull() ?: ready.tryReceive().getOrNull() ?: break
+                    next = null
+                    if (work.queuedAt != 0L) lastCriticalQueueNanos.set(System.nanoTime() - work.queuedAt)
+                    val sync = work.sync
+                    if (sync == null) {
+                        if (execute(work)) work.done.complete(Unit)
+                    } else {
+                        val waiting = ArrayList<CriticalWork>()
+                        var batch: CriticalWork? = work
+                        do {
+                            if (execute(batch!!)) waiting.add(batch)
+                            batch = critical.tryReceive().getOrNull()
+                        } while (batch != null && batch.sync === sync)
+                        next = batch
+                        if (waiting.isNotEmpty()) try {
+                            val start = System.nanoTime()
+                            sync()
+                            lastSyncNanos.set(System.nanoTime() - start)
+                            waiting.forEach { it.done.complete(Unit) }
+                        } catch (error: Exception) {
+                            waiting.forEach { it.done.completeExceptionally(error) }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    /** 关键写入：有界挂起入队；调用方等待其真正提交完成，失败向调用方抛出。 */
-    suspend fun run(block: suspend () -> Unit) {
+    fun snapshot(key: String, prepare: suspend () -> (suspend () -> Unit)?) {
+        synchronized(snapshots) {
+            if (closed) return
+            snapshots.remove(key)
+            if (snapshots.size == 128) snapshots.remove(snapshots.keys.first())
+            snapshots[key] = prepare
+        }
+        encoding.trySend(Unit)
+    }
+
+    suspend fun run(sync: (() -> Unit)? = null, block: suspend () -> Unit) {
         val done = CompletableDeferred<Unit>()
-        val enqueuedAt = System.nanoTime()
-        criticalChannel.send(CriticalWork({
-            lastCriticalQueueNanos.set(System.nanoTime() - enqueuedAt)
-            block()
-        }, done))
-        val start =
-            synchronized(lock) {
-                if (closed) {
-                    done.completeExceptionally(expiredSession())
-                    false
-                } else if (!draining) {
-                    draining = true
-                    true
-                } else false
-            }
-        if (start) launchDrain()
+        critical.send(CriticalWork(block, done, System.nanoTime(), sync))
+        wake.trySend(Unit)
         done.await()
     }
 
+    private suspend fun execute(work: CriticalWork): Boolean = try {
+        work.block()
+        true
+    } catch (error: Exception) {
+        work.done.completeExceptionally(error)
+        currentCoroutineContext().ensureActive()
+        false
+    }
+
     fun close() {
-        val pendingCritical = mutableListOf<CriticalWork>()
-        synchronized(lock) {
-            if (closed) return
-            closed = true
-            snapshots.clear()
+        synchronized(snapshots) { closed = true; snapshots.clear() }
+        critical.close(); ready.close(); encoding.close(); wake.close()
+        for (channel in listOf(critical, ready)) while (true) {
+            val work = channel.tryReceive().getOrNull() ?: break
+            work.done.completeExceptionally(expiredSession())
         }
-        criticalChannel.close(expiredSession())
-        while (true) {
-            val item = criticalChannel.tryReceive().getOrNull() ?: break
-            pendingCritical.add(item)
-        }
-        pendingCritical.forEach { it.done.completeExceptionally(expiredSession()) }
-    }
-
-    private fun launchDrain() {
-        scope.launch { withContext(dispatcher) { drain() } }
-    }
-
-    private suspend fun drain() {
-        while (true) {
-            val critical = criticalChannel.tryReceive().getOrNull()
-            if (critical != null) {
-                executeCritical(critical)
-                continue
-            }
-            val snapshot =
-                synchronized(lock) {
-                    val nextKey = snapshots.keys.firstOrNull()
-                    if (nextKey != null) {
-                        snapshots.remove(nextKey)
-                    } else {
-                        val queuedCritical = criticalChannel.tryReceive().getOrNull()
-                        if (queuedCritical != null) {
-                            return@synchronized queuedCritical
-                        }
-                        draining = false
-                        return
-                    }
-                }
-            if (snapshot is CriticalWork) {
-                executeCritical(snapshot)
-            } else if (snapshot is SnapshotWork) {
-                try {
-                    snapshot.block()
-                    snapshotExecuted.incrementAndGet()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                }
-            }
-        }
-    }
-
-    private suspend fun executeCritical(work: CriticalWork) {
-        try {
-            work.block()
-            criticalExecuted.incrementAndGet()
-            work.done.complete(Unit)
-        } catch (error: CancellationException) {
-            work.done.completeExceptionally(error)
-            throw error
-        } catch (error: Exception) {
-            work.done.completeExceptionally(error)
-        }
-    }
-
-    private companion object {
-        const val MaxCritical = 128
-        const val MaxSnapshots = 128
-        val dispatcher = Dispatchers.IO.limitedParallelism(1)
     }
 }

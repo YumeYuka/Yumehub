@@ -89,6 +89,7 @@ fun List<GithubReactionGroup>.withToggledReaction(
 suspend fun convergeGithubReactions(
     initial: List<GithubReactionGroup>,
     desired: List<GithubReactionGroup>,
+    onConfirmed: (List<GithubReactionGroup>) -> Unit,
     toggle: suspend (GithubReactionContent, Boolean) -> List<GithubReactionGroup>,
 ): List<GithubReactionGroup> {
     var current = initial
@@ -97,6 +98,7 @@ suspend fun convergeGithubReactions(
         val desiredReacted = desired.any { it.content == content && it.viewerReacted }
         if (currentReacted != desiredReacted) {
             current = toggle(content, currentReacted)
+            onConfirmed(current)
         }
     }
     return current

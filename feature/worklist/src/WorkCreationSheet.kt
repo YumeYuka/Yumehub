@@ -37,6 +37,8 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.AssigneeOptionDto
+import moe.yumeyuka.yumehub.data.api.dto.WorkCreationDraft
+import androidx.compose.runtime.snapshotFlow
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueTemplateOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueTypeOptionDto
@@ -60,20 +62,9 @@ internal fun WorkCreationSheet(
     milestones: List<MilestoneOptionDto>,
     labels: List<CollaborationLabelDto>,
     assigneePicker: AssigneePickerState,
-    onDraftChange: (title: String?, body: String?, base: String?, head: String?) -> Unit,
+    onDraftChange: (WorkCreationDraft) -> Unit,
     onDismiss: () -> Unit,
-    onSubmit:
-        (
-            title: String,
-            body: String,
-            base: String,
-            head: String,
-            issueTypeId: String?,
-            milestoneId: String?,
-            labelIds: List<String>,
-            assigneeIds: List<String>,
-            issueTemplate: String?,
-        ) -> Unit,
+    onSubmit: (WorkCreationDraft) -> Unit,
     onAcknowledgeUncertain: () -> Unit,
     onBranchQueryChange: (String) -> Unit,
     onBranchRetry: () -> Unit,
@@ -95,46 +86,32 @@ internal fun WorkCreationSheet(
         if (kind == CollaborationKind.Issue) strings.Repository.NewIssue
         else strings.Repository.NewPullRequest
     var branchTarget by rememberSaveable { mutableStateOf<BranchTarget?>(null) }
-    val subject = remember { TextFieldState() }
-    val body = remember { TextFieldState() }
-    val base = remember { TextFieldState() }
-    val head = remember { TextFieldState() }
-    var issueTypeId by remember { mutableStateOf<String?>(null) }
-    var issueTemplate by remember { mutableStateOf<IssueTemplateOptionDto?>(null) }
-    var preTemplateDraft by remember { mutableStateOf<IssueCreationDraft?>(null) }
-    var milestoneId by remember { mutableStateOf<String?>(null) }
-    var labelIds by remember { mutableStateOf(emptyList<String>()) }
+    val ready = creationState.draftRestored
+    val saved = creationState.draft
+    val subject = remember(visible, ready) { TextFieldState(saved.title) }
+    val body = remember(visible, ready) { TextFieldState(saved.body) }
+    val base = remember(visible, ready) { TextFieldState(saved.base) }
+    val head = remember(visible, ready) { TextFieldState(saved.head) }
+    var issueTypeId by remember(visible, ready) { mutableStateOf(saved.issueTypeId) }
+    var templateName by remember(visible, ready) { mutableStateOf(saved.issueTemplate) }
+    val issueTemplate = issueTemplates.firstOrNull { it.name == templateName }
+    var preTemplateDraft by remember(visible, ready) { mutableStateOf<IssueCreationDraft?>(null) }
+    var milestoneId by remember(visible, ready) { mutableStateOf(saved.milestoneId) }
+    var labelIds by remember(visible, ready) { mutableStateOf(saved.labelIds) }
     var draftLabelIds by remember { mutableStateOf(emptyList<String>()) }
     var labelsVisible by rememberSaveable { mutableStateOf(false) }
     var labelQuery by rememberSaveable { mutableStateOf("") }
-    var selectedAssignees by remember { mutableStateOf(emptyList<AssigneeOptionDto>()) }
+    var selectedAssignees by remember(visible, ready) { mutableStateOf(saved.assignees) }
     var draftAssignees by remember { mutableStateOf(emptyList<AssigneeOptionDto>()) }
     var assigneesVisible by rememberSaveable { mutableStateOf(false) }
     var acknowledgeVisible by remember { mutableStateOf(false) }
     val submitting = creationState.submitting
     val uncertain = creationState.uncertain
     val failure = creationState.failed
-    LaunchedEffect(creationState.draftRestored, creationState.title, creationState.body) {
-        if (creationState.title.isNotEmpty() && subject.text.isEmpty()) {
-            subject.replaceFormText(creationState.title)
-        }
-        if (creationState.body.isNotEmpty() && body.text.isEmpty()) {
-            body.replaceFormText(creationState.body)
-        }
-        if (creationState.title.isEmpty() && creationState.body.isEmpty() && !submitting && !failure) {
-            if (subject.text.isNotEmpty()) subject.replaceFormText("")
-            if (body.text.isNotEmpty()) body.replaceFormText("")
-        }
-    }
-    LaunchedEffect(subject.text, body.text, base.text, head.text) {
-        if (visible && !submitting) {
-            onDraftChange(
-                subject.text.toString(),
-                body.text.toString(),
-                base.text.toString(),
-                head.text.toString(),
-            )
-        }
+    fun draft() = WorkCreationDraft(subject.text.toString(), body.text.toString(), base.text.toString(), head.text.toString(),
+        issueTypeId, milestoneId, labelIds, selectedAssignees, templateName)
+    LaunchedEffect(visible, ready, submitting, uncertain) {
+        if (visible && ready && !submitting && !uncertain) snapshotFlow { draft() }.collect(onDraftChange)
     }
     val noIssueType = IssueTypeOptionDto("", work.NoIssueType)
     val selectedIssueType = issueTypes.firstOrNull { it.id == issueTypeId } ?: noIssueType
@@ -145,8 +122,8 @@ internal fun WorkCreationSheet(
     LaunchedEffect(visible, kind, onBranchQueryChange) {
         if (visible && kind == CollaborationKind.PullRequest) onBranchQueryChange("")
     }
-    LaunchedEffect(visible, branchPicker.defaultBranch) {
-        if (visible && base.text.isBlank()) base.replaceFormText(branchPicker.defaultBranch.orEmpty())
+    LaunchedEffect(visible, ready, branchPicker.defaultBranch) {
+        if (visible && ready && base.text.isBlank()) base.replaceFormText(branchPicker.defaultBranch.orEmpty())
     }
     val scroll = rememberScrollState()
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
@@ -169,24 +146,14 @@ internal fun WorkCreationSheet(
                 actions = {
                     GlasmioIconButton(
                         enabled =
-                            !submitting &&
+                            ready && !submitting &&
                                 !uncertain &&
                                 subject.text.isNotBlank() &&
                                 (kind == CollaborationKind.Issue ||
                                     base.text.isNotBlank() && head.text.isNotBlank() &&
                                         !base.text.contentEquals(head.text)),
                         onClick = {
-                            onSubmit(
-                                subject.text.toString().trim(),
-                                body.text.toString(),
-                                base.text.toString().trim(),
-                                head.text.toString().trim(),
-                                issueTypeId,
-                                milestoneId,
-                                labelIds,
-                                selectedAssignees.map(AssigneeOptionDto::id),
-                                issueTemplate?.name,
-                            )
+                            onSubmit(draft())
                         },
                     ) {
                         GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
@@ -230,7 +197,7 @@ internal fun WorkCreationSheet(
                                             selectedAssignees = draft.assignees
                                         }
                                         preTemplateDraft = null
-                                        issueTemplate = null
+                                        templateName = null
                                     } else {
                                         if (issueTemplate == null) {
                                             preTemplateDraft =
@@ -242,7 +209,7 @@ internal fun WorkCreationSheet(
                                                     assignees = selectedAssignees,
                                                 )
                                         }
-                                        issueTemplate = selected
+                                        templateName = selected.name
                                         subject.replaceFormText(selected.title.orEmpty())
                                         body.replaceFormText(selected.body.orEmpty())
                                         issueTypeId = selected.issueTypeId

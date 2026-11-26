@@ -58,7 +58,7 @@ private class CollaborationPagingSource<T : Any, R : Any>(
                 }
             }
             val force = params !is LoadParams.Refresh || snapshot?.context?.forceRefresh != false
-            pageResult(loadNetwork(startPage, params is LoadParams.Prepend, force))
+            pageResult(pageRead { loadNetwork(startPage, params is LoadParams.Prepend, force) })
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

@@ -300,7 +300,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     private fun CachedDataState<ProfileDto>.toUiState(): ProfileUiState {
         val statusWrite = coordinator?.current(statusKey)
-        val statusOverride = statusWrite?.desired ?: statusWrite?.confirmed
+        val statusOverride = statusWrite?.visible
         val projectedData =
             data?.let { profile ->
                 if (statusOverride != null) profile.copy(status = statusOverride.value) else profile

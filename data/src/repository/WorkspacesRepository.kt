@@ -40,6 +40,12 @@ data class WorkspaceCommit(
 )
 
 @Serializable
+data class WorkspaceCommitDraft(val branch: String, val headline: String, val body: String = "")
+
+@Serializable
+data class WorkspaceFileDraft(val blob: String?, val text: String)
+
+@Serializable
 data class WorkspaceCommitHistoryPage(
     val commits: List<WorkspaceCommit>,
     val hasNextPage: Boolean,
@@ -70,7 +76,7 @@ class WorkspacesGraphQlException(messages: List<String>) :
 
 class WorkspacesTimeoutException : IOException("Workspaces request timed out")
 
-class WorkspaceFileConflict : Exception()
+class WorkspaceFileConflict : moe.yumeyuka.yumehub.data.cache.MutationRejectedException()
 
 class WorkspacesFileNotFound : Exception()
 

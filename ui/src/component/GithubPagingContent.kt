@@ -202,10 +202,11 @@ fun <T : Any> rememberGithubPagingSlots(
     }
     val showSkeleton = showInitialSlots.value
     val appending = append is LoadState.Loading
+    val ids = remember(allocator, snapshot) { snapshot.map { it?.let(itemKey) } }
     val keys =
         remember(allocator, snapshot, appending, showSkeleton) {
             allocator.update(
-                snapshot.map { it?.let(itemKey) },
+                ids,
                 appending,
                 showSkeleton,
             )

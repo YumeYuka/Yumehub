@@ -25,6 +25,9 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import moe.yumeyuka.yumehub.data.repository.WorkspaceCommitDraft
+import moe.yumeyuka.yumehub.data.repository.WorkspaceFileDraft
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationKey
@@ -95,7 +98,7 @@ internal class WorkspacesViewModel(
     private val contentRepository: RepositoryContentRepository,
     private val tokenStore: TokenStore,
     private val route: WorkspacesRoute,
-    private val draftStore: CommentDraftStore? = null,
+    private val draftStore: CommentDraftStore,
 ) : ViewModel() {
     private val strings: GithubStrings_Workspaces
         get() = GithubTxt.current.Workspaces
@@ -595,6 +598,9 @@ internal class WorkspacesViewModel(
         originalSource = ""
         draft = ""
         val showCommit = mutableStateOf(false)
+        val commitForm = mutableStateOf<WorkspaceCommitDraft?>(null)
+        var draftBase: String? = null
+        val baseChanged = mutableStateOf(false)
         var commit: String? = null
         var editorPath = path
         var editorUrl = url
@@ -627,13 +633,32 @@ internal class WorkspacesViewModel(
                 onSourceChange = { source ->
                     if (current() && activeSha != null && !saving) {
                         draft = source
-                        draftStore?.save(account, fileDraftKey(ref, editorPath), source)
+                        val edit = WorkspaceFileDraft(draftBase, source)
+                        draftStore.saveEncoded(account, fileDraftKey(ref, editorPath)) { Json.encodeToString(edit) }
                         activeSession?.update(submitEnabled = source != originalSource)
                     }
                 },
                 onSubmit =
                     if (canWrite)
-                        ({ if (current() && activeSha != null && !saving) showCommit.value = true })
+                        ({
+                            if (current() && activeSha != null && !saving) {
+                                val target = editorPath
+                                showCommit.value = true
+                                commitForm.value = null
+                                viewModelScope.launch {
+                                    val encoded = draftStore.loadOrNull(account, commitDraftKey(ref, target))
+                                    if (current(target) && showCommit.value) {
+                                        try {
+                                            commitForm.value = encoded?.let { Json.decodeFromString<WorkspaceCommitDraft>(it) }
+                                                ?: WorkspaceCommitDraft(ref, strings.UpdateFile(session.title))
+                                        } catch (error: SerializationException) {
+                                            showCommit.value = false
+                                            session.update(error = error.readErrorMessage())
+                                        }
+                                    }
+                                }
+                            }
+                        })
                     else null,
                 submissionSheet =
                     if (!canWrite) null
@@ -642,13 +667,16 @@ internal class WorkspacesViewModel(
                             WorkspaceCommitSheet(
                                 visible = showCommit.value,
                                 editor = editor,
-                                initialRef = ref,
+                                draft = commitForm.value,
+                                baseChanged = baseChanged.value,
+                                onDraftChange = { form ->
+                                    commitForm.value = form
+                                    draftStore.saveEncoded(account, commitDraftKey(ref, editorPath)) { Json.encodeToString(form) }
+                                },
                                 branches = branches,
                                 onDismiss = { showCommit.value = false },
-                                onConfirm = { branch, headline, body ->
-                                    if (activeSession === editor && showCommit.value) {
-                                        saveFile(branch, headline, body)
-                                    }
+                                onConfirm = { form ->
+                                    if (activeSession === editor && showCommit.value) saveFile(ref, form)
                                 },
                             )
                         },
@@ -686,13 +714,20 @@ internal class WorkspacesViewModel(
                                         } else {
                                             activeSha = raw.sha
                                             originalSource = text
-                                            val restored = draftStore?.loadOrNull(account, fileDraftKey(ref, targetPath))
-                                            draft = restored ?: text
+                                            val encoded = draftStore.loadOrNull(account, fileDraftKey(ref, targetPath))
+                                            val restored = if (encoded != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                                Json.decodeFromString<WorkspaceFileDraft>(encoded)
+                                            } else draftStore.loadOrNull(account, legacyFileDraftKey(ref, targetPath))?.let { WorkspaceFileDraft(null, it) }
+                                            if (!current(targetPath)) return@launch
+                                            draftBase = if (restored == null || restored.text == text) raw.sha else restored.blob
+                                            baseChanged.value = draftBase != raw.sha
+                                            draft = restored?.text ?: text
                                             session.readHtml = null
                                             session.update(
                                                 source = draft,
                                                 editable = true,
                                                 submitEnabled = draft != text,
+                                                error = strings.DraftBaseChanged.takeIf { baseChanged.value },
                                             )
                                         }
                                     } catch (error: CancellationException) {
@@ -822,7 +857,13 @@ internal class WorkspacesViewModel(
     }
 
     private fun fileDraftKey(ref: String, path: String): String =
+        "workspace-file-v2/${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}/${ref.length}:$ref/$path"
+
+    private fun legacyFileDraftKey(ref: String, path: String): String =
         "workspace-file/${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}/$ref/$path"
+
+    private fun commitDraftKey(ref: String, path: String): String =
+        "workspace-message/${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}/${ref.length}:$ref/$path"
 
     private fun saveFileKey(ref: String, path: String) =
         MutationKey(
@@ -831,7 +872,8 @@ internal class WorkspacesViewModel(
             String.serializer(),
         )
 
-    private fun saveFile(ref: String, headline: String, body: String) {
+    private fun saveFile(sourceRef: String, form: WorkspaceCommitDraft) {
+        val (ref, headline, body) = form
         val path = activePath ?: return
         val sha = activeSha ?: return
         val session = activeSession ?: return
@@ -849,18 +891,24 @@ internal class WorkspacesViewModel(
         val generation = accountGeneration
         val token = tokenStore.accessToken.value
         val submittedText = draft
-        val draftKey = fileDraftKey(ref, path)
+        val draftKey = fileDraftKey(sourceRef, path)
+        val legacyKey = legacyFileDraftKey(sourceRef, path)
+        val formKey = commitDraftKey(sourceRef, path)
+        val htmlUrl = fileHtmlUrl(ref.removePrefix("refs/heads/"), path)
         val commitKey = saveFileKey(ref, path)
         val tags =
             setOf(
-                CacheTag(DataDomain.Repositories, null),
+                CacheTag(DataDomain.Content, "${route.owner.lowercase(Locale.ROOT)}/${route.name.lowercase(Locale.ROOT)}"),
                 repositoryCacheTag(route.owner, route.name),
             )
         saving = true
         session.update(submitting = true, submitEnabled = false, error = null)
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
-            val savedDraft = draftStore?.saveConfirmed(account, draftKey, submittedText) ?: true
+            val store = draftStore
+            val encoded = Json.encodeToString(form)
+            val file = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Json.encodeToString(WorkspaceFileDraft(sha, submittedText)) }
+            val savedDraft = store.saveConfirmed(account, draftKey, file) && store.saveConfirmed(account, formKey, encoded)
             if (!savedDraft) {
                 saving = false
                 if (isCurrentAccount(account) && generation == accountGeneration) {
@@ -874,10 +922,15 @@ internal class WorkspacesViewModel(
             }
             val coord = workspacesRepository.mutations(account)
             var capturedError: Exception? = null
-            val accepted =
+            val receipt =
                 coord.submitCommand(
                     key = commitKey,
                     tags = tags,
+                    onConfirmed = {
+                        store.removeIfUnchanged(account, draftKey, file)
+                        store.removeIfUnchanged(account, legacyKey, submittedText)
+                        store.removeIfUnchanged(account, formKey, encoded)
+                    },
                     send = {
                         try {
                             withTimeout(RequestTimeoutMillis) {
@@ -891,7 +944,10 @@ internal class WorkspacesViewModel(
                                     submittedText,
                                     headline.trim(),
                                     body,
-                                )
+                                ).also { blob ->
+                                    contentRepository.fileSaved(account, route.owner, route.name, ref, path,
+                                        RepositoryTextContent(text = submittedText, htmlUrl = htmlUrl, sha = blob, path = path))
+                                }
                             }
                         } catch (_: TimeoutCancellationException) {
                             val timeout = WorkspacesTimeoutException()
@@ -904,90 +960,25 @@ internal class WorkspacesViewModel(
                     },
                     readBack = { null },
                 )
-            if (!accepted) {
-                saving = false
-                if (isCurrentAccount(account) && generation == accountGeneration) {
-                    session.update(
-                        submitting = false,
-                        submitEnabled = false,
-                        error = GithubTxt.current.Common.MutationUncertain,
-                    )
+            val cmd = receipt?.await() ?: coord.currentCommand(commitKey)
+            saving = false
+            if (!isCurrentAccount(account) || generation != accountGeneration || token != tokenStore.accessToken.value) return@launch
+            if (receipt != null && cmd.phase == WritePhase.IDLE) {
+                if (activeSession === session && activePath == path && draft == submittedText) {
+                    originalSource = submittedText
+                    session.update(source = submittedText, editable = false, submitting = false, submitEnabled = false, error = null)
+                    session.complete()
                 }
-                return@launch
-            }
-            coord.observeCommand(commitKey).collect { cmd ->
-                when (cmd.phase) {
-                    WritePhase.PENDING -> Unit
-                    WritePhase.IDLE -> {
-                        val blob = cmd.result ?: return@collect
-                        saving = false
-                        draftStore?.remove(account, draftKey)
-                        if (
-                            !isCurrentAccount(account) ||
-                                generation != accountGeneration ||
-                                token != tokenStore.accessToken.value
-                        ) {
-                            return@collect
-                        }
-                        val saved =
-                            RepositoryTextContent(
-                                text = submittedText,
-                                htmlUrl = fileHtmlUrl(ref.removePrefix("refs/heads/"), path),
-                                sha = blob,
-                                path = path,
-                            )
-                        contentRepository.fileSaved(
-                            account = account,
-                            owner = route.owner,
-                            name = route.name,
-                            ref = ref,
-                            path = path,
-                            content = saved,
-                        )
-                        originalSource = submittedText
-                        session.update(
-                            source = submittedText,
-                            editable = false,
-                            submitting = false,
-                            submitEnabled = false,
-                            error = null,
-                        )
-                        session.complete()
-                        mutableEvents.tryEmit(WorkspacesEvent.Saved)
-                        if (mutableUiState.value.ref == ref) {
-                            directoryCache.remove(mutableUiState.value.path)
-                            loadDirectory(mutableUiState.value.path, ref, force = true)
-                        }
-                        return@collect
-                    }
-                    WritePhase.REJECTED -> {
-                        saving = false
-                        val error = capturedError
-                        val errorMessage =
-                            error?.writeErrorMessage()
-                                ?: cmd.message
-                                ?: GithubTxt.current.Common.MutationNotSubmitted
-                        if (isCurrentAccount(account) && generation == accountGeneration) {
-                            session.update(
-                                submitting = false,
-                                submitEnabled = true,
-                                error = errorMessage,
-                            )
-                        }
-                        return@collect
-                    }
-                    WritePhase.UNCERTAIN -> {
-                        saving = false
-                        if (isCurrentAccount(account) && generation == accountGeneration) {
-                            session.update(
-                                submitting = false,
-                                submitEnabled = false,
-                                error = GithubTxt.current.Common.MutationUncertain,
-                            )
-                        }
-                        return@collect
-                    }
+                mutableEvents.tryEmit(WorkspacesEvent.Saved)
+                if (mutableUiState.value.ref == ref) {
+                    directoryCache.remove(mutableUiState.value.path)
+                    loadDirectory(mutableUiState.value.path, ref, force = true)
                 }
+            } else if (activeSession === session) {
+                val unknown = cmd.phase == WritePhase.UNCERTAIN
+                session.update(submitting = false, submitEnabled = !unknown && cmd.phase != WritePhase.PENDING,
+                    error = if (unknown) GithubTxt.current.Common.MutationUncertain else capturedError?.writeErrorMessage()
+                        ?: cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted)
             }
         }
     }

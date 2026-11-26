@@ -2,10 +2,7 @@ package moe.yumeyuka.yumehub.feature.worklist
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -40,7 +37,6 @@ fun WorkListPage(
     createInitially: Boolean,
     onOpenDetail: (Int) -> Unit,
 ) {
-  var creationVisible by rememberSaveable { mutableStateOf(createInitially) }
   val viewModel: CollaborationListViewModel =
       koinViewModel(
           key = "work-list-$login-$owner-$name-${kind.name}",
@@ -52,15 +48,14 @@ fun WorkListPage(
   val assigneePicker by viewModel.assigneePicker.collectAsStateWithLifecycle()
   val optionsFailed by viewModel.optionsFailed.collectAsStateWithLifecycle()
   val creationState by viewModel.creationState.collectAsStateWithLifecycle()
-  androidx.compose.runtime.LaunchedEffect(creationVisible) {
-      viewModel.setCreationVisible(creationVisible)
-  }
+  androidx.compose.runtime.LaunchedEffect(viewModel) { viewModel.initializeCreation(createInitially) }
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(
       kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter,
       labels = filterOptions.labels,
       milestones = filterOptions.milestones,
       issueTypes = if (kind == CollaborationKind.Issue) filterOptions.issueTypes else emptyList(),
+      onShowFilters = viewModel::loadFilterOptions,
   ) { actions, searching ->
   GithubPagingContent(
       pages,
@@ -76,6 +71,7 @@ fun WorkListPage(
             items,
             "work-list:$filter",
             paging.initialLoading,
+            refreshDomains = emptySet(),
         ) {
           it.nodeId ?: it.number.toString()
         }
@@ -91,6 +87,7 @@ fun WorkListPage(
           items,
           slots,
           onOpenDetail,
+          viewModel::card,
       )
       if (optionsFailed) {
         item(key = "work-list-options-retry") {
@@ -104,17 +101,13 @@ fun WorkListPage(
       }
       pageSearchClearance(searching)
     }
-    androidx.compose.runtime.LaunchedEffect(creationState.createdNumber) {
-        val number = creationState.createdNumber ?: return@LaunchedEffect
-        val wasVisible = creationVisible
-        viewModel.consumeCreatedNumber()
-        creationVisible = false
-        items.refresh()
-        if (wasVisible && host.navigationEnabled) onOpenDetail(number)
+    androidx.compose.runtime.LaunchedEffect(host, viewModel) {
+        viewModel.created.collect { number -> if (host.navigationEnabled) onOpenDetail(number) }
     }
+    androidx.compose.runtime.key(creationState.formRevision) {
     WorkCreationSheet(
         kind = kind,
-        visible = creationVisible,
+        visible = creationState.visible,
         creationState = creationState,
         branchPicker = branchPicker,
         issueTypes = filterOptions.issueTypeOptions,
@@ -122,10 +115,8 @@ fun WorkListPage(
         issueTemplates = filterOptions.issueTemplates,
         labels = filterOptions.labels,
         assigneePicker = assigneePicker,
-        onDraftChange = { title, body, base, head ->
-            viewModel.updateCreationDraft(title = title, body = body, base = base, head = head)
-        },
-        onDismiss = { creationVisible = false },
+        onDraftChange = viewModel::updateCreationDraft,
+        onDismiss = { viewModel.setCreationVisible(false) },
         onSubmit = viewModel::submitCreation,
         onAcknowledgeUncertain = viewModel::acknowledgeCreationUncertain,
         onBranchQueryChange = viewModel::searchBranches,
@@ -135,6 +126,7 @@ fun WorkListPage(
         onAssigneeRetry = viewModel::retryAssignees,
         onAssigneeLoadMore = viewModel::loadMoreAssignees,
     )
+    }
   }
   }
 }

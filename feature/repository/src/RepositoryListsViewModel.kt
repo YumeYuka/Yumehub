@@ -37,6 +37,7 @@ internal class RepositoryListsViewModel(
     private var repositoryId: String? = null
     private var coordinator: MutationCoordinator? = null
     private var slotObserver: Job? = null
+    private var loadJob: Job? = null
     private var confirmedIds: Set<String>? = null
     private var pendingCompletion: ((Boolean) -> Unit)? = null
 
@@ -59,33 +60,44 @@ internal class RepositoryListsViewModel(
 
     fun open(id: String) {
         if (!active() || id.isBlank()) return
+        loadJob?.cancel()
+        slotObserver?.cancel()
         repositoryId = id
         confirmedIds = null
         mutableState.value = RepositoryListsState(visible = true, loading = true)
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 val coord =
                     coordinator
                         ?: collections.mutations(account).also { if (active()) coordinator = it }
                 val key = listsKey(id)
                 val stamp = coord.beginRead(key)
-                val lists = collections.userLists(account, account)
-                val selected = collections.repositoryListIds(account, id)
-                coord.publishConfirmed(key, stamp, selected.sorted())
-                confirmedIds = selected
-                observeSlot(coord, id)
-                if (active() && repositoryId == id) {
-                    val slot = coord.current(key)
-                    val shown = (slot.desired ?: slot.confirmed)?.toSet() ?: selected
-                    mutableState.value =
-                        RepositoryListsState(
-                            visible = true,
-                            lists = lists,
-                            selectedIds = shown,
-                            saving = slot.phase == WritePhase.PENDING,
-                            phase = slot.phase,
-                        )
+                var catalogReady = false
+                var catalogFailed = false
+                var membershipFailed = false
+                fun renderRead() {
+                    if (active() && repositoryId == id) mutableState.value = mutableState.value.copy(
+                        loading = !catalogFailed && !membershipFailed && (!catalogReady || confirmedIds == null), failed = catalogFailed || membershipFailed)
                 }
+                observeSlot(coord, id)
+                confirmedIds = coord.current(key).confirmed?.toSet()
+                launch {
+                    collections.observeUserLists(account, account).collect { cached ->
+                        if (!active() || repositoryId != id) return@collect
+                        cached.data?.let { mutableState.value = mutableState.value.copy(lists = it) }
+                        catalogReady = cached.data != null
+                        catalogFailed = cached.error != null && !catalogReady
+                        renderRead()
+                    }
+                }
+                try {
+                    val selected = collections.repositoryListIds(account, id)
+                    if (!active() || repositoryId != id) return@launch
+                    coord.publishConfirmed(key, stamp, selected.sorted())
+                    confirmedIds = coord.current(key).confirmed?.toSet()
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { membershipFailed = confirmedIds == null }
+                renderRead()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -103,7 +115,7 @@ internal class RepositoryListsViewModel(
                 coord.observe(listsKey(id)).collect { write ->
                     if (!active() || repositoryId != id) return@collect
                     val current = mutableState.value
-                    val shown = (write.desired ?: write.confirmed)?.toSet() ?: current.selectedIds
+                    val shown = write.visible?.toSet() ?: current.selectedIds
                     when (write.phase) {
                         WritePhase.IDLE -> {
                             val cb = pendingCompletion
@@ -146,7 +158,7 @@ internal class RepositoryListsViewModel(
 
     fun toggle(listId: String) {
         val state = mutableState.value
-        if (!state.visible || state.loading || state.saving) return
+        if (!state.visible || state.loading || state.saving || state.failed || state.phase == WritePhase.UNCERTAIN) return
         val selected =
             if (listId in state.selectedIds) state.selectedIds - listId
             else state.selectedIds + listId
@@ -156,7 +168,7 @@ internal class RepositoryListsViewModel(
     fun save(onComplete: (Boolean) -> Unit) {
         val id = repositoryId ?: return
         val state = mutableState.value
-        if (!active() || !state.visible || state.loading || state.saving || state.failed) return
+        if (!active() || !state.visible || state.loading || state.saving || state.failed || state.phase == WritePhase.UNCERTAIN) return
         viewModelScope.launch {
             val coord =
                 coordinator
@@ -168,7 +180,6 @@ internal class RepositoryListsViewModel(
                         onComplete(false)
                         return@launch
                     }
-            observeSlot(coord, id)
             pendingCompletion = onComplete
             val accepted =
                 coord.submit(
@@ -191,6 +202,7 @@ internal class RepositoryListsViewModel(
 
     fun dismiss() {
         repositoryId = null
+        loadJob?.cancel()
         slotObserver?.cancel()
         pendingCompletion = null
         mutableState.value = RepositoryListsState()

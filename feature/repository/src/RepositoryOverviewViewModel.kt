@@ -25,6 +25,7 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryFavoritesLimitException
 import moe.yumeyuka.yumehub.data.repository.RepositoryOverview
 import moe.yumeyuka.yumehub.data.repository.RepositoryOverviewRepository
 import moe.yumeyuka.yumehub.data.repository.updatedDashboardPins
+import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
 
 internal const val RepositoryDescriptionMaxLength = 350
@@ -76,6 +77,7 @@ internal class RepositoryOverviewViewModel(
     private val source: RepositoryOverviewRepository,
     private val owner: String,
     private val name: String,
+    private val drafts: CommentDraftStore,
 ) : ViewModel() {
     val account = source.account
     private val resource = source.resource(account, owner, name)
@@ -89,6 +91,8 @@ internal class RepositoryOverviewViewModel(
     private var sheetJob: Job? = null
     private var coordinator: MutationCoordinator? = null
     private val repoSlug = "${owner.lowercase()}/${name.lowercase()}"
+    private val descriptionDraftKey = "repository-description/$repoSlug"
+    private var draftRevision = 0L
     private val starKey = MutationKey(MutationKind.STAR, repoSlug, Boolean.serializer())
     private val pinsKey =
         MutationKey(MutationKind.DASHBOARD_PINS, "viewer", ListSerializer(String.serializer()))
@@ -142,7 +146,7 @@ internal class RepositoryOverviewViewModel(
                 loaded.observe(pinsKey).collect { write ->
                     if (!active()) return@collect
                     val id = confirmedOverview?.id
-                    val ids = write.desired ?: write.confirmed
+                    val ids = write.visible
                     val projectedPinned =
                         if (id != null && ids != null) id in ids else confirmedPinned
                     mutableState.value =
@@ -163,7 +167,7 @@ internal class RepositoryOverviewViewModel(
                 loaded.observe(subscriptionKey).collect { write ->
                     if (!active()) return@collect
                     val selection =
-                        (write.desired ?: write.confirmed)?.let {
+                        write.visible?.let {
                             RepositorySubscriptionSelection(it.value, it.types.toSet())
                         }
                     mutableState.value =
@@ -188,7 +192,7 @@ internal class RepositoryOverviewViewModel(
                     mutableState.value =
                         mutableState.value.copy(
                             descriptionPhase = write.phase,
-                            descriptionOverride = write.desired ?: write.confirmed,
+                            descriptionOverride = write.visible,
                         )
                     if (write.phase == WritePhase.REJECTED) {
                         mutableEvents.trySend(
@@ -208,15 +212,15 @@ internal class RepositoryOverviewViewModel(
         val coord = coordinator ?: return base
         val starWrite = coord.current(starKey)
         val subWrite = coord.current(subscriptionKey)
-        val desiredStar = starWrite.desired ?: starWrite.confirmed
-        val baseStarred = starWrite.confirmed ?: base.starred
+        val desiredStar = starWrite.visible
+        val baseStarred = base.starred
         val starred = desiredStar ?: base.starred
         val stars =
             if (desiredStar != null) {
                 (base.stars + (if (desiredStar) 1 else 0) - (if (baseStarred) 1 else 0))
                     .coerceAtLeast(0)
             } else base.stars
-        val subPayload = subWrite.desired ?: subWrite.confirmed
+        val subPayload = subWrite.visible
         return base.copy(
             starred = starred,
             stars = stars,
@@ -294,6 +298,13 @@ internal class RepositoryOverviewViewModel(
                             else null,
                     ),
             )
+        if (sheet == RepositorySheet.Description) {
+            val revision = draftRevision
+            sheetJob = viewModelScope.launch {
+                val draft = drafts.loadOrNull(account, descriptionDraftKey) ?: return@launch
+                if (revision == draftRevision) updateSheet(sheet) { it.copy(description = draft) }
+            }
+        }
     }
 
     private fun updateSheet(
@@ -311,8 +322,11 @@ internal class RepositoryOverviewViewModel(
     }
 
     fun description(value: String) {
-        if (value.length <= RepositoryDescriptionMaxLength)
+        if (value.length <= RepositoryDescriptionMaxLength) {
+            draftRevision++
             updateSheet(RepositorySheet.Description) { it.copy(description = value, error = null) }
+            drafts.save(account, descriptionDraftKey, value)
+        }
     }
 
     fun changeSubscription(value: String, types: Set<String>) {
@@ -324,7 +338,10 @@ internal class RepositoryOverviewViewModel(
     fun star() {
         val state = mutableState.value.overview ?: return
         val coord = coordinator ?: return
-        val desired = !state.starred
+        val write = coord.current(starKey)
+        if (write.phase == WritePhase.UNCERTAIN) { reconcileStar(); return }
+        val desired = !(write.visible ?: state.starred)
+        source.trackStar(account, owner, name)
         val accepted =
             coord.submit(
                 starKey,
@@ -334,7 +351,7 @@ internal class RepositoryOverviewViewModel(
                     setOf(
                         repositoryCacheTag(owner, name),
                         relationshipCacheTag(repoSlug),
-                        CacheTag(DataDomain.Repositories, null),
+                        relationshipCacheTag("viewer:starred"),
                     ),
                 send = { value -> source.setStarred(account, owner, name, value).starred },
                 readBack = { source.load(account, owner, name).starred },
@@ -351,7 +368,7 @@ internal class RepositoryOverviewViewModel(
         val coord = coordinator ?: return
         viewModelScope.launch {
             val currentIds =
-                coord.current(pinsKey).let { it.desired ?: it.confirmed }
+                coord.current(pinsKey).visible
                     ?: try {
                         val stamp = coord.beginRead(pinsKey)
                         source.dashboardFavoriteIds(account).also {
@@ -430,19 +447,19 @@ internal class RepositoryOverviewViewModel(
                         CacheTag(DataDomain.Notifications, null),
                     ),
                 send = { payload ->
-                    source.setSubscription(
+                    val actual = source.setSubscription(
                         account,
                         owner,
                         name,
                         payload.value,
                         payload.types.toSet(),
                     )
-                    payload
+                    RepoSubscriptionPayload(requireNotNull(actual.subscription), actual.subscriptionTypes.sorted())
                 },
                 readBack = {
                     val reloaded = source.load(account, owner, name)
                     RepoSubscriptionPayload(
-                        reloaded.subscription ?: "UNSUBSCRIBED",
+                        requireNotNull(reloaded.subscription),
                         reloaded.subscriptionTypes.sorted(),
                     )
                 },
@@ -469,10 +486,11 @@ internal class RepositoryOverviewViewModel(
                         desired = nextDescription,
                         tags = setOf(repositoryCacheTag(owner, name)),
                         send = { text ->
-                            source.saveDescription(account, owner, name, text)
-                            text
+                            source.saveDescription(account, owner, name, text).also {
+                                drafts.removeIfUnchanged(account, descriptionDraftKey, editor.description)
+                            }
                         },
-                        readBack = { editor.originalDescription },
+                        readBack = { source.readDescription(account, owner, name) },
                     )
                 if (!accepted && active()) {
                     mutableEvents.trySend(

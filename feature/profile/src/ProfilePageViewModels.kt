@@ -124,9 +124,9 @@ internal class UserProfileViewModel(
                     if (repository.account != account) return@collect
                     val base = confirmedProfile
                     val projectedFollowing =
-                        write.desired ?: write.confirmed ?: mutableState.value.following
+                        write.visible ?: mutableState.value.following
                     val baseFollowing =
-                        write.confirmed ?: base?.viewerIsFollowing ?: following.cached
+                        base?.viewerIsFollowing ?: following.cached
                     val projectedProfile =
                         base?.let { profile ->
                             if (
@@ -143,9 +143,6 @@ internal class UserProfileViewModel(
                                 )
                             } else profile.copy(viewerIsFollowing = projectedFollowing ?: profile.viewerIsFollowing)
                         }
-                    if (projectedFollowing != null && write.phase == WritePhase.IDLE) {
-                        repository.followingResource(account, normalized).update(projectedFollowing)
-                    }
                     mutableState.update {
                         it.copy(
                             profile = projectedProfile ?: it.profile,
@@ -201,18 +198,14 @@ internal class UserProfileViewModel(
                         orgFollowing
                     } else {
                         profile.viewerIsFollowing?.also { selected ->
-                            if (!isSelf) {
-                                following.update(selected)
+                            if (!isSelf && coord != null && initialStamp != null && coord.publishConfirmed(key, initialStamp, selected)) {
                                 repository.followingResource(account, profile.login).update(selected)
-                                if (coord != null && initialStamp != null) {
-                                    coord.publishConfirmed(key, initialStamp, selected)
-                                }
                             }
                         }
                     }
                 val slotState = coord?.current(key)
-                val activeDesired = slotState?.desired ?: slotState?.confirmed ?: resolvedFollowing
-                val baseFollowing = slotState?.confirmed ?: resolvedFollowing
+                val activeDesired = slotState?.visible ?: resolvedFollowing
+                val baseFollowing = resolvedFollowing
                 val projected =
                     if (
                         activeDesired != null &&
@@ -258,7 +251,9 @@ internal class UserProfileViewModel(
                 repository.account != account
         )
             return
-        val target = !selected
+        val initial = coordinator?.current(followKeyFor(profile.login))
+        if (initial?.phase == WritePhase.UNCERTAIN) { reconcileFollowing(); return }
+        val target = !(initial?.visible ?: selected)
         viewModelScope.launch {
             val coord =
                 coordinator
@@ -280,9 +275,7 @@ internal class UserProfileViewModel(
                     tags =
                         setOf(
                             CacheTag(DataDomain.Profile, profile.login.lowercase(Locale.ROOT)),
-                            CacheTag(DataDomain.Profile, null),
                             relationshipCacheTag(profile.login),
-                            CacheTag(DataDomain.Relationships, null),
                         ),
                     send = { nextFollowing ->
                         val updated =
@@ -296,17 +289,13 @@ internal class UserProfileViewModel(
                                 repository.setFollowing(account, userId, nextFollowing)
                             }
                         repository.followingResource(account, profile.login).update(updated)
-                        repository.relationshipChanged(account)
-                        repository.resource(account).invalidate()
-                        repository.refresh(account, force = true)
                         updated
                     },
                     readBack = {
                         if (profile.isOrganization) {
                             dashboard.organizationFollowing(account, profile.login)
                         } else {
-                            repository.loadUserForAccount(account, profile.login, userId)
-                                .viewerIsFollowing ?: selected
+                            requireNotNull(repository.loadUserForAccount(account, profile.login, userId).viewerIsFollowing)
                         }
                     },
                 )
@@ -323,8 +312,7 @@ internal class UserProfileViewModel(
             if (profile.isOrganization) {
                 dashboard.organizationFollowing(account, profile.login)
             } else {
-                repository.loadUserForAccount(account, profile.login, profile.nodeId)
-                    .viewerIsFollowing ?: false
+                requireNotNull(repository.loadUserForAccount(account, profile.login, profile.nodeId).viewerIsFollowing)
             }
         }
     }

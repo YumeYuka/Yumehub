@@ -1,6 +1,9 @@
 package moe.yumeyuka.yumehub.feature.auth
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -12,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -28,6 +32,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioAlertFieldGroup
 import io.github.neoruaa.glasmio.ui.GlasmioAlertTextField
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import moe.yumeyuka.yumehub.data.twofactor.MobileAuthRequestType
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
@@ -40,8 +45,8 @@ fun TwoFactorOverlay(
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onDismiss: () -> Unit,
-    onAcknowledgeSubmissionUncertain: () -> Unit = {},
-    onAcknowledgeRegistrationUncertain: () -> Unit = {},
+    onAcknowledgeSubmissionUncertain: () -> Unit,
+    onAcknowledgeRegistrationUncertain: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -52,6 +57,13 @@ fun TwoFactorOverlay(
             Toast.makeText(context, notice, Toast.LENGTH_LONG).show()
         }
     }
+    var deferred by remember(state.request?.id, state.registrationUncertain, state.submissionUncertain) { mutableStateOf(false) }
+    if (deferred && (state.submissionUncertain || state.registrationUncertain)) {
+        Box(modifier.fillMaxWidth().statusBarsPadding(), contentAlignment = Alignment.TopEnd) {
+            GlasmioButton(onClick = { deferred = false }) { Text(strings.Common.MutationReconcile) }
+        }
+        return
+    }
     if (!state.isVisible && state.registrationUncertain) {
         GlasmioAlertDialog(
             visible = true,
@@ -61,7 +73,7 @@ fun TwoFactorOverlay(
                 listOf(
                     GlasmioAlertButtonSpec(
                         label = strings.Common.Cancel,
-                        onClick = {},
+                        onClick = { deferred = true },
                         role = GlasmioAlertButtonRole.Cancel,
                     ),
                     GlasmioAlertButtonSpec(
@@ -70,7 +82,7 @@ fun TwoFactorOverlay(
                         role = GlasmioAlertButtonRole.Default,
                     ),
                 ),
-            onDismissRequest = {},
+            onDismissRequest = { deferred = true },
             modifier = modifier,
         )
     }
@@ -84,7 +96,7 @@ fun TwoFactorOverlay(
                 onApprove,
                 onReject,
                 onAcknowledgeSubmissionUncertain,
-                onDismiss,
+                { if (prompt.submissionUncertain) deferred = true else onDismiss() },
                 modifier,
             )
         },
@@ -155,6 +167,7 @@ private fun TwoFactorPromptDialog(
         buttons =
             if (prompt.submissionUncertain) {
                 listOf(
+                    GlasmioAlertButtonSpec(label = strings.Common.Close, onClick = onDismiss, role = GlasmioAlertButtonRole.Cancel),
                     GlasmioAlertButtonSpec(
                         label = strings.Common.MutationAcknowledged,
                         onClick = onAcknowledgeSubmissionUncertain,

@@ -63,7 +63,7 @@ internal class PendingMutationStore(provider: MMKVProvider, private val json: Js
             mutex.withLock {
                 val key = accountKey(account)
                 val current = cache[key] ?: load(key)
-                if (current.none { it.operationId == operationId }) return@withLock
+                check(current.any { it.operationId == operationId }) { "Missing prepared mutation" }
                 write(key, current.map { if (it.operationId == operationId) it.copy(phase = phase) else it })
             }
         }

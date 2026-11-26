@@ -49,6 +49,7 @@ data class GithubDiscussionDetail(
     val authorAssociation: String? = null,
     val labels: List<String> = emptyList(),
     val commentsCount: Int = 0,
+    val answerId: String?,
 )
 
 @Serializable
@@ -74,7 +75,7 @@ class DiscussionRepository(
     private val tokens: TokenStore,
     private val cache: CachedDataRepository,
 ) {
-  suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+  fun mutations(account: String): MutationCoordinator = cache.mutations(account)
   suspend fun addComment(account: String, discussionId: String, parentId: String?, body: String) {
     val session = GithubGraphQlSession(api, tokens, account)
     val data =
@@ -128,7 +129,7 @@ class DiscussionRepository(
     )
   }
 
-  suspend fun setAnswer(account: String, commentId: String, answer: Boolean) {
+  suspend fun setAnswer(account: String, discussionId: String, commentId: String, answer: Boolean): String? {
     val session = GithubGraphQlSession(api, tokens, account)
     val field = if (answer) "markDiscussionCommentAsAnswer" else "unmarkDiscussionCommentAsAnswer"
     val operation = if (answer) MarkDiscussionCommentAsAnswer else UnmarkDiscussionCommentAsAnswer
@@ -137,9 +138,10 @@ class DiscussionRepository(
             .execute(operation, buildJsonObject { put("id", commentId) }, write = true)
             .graphObject(field)
             .graphObject("discussion")
-    discussion.graphRequiredText("id")
+    if (discussion.graphRequiredText("id") != discussionId) throw GithubPageException()
+    val answerId = discussion.answerId()
     session.ensureCurrent()
-    cache.changes(account).publish(DataDomain.Work)
+    return answerId
   }
 
   suspend fun votePoll(
@@ -180,21 +182,21 @@ class DiscussionRepository(
   ): List<GithubReactionGroup> =
       GithubGraphQlSession(api, tokens, account).toggleGithubReaction(subjectId, content, reacted)
 
-  suspend fun load(
-      account: String,
-      owner: String,
-      name: String,
-      number: Int,
-      parentId: String?,
-  ): GithubDiscussionDetail =
-      cache
-          .resource(
-              account,
-              "discussion-detail.v5:${owner.lowercase()}/${name.lowercase()}:$number:${parentId.orEmpty()}",
-              GithubDiscussionDetail.serializer(),
-              tags = setOf(workCacheTag("Discussion", owner, name, number)),
-          )
-          .await { loadNetwork(account, owner, name, number, parentId) }
+  suspend fun reactions(account: String, subjectId: String): List<GithubReactionGroup> {
+    val node = GithubGraphQlSession(api, tokens, account).execute(
+        "query DiscussionReactions(\u0024id: ID!) { node(id: \u0024id) { id ... on Reactable { $ReactionFragment } } }",
+        buildJsonObject { put("id", subjectId) },
+    ).graphObject("node")
+    if (node.graphRequiredText("id") != subjectId) throw GithubPageException()
+    return node.reactionGroups()
+  }
+
+  fun resource(account: String, owner: String, name: String, number: Int, parentId: String?) =
+      cache.resource(account, "discussion-detail.v6:${owner.lowercase()}/${name.lowercase()}:$number:${parentId.orEmpty()}",
+          GithubDiscussionDetail.serializer(), tags = setOf(workCacheTag("Discussion", owner, name, number)))
+
+  suspend fun load(account: String, owner: String, name: String, number: Int, parentId: String?, force: Boolean = false): GithubDiscussionDetail =
+      resource(account, owner, name, number, parentId).await(force) { loadNetwork(account, owner, name, number, parentId) }
 
   private suspend fun loadNetwork(
       account: String,
@@ -219,6 +221,7 @@ class DiscussionRepository(
                 repository(owner: ${'$'}owner, name: ${'$'}name) {
                     discussion(number: ${'$'}number) {
                         id title url bodyHTML(unfurlReferences: true) closed createdAt authorAssociation
+                        answer { id }
                         viewerCanUpvote viewerHasUpvoted upvoteCount
                         viewerCanReact
                         reactionGroups {
@@ -282,6 +285,7 @@ class DiscussionRepository(
               it.graphText("name")
             },
         commentsCount = discussion.graphObject("comments").replyCount(),
+        answerId = discussion.answerId(),
     )
   }
 
@@ -372,16 +376,22 @@ private const val RemoveDiscussionUpvote =
 private const val MarkDiscussionCommentAsAnswer =
     """
     mutation MarkDiscussionCommentAsAnswer(${'$'}id: ID!) {
-        markDiscussionCommentAsAnswer(input: { id: ${'$'}id }) { discussion { id } }
+        markDiscussionCommentAsAnswer(input: { id: ${'$'}id }) { discussion { id answer { id } } }
     }
 """
 
 private const val UnmarkDiscussionCommentAsAnswer =
     """
     mutation UnmarkDiscussionCommentAsAnswer(${'$'}id: ID!) {
-        unmarkDiscussionCommentAsAnswer(input: { id: ${'$'}id }) { discussion { id } }
+        unmarkDiscussionCommentAsAnswer(input: { id: ${'$'}id }) { discussion { id answer { id } } }
     }
 """
+
+private fun JsonObject.answerId(): String? = when (val answer = this["answer"]) {
+    JsonNull -> null
+    is JsonObject -> answer.graphRequiredText("id")
+    else -> throw SerializationException("Missing discussion answer field")
+}
 
 private fun JsonObject.replyCount() =
     this["totalCount"]?.jsonPrimitive?.intOrNull ?: throw GithubPageException()

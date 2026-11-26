@@ -43,7 +43,6 @@ import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.replaceFormText
 
 @Composable
 internal fun DiscussionCreationSheet(
@@ -53,6 +52,7 @@ internal fun DiscussionCreationSheet(
     optionsFailed: Boolean,
     onRetry: () -> Unit,
     onTitleChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
     body: String,
     onEditBody: () -> Unit,
     onDismiss: () -> Unit,
@@ -61,24 +61,18 @@ internal fun DiscussionCreationSheet(
 ) {
     val strings = LocalGithubStrings.current
     val work = strings.WorkList
-    var selectedId by remember { mutableStateOf<String?>(null) }
-    val category = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
+    val selectedId = creationState.categoryId
+    val category = if (selectedId == null) categories.firstOrNull() else categories.firstOrNull { it.id == selectedId }
     var expanded by remember { mutableStateOf(false) }
-    val title = remember { TextFieldState() }
+    val title = remember(visible, creationState.draftRestored, creationState.formRevision) { TextFieldState(creationState.title) }
     var acknowledgeVisible by remember { mutableStateOf(false) }
     val submitting = creationState.submitting
     val uncertain = creationState.uncertain
     val failed = creationState.failed
-    LaunchedEffect(creationState.draftRestored, creationState.title) {
-        if (creationState.title.isNotEmpty() && title.text.isEmpty()) {
-            title.replaceFormText(creationState.title)
+    LaunchedEffect(title, visible, submitting, uncertain) {
+        if (visible && creationState.draftRestored && !submitting && !uncertain) {
+            androidx.compose.runtime.snapshotFlow { title.text.toString() }.collect(onTitleChange)
         }
-        if (creationState.title.isEmpty() && !submitting && !failed && title.text.isNotEmpty()) {
-            title.replaceFormText("")
-        }
-    }
-    LaunchedEffect(title.text) {
-        if (visible && !submitting) onTitleChange(title.text.toString())
     }
     GlasmioBottomSheet(
         visible = visible,
@@ -97,7 +91,7 @@ internal fun DiscussionCreationSheet(
                 },
                 actions = {
                     GlasmioIconButton(
-                        enabled = !submitting && !uncertain && title.text.isNotBlank() && category != null,
+                        enabled = creationState.draftRestored && !submitting && !uncertain && title.text.isNotBlank() && category != null,
                         onClick = {
                             val selected = category ?: return@GlasmioIconButton
                             onSubmit(selected.id, title.text.trim().toString(), body)
@@ -121,7 +115,7 @@ internal fun DiscussionCreationSheet(
                     title = work.Category,
                     detail = if (optionsFailed) strings.Common.Retry else category?.name,
                     systemName = null,
-                    enabled = !submitting && !uncertain && (category != null || optionsFailed),
+                    enabled = creationState.draftRestored && !submitting && !uncertain && (categories.isNotEmpty() || optionsFailed),
                     onClick = { if (optionsFailed) onRetry() else expanded = !expanded },
                 )
                 if (expanded) {
@@ -131,18 +125,18 @@ internal fun DiscussionCreationSheet(
                             checked = option.id == category?.id,
                             enabled = !submitting && !uncertain,
                         ) {
-                            selectedId = option.id
+                            onCategoryChange(option.id)
                             expanded = false
                         }
                     }
                 }
             }
-            DiscussionCreationTitle(work.CreationTitle, title, submitting || uncertain)
+            DiscussionCreationTitle(work.CreationTitle, title, !creationState.draftRestored || submitting || uncertain)
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = work.CreationBody,
                     subtitle = body.lineSequence().firstOrNull { it.isNotBlank() },
-                    enabled = !submitting && !uncertain,
+                    enabled = creationState.draftRestored && !submitting && !uncertain,
                     onClick = onEditBody,
                 )
             }

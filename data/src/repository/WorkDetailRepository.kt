@@ -30,6 +30,7 @@ import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.cache.workCacheTag
+import moe.yumeyuka.yumehub.data.cache.workListCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 data class WorkMergeMessage(val headline: String, val body: String)
@@ -93,9 +94,8 @@ class WorkDetailRepository(
         setOf(
             workCacheTag(kind.name, owner, repository, number),
             repositoryCacheTag(owner, repository),
-            moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Work, null),
+            workListCacheTag(owner, repository),
             moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Notifications, null),
-            moe.yumeyuka.yumehub.data.cache.CacheTag(DataDomain.Repositories, null),
         )
     private val workTag = workCacheTag(kind.name, owner, repository, number)
     private val resource: CachedResource<CollaborationItemDto> =
@@ -163,7 +163,7 @@ class WorkDetailRepository(
       } else item
     }
 
-    suspend fun editPullRequest(snapshot: CollaborationItemDto, field: String, value: String) {
+    suspend fun editPullRequest(snapshot: CollaborationItemDto, field: String, value: String): String {
       val latest = load()
       if (
           kind != CollaborationKind.PullRequest ||
@@ -175,11 +175,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.editPullRequest(requireNotNull(latest.nodeId), field, value)
-      changed()
+      return graph.editPullRequest(requireNotNull(latest.nodeId), field, value).also { changed() }
     }
 
-    suspend fun editBody(snapshot: CollaborationItemDto, body: String) {
+    suspend fun editBody(snapshot: CollaborationItemDto, body: String): String {
       val latest = load()
       if (
           latest.nodeId != snapshot.nodeId ||
@@ -189,11 +188,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.editBody(requireNotNull(latest.nodeId), body)
-      changed()
+      return graph.editBody(requireNotNull(latest.nodeId), body).also { changed() }
     }
 
-    suspend fun editTitle(snapshot: CollaborationItemDto, title: String) {
+    suspend fun editTitle(snapshot: CollaborationItemDto, title: String): String {
       val latest = load()
       if (
           latest.nodeId != snapshot.nodeId ||
@@ -203,21 +201,19 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.editTitle(requireNotNull(latest.nodeId), title)
-      changed()
+      return graph.editTitle(requireNotNull(latest.nodeId), title).also { changed() }
     }
 
-    suspend fun setLocked(snapshot: CollaborationItemDto) {
+    suspend fun setLocked(snapshot: CollaborationItemDto, locked: Boolean): Boolean {
       val latest = load()
-      if (!latest.viewerCanModerate || latest.locked != snapshot.locked) {
+      if (latest.nodeId != snapshot.nodeId || !latest.viewerCanModerate || latest.locked != snapshot.locked) {
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.setLocked(requireNotNull(latest.nodeId), !latest.locked)
-      changed()
+      return graph.setLocked(requireNotNull(latest.nodeId), locked).also { changed() }
     }
 
-    suspend fun closePullRequest(snapshot: CollaborationItemDto) {
+    suspend fun closePullRequest(snapshot: CollaborationItemDto): String {
       val latest = load()
       if (
           kind != CollaborationKind.PullRequest ||
@@ -229,11 +225,10 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.closePullRequest(requireNotNull(latest.nodeId))
-      changed()
+      return graph.closePullRequest(requireNotNull(latest.nodeId)).also { changed() }
     }
 
-    suspend fun closeIssue(snapshot: CollaborationItemDto) {
+    suspend fun closeIssue(snapshot: CollaborationItemDto): String {
       val latest = load()
       if (
           kind != CollaborationKind.Issue ||
@@ -244,8 +239,7 @@ class WorkDetailRepository(
         changed()
         throw WorkDetailReviewChangedException()
       }
-      graph.closeIssue(requireNotNull(latest.nodeId))
-      changed()
+      return graph.closeIssue(requireNotNull(latest.nodeId)).also { changed() }
     }
 
     suspend fun properties() = graph.properties()
@@ -295,8 +289,9 @@ class WorkDetailRepository(
         property: WorkProperty,
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
+        onStep: (List<String>) -> Unit,
     ) {
-      graph.saveProperty(property, original, selected)
+      graph.saveProperty(property, original, selected, onStep)
       changed()
     }
 

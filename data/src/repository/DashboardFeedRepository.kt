@@ -26,9 +26,15 @@ class DashboardFeedRepository(
     private val tokens: TokenStore,
     private val cache: CachedDataRepository,
 ) {
-    private val pages = DashboardFeedLoader()
-
-    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    private fun pages(account: String) = cache.sessionResource(account, "feed-filters") { DashboardFeedLoader() }
+    fun mutations(account: String) = cache.mutations(account)
+    fun trackStar(account: String, slug: String, row: RepositoryDto?) = cache.starredRows(account).track(slug, row)
+    fun effectiveFilters(account: String) = pages(account).filters
+    fun filterCommand(account: String) = mutations(account).observeCommand(pages(account).filterKey)
+    fun applyFilters(account: String, groups: Set<String>): Boolean {
+        val generation = tokens.responseCacheSession.generation
+        return pages(account).apply(groups, mutations(account)) { request, write -> execute(account, generation, request, write) }
+    }
 
     suspend fun page(
         account: String,
@@ -42,8 +48,8 @@ class DashboardFeedRepository(
                 session.generation
             }
         val response =
-            pages.load(generation, after, filterGroups, cache.mutations(account)) { request, write ->
-                execute(account, generation, request, write)
+            pages(account).load(after, filterGroups) { request ->
+                execute(account, generation, request)
             }
         // 节点映射与 HTML 文本转换不占用服务器筛选锁，也不在主线程执行。
         return traceExplore("Explore.feed.map") {
@@ -204,41 +210,48 @@ class DashboardFeedRepository(
                 relationship = "viewerHasStarred"
             }
         }
+        val countField = if (user == null) " ... on Repository { stargazerCount }" else ""
         val response =
             execute(
                 account,
                 generation,
                 GraphQlRequest(
-                    "mutation FeedSelection(${'$'}id: ID!) { $field(input: {$input: ${'$'}id}) { $resultField { id $relationship } } }",
+                    "mutation FeedSelection(${'$'}id: ID!) { $field(input: {$input: ${'$'}id}) { $resultField { id $relationship$countField } } }",
                     buildJsonObject { put("id", id) },
                     "FeedSelection",
                 ),
                 write = true,
             )
-        if (response.errors.isNotEmpty()) throw DashboardFeedException(response.errors)
+        response.checkWriteErrors()
         val result =
             (response.data as? JsonObject)?.obj(field)?.obj(resultField)
                 ?: throw DashboardFeedException(response.errors)
-        if (result.text("id") != id || result.flag(relationship) != selected)
-            throw DashboardFeedException(response.errors)
+        if (result.text("id") != id) throw DashboardFeedException(response.errors)
+        val actual = result.flag(relationship) ?: throw DashboardFeedException(response.errors)
         val key =
             if (user != null) "following-state:${user.login?.lowercase(Locale.ROOT)}"
             else "starred-state:${event.repo?.name?.lowercase(Locale.ROOT)}"
-        val tags =
-            if (user != null) setOf(CacheTag(DataDomain.Profile, null))
-            else setOf(CacheTag(DataDomain.Repositories, null))
         val stateTag =
             if (user != null) relationshipCacheTag(user.login.orEmpty())
             else relationshipCacheTag(event.repo?.name.orEmpty())
+        if (user == null) {
+            val slug = requireNotNull(resolved.repo?.name)
+            val stars = (result["stargazerCount"] as? JsonPrimitive)?.intOrNull ?: throw DashboardFeedException()
+            val overview = synchronized(tokens.responseCacheSession.lock) {
+                tokens.requireSession(account, generation)
+                cache.overviewResource(account, slug.substringBefore('/'), slug.substringAfter('/'))
+            }
+            if (overview.cached == null) overview.restore()
+            synchronized(tokens.responseCacheSession.lock) {
+                tokens.requireSession(account, generation)
+                overview.cached?.takeIf { it.id == id }?.let { overview.update(it.copy(starred = actual, stars = stars)) }
+            }
+        }
         synchronized(tokens.responseCacheSession.lock) {
             tokens.requireSession(account, generation)
-            cache.resource(account, key, Boolean.serializer(), tags = setOf(stateTag)).update(selected)
-            cache.invalidateAndPersist(account, tags)
-            cache
-                .changes(account)
-                .publish(DataDomain.Relationships, DataDomain.Repositories, DataDomain.Profile)
+            cache.resource(account, key, Boolean.serializer(), tags = setOf(stateTag)).update(actual)
         }
-        return selected
+        return actual
     }
 
     suspend fun organizationFollowing(account: String, login: String): Boolean =
@@ -318,12 +331,12 @@ class DashboardFeedRepository(
                 ),
                 write = true,
             )
-        if (updated.errors.isNotEmpty()) throw DashboardFeedException(updated.errors)
+        updated.checkWriteErrors()
         val result =
             (updated.data as? JsonObject)?.obj(field)?.obj("organization")
                 ?: throw DashboardFeedException(updated.errors)
-        if (result.text("id") != id || result.flag("viewerIsFollowing") != selected)
-            throw DashboardFeedException(updated.errors)
+        if (result.text("id") != id) throw DashboardFeedException(updated.errors)
+        val actual = result.flag("viewerIsFollowing") ?: throw DashboardFeedException(updated.errors)
         synchronized(tokens.responseCacheSession.lock) {
             tokens.requireSession(account, generation)
             cache
@@ -333,11 +346,9 @@ class DashboardFeedRepository(
                     Boolean.serializer(),
                     tags = setOf(relationshipCacheTag(login)),
                 )
-                .update(selected)
-            cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Profile, null)))
-            cache.changes(account).publish(DataDomain.Relationships, DataDomain.Profile)
+                .update(actual)
         }
-        return selected
+        return actual
     }
 
     private fun checkAccount(account: String) {

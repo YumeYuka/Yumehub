@@ -239,7 +239,6 @@ class RepositoryContentRepository(
         readme(account, owner, name, ref).invalidate()
         license(account, owner, name).invalidate()
         details(account, owner, name).invalidate()
-        cache.changes(account).publish(DataDomain.Content, DataDomain.Repositories)
     }
 
     private fun <T : Any> resource(

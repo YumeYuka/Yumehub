@@ -45,6 +45,12 @@ internal class ExplorePagingRepository(
 
     fun search(account: String, query: String, category: ExploreCategory): ExploreSearch {
         val queryKey = key(query, category)
+        val tags = setOf(CacheTag(when (category) {
+            ExploreCategory.Issues, ExploreCategory.PullRequests -> DataDomain.Work
+            ExploreCategory.People, ExploreCategory.Organizations -> DataDomain.Relationships
+            ExploreCategory.Code -> DataDomain.Content
+            ExploreCategory.Repositories -> DataDomain.Repositories
+        }))
         val summary =
             cache.sessionResource(account, "explore-summaries-v1") { Summaries() }.get(queryKey)
         fun <T : Any> pages(
@@ -56,7 +62,7 @@ internal class ExplorePagingRepository(
             paging.pages(
                 account,
                 queryKey,
-                tags = setOf(CacheTag(DataDomain.Repositories, null)),
+                tags = tags,
             ) { context ->
                 SearchPagingSource(
                     context,
@@ -65,7 +71,7 @@ internal class ExplorePagingRepository(
                         queryKey,
                         serializer,
                         context,
-                        tags = setOf(CacheTag(DataDomain.Repositories, null)),
+                        tags = tags,
                     ),
                     summary,
                     key,
@@ -182,7 +188,9 @@ private class SearchPagingSource<T : Any>(
             val initial = if (params is LoadParams.Refresh) snapshot.initialPage(30) else null
             val page =
                 if (initial == null) {
-                    network(params.key ?: 1, params !is LoadParams.Refresh || context.forceRefresh)
+                    moe.yumeyuka.yumehub.data.repository.pageRead {
+                        network(params.key ?: 1, params !is LoadParams.Refresh || context.forceRefresh)
+                    }
                 } else {
                     if (!initial.isFresh()) {
                         context.revalidate(this) {

@@ -7,7 +7,14 @@ import androidx.paging.PagingSource
 import androidx.paging.cachedIn
 import java.util.LinkedHashMap
 import java.util.Locale
-import java.util.UUID
+import java.lang.ref.WeakReference
+import java.net.SocketTimeoutException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import moe.yumeyuka.yumehub.data.cache.DataDomain
+import moe.yumeyuka.yumehub.data.cache.covers
+import moe.yumeyuka.yumehub.data.storage.mmkv.PagingSnapshotPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -41,11 +48,7 @@ class PagingRepository(
     private val snapshotStore: PagingSnapshotStore,
 ) {
     init {
-        // domain 级写入（star、follow、work 状态变化）让正在显示的分页首屏自行重读；
-        // 具体 subject 失效只依赖快照标记，避免评论正文刷新整页列表。
-        cache.addInvalidationListener { account, tags ->
-            if (tags.any { it.subject == null }) registry(account).revalidate(tags)
-        }
+        cache.addInvalidationListener { account, tags -> registry(account).invalidate(tags) }
     }
 
     fun <T : Any> snapshot(
@@ -90,12 +93,9 @@ class PagingRepository(
         }
     }
 
-    /** 原列表由 Paging 保留，替换 generation 的首屏必须重新请求网络。 */
+    /** Invalidate the stable query even when no Pager currently holds it. */
     fun invalidate(account: String, key: String) {
-        // 即便 Pager 尚未创建或已被闲置 LRU 淘汰，也更换本会话的页命名空间。
-        val registry = registry(account)
-        val entry = cache.locked { registry.rotate(key) }
-        entry?.retire()
+        cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Paging, key)))
     }
 
     fun revalidation(account: String, key: String): StateFlow<RevalidationState> =
@@ -109,33 +109,43 @@ class PagingRepository(
     internal fun revisions(account: String, key: String): StateFlow<Long> =
         registry(account).state(key).version
 
-    internal fun currentNamespace(account: String, key: String): String =
-        registry(account).state(key).current()
 
     private fun registry(account: String): PagingRegistry =
         cache.sessionResource(account, "paging-registry-v1") { scope ->
-            scope.coroutineContext[Job]!!.invokeOnCompletion { snapshotStore.clearMemory(account) }
             PagingRegistry(scope)
         }
 }
 
-/** 同一分页 key 的命名空间与版本只属于当前会话，不依赖持久化 revision。 */
 internal class PagingKeyState {
-    private val lock = Any()
-    private var namespace = UUID.randomUUID().toString()
+    private var first: WeakReference<PagingSnapshotPage<*>>? = null
+    private var diskRevision = -1L
+    private var frameGeneration = -1L
+    @Volatile var sequence = 0L
+        private set
     private val mutableVersion = MutableStateFlow(0L)
     val version: StateFlow<Long> = mutableVersion.asStateFlow()
     private val mutableRevalidation = MutableStateFlow<RevalidationState>(RevalidationState.Idle)
     val revalidation: StateFlow<RevalidationState> = mutableRevalidation.asStateFlow()
 
-    fun current(): String = synchronized(lock) { namespace }
+    @Synchronized fun rotate() {
+        sequence++
+        mutableVersion.value++
+        mutableRevalidation.value = RevalidationState.Idle
+    }
 
-    fun rotate() =
-        synchronized(lock) {
-            namespace = UUID.randomUUID().toString()
-            mutableVersion.value = mutableVersion.value + 1L
-            mutableRevalidation.value = RevalidationState.Idle
-        }
+    @Suppress("UNCHECKED_CAST")
+    @Synchronized fun <T : Any> frame(revision: Long): PagingSnapshotPage<T>? {
+        val page = first?.get() as? PagingSnapshotPage<T> ?: return null
+        return if (revision == diskRevision && frameGeneration == version.value) page
+        else page.copy(boundaryInvalid = true)
+    }
+
+    @Synchronized fun remember(page: PagingSnapshotPage<*>, revision: Long): Long {
+        first = WeakReference(page)
+        diskRevision = revision
+        frameGeneration = version.value
+        return ++sequence
+    }
 
     fun updateRevalidation(state: RevalidationState) {
         mutableRevalidation.value = state
@@ -179,19 +189,14 @@ private class PagingRegistry(val scope: CoroutineScope) {
         evicted.forEach { it.close() }
     }
 
-    /** 调用方持有会话锁：先更换命名空间，返回需要退休的 entry。 */
-    fun rotate(key: String): PagingEntry<*>? = synchronized(this) {
-        state(key).rotate()
-        entries[key]
-    }
-
-    /** domain 级失效：让所有正在收集且属于该 domain 的页自行重读首屏。 */
-    fun revalidate(invalidations: Set<CacheTag>) {
-        val affected =
-            synchronized(this) {
-                entries.values.filter { entry -> entry.matches(invalidations) }
+    fun invalidate(tags: Set<CacheTag>) {
+        val affected = synchronized(this) {
+            tags.filter { it.domain == DataDomain.Paging }.forEach { tag ->
+                tag.subject?.takeIf { it !in entries }?.let { states[it]?.rotate() }
             }
-        affected.forEach { it.revalidate() }
+            entries.values.filter { it.matches(tags) }.onEach { it.state.rotate() }
+        }
+        affected.forEach { it.retire() }
     }
 
     private fun trimIdle(): List<PagingEntry<*>> {
@@ -211,9 +216,11 @@ internal class PagingEntry<T : Any>(
     val key: String,
     val state: PagingKeyState,
     config: PagingConfig,
-    private val tags: Set<CacheTag>,
+    tags: Set<CacheTag>,
     source: (PagingContext) -> PagingSource<Int, T>,
 ) {
+    val tags = tags + CacheTag(DataDomain.Paging, key)
+    val sessionGeneration = cache.sessionGeneration()
     private val lock = Any()
     val scope =
         CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
@@ -232,7 +239,7 @@ internal class PagingEntry<T : Any>(
         Pager(config) {
                 val retired =
                     synchronized(lock) {
-                        if (!initial && !revalidated) retireGeneration() else null
+                        if (!initial) retireGeneration() else null
                     }
                 retired?.cancel()
                 synchronized(lock) {
@@ -257,21 +264,11 @@ internal class PagingEntry<T : Any>(
     fun ensureCurrent(expected: Long) =
         synchronized(lock) {
             scope.coroutineContext.ensureActive()
-            if (version != expected) throw CancellationException("分页请求已失效")
+            if (version != expected || !cache.isCurrent(account, sessionGeneration)) throw CancellationException("分页请求已失效")
         }
 
     fun matches(invalidations: Set<CacheTag>): Boolean =
-        tags.any { tag -> invalidations.any { it.domain == tag.domain } }
-
-    /** 标记下一份 source 必须强刷，并让当前 source 失效以触发 Paging 重读。 */
-    fun revalidate() {
-        val current =
-            synchronized(lock) {
-                revalidated = true
-                sources.toList()
-            }
-        current.forEach { it.invalidate() }
-    }
+        tags.any { tag -> invalidations.any { it.covers(tag) } }
 
     fun <R> commit(expected: Long, block: () -> R): R = cache.locked {
         synchronized(lock) {
@@ -306,7 +303,7 @@ internal class PagingEntry<T : Any>(
         CoroutineScope(scope.coroutineContext + expectedGeneration).launch {
             try {
                 ensureCurrent(expected)
-                val diff = changed()
+                val diff = pageRead { changed() }
                 ensureCurrent(expected)
                 if (diff) revalidated(expected, source)
                 synchronized(lock) {
@@ -380,6 +377,11 @@ internal constructor(
     val forceRefresh: Boolean,
 ) {
     fun ensureCurrent() = entry.ensureCurrent(version)
+    internal val state get() = entry.state
+    internal val cache get() = entry.cache
+    internal val snapshotTags get() = entry.tags
+    internal suspend fun sessionId() = cache.sessionId(entry.account, entry.sessionGeneration)
+    internal fun active() = entry.isReusable && cache.isCurrent(entry.account, entry.sessionGeneration)
 
     internal fun <R> commit(block: () -> R): R = entry.commit(version, block)
 
@@ -393,14 +395,14 @@ internal constructor(
     ): T {
         currentCoroutineContext().ensureActive()
         ensureCurrent()
-        val namespace = snapshotKey(entry.key)
+        val namespace = entry.key
         val resource =
             entry.cache.resource(
                 entry.account,
                 "paging:$namespace:$key",
                 serializer,
                 maxAgeMillis,
-                tags,
+                entry.tags + tags,
             )
         ensureCurrent()
         val value = resource.await(force = force, loader = loader)
@@ -409,30 +411,21 @@ internal constructor(
         return value
     }
 
-    suspend fun snapshotKey(key: String): String {
-        ensureCurrent()
-        val session = entry.cache.sessionId(entry.account)
-        ensureCurrent()
-        return "session:$session:revision:${entry.state.current()}:$key"
-    }
+    internal fun validFrame(sequence: Long): Boolean = active() && state.sequence == sequence
 
     internal fun persistenceEnabled(): Boolean =
-        entry.cache.persistenceEnabled(entry.account, entry.cache.sessionGeneration())
-
-    internal suspend fun tagsStale(diskTags: List<String>, checkedAt: Long): Boolean =
-        entry.cache.stale(entry.account, diskTags, checkedAt)
-
-    internal fun persist(block: suspend () -> Unit) {
-        CoroutineScope(entry.scope.coroutineContext + generation).launch {
-            ensureCurrent()
-            block()
-        }
-    }
+        entry.cache.persistenceEnabled(entry.account, entry.sessionGeneration)
 
     fun revalidate(source: PagingSource<*, *>, changed: suspend () -> Boolean) {
         entry.startRevalidate(version, generation, source, changed)
     }
 }
+
+/** One deadline for the full cursor walk and mapping, not one timeout per HTTP call. */
+suspend fun <T : Any> pageRead(load: suspend () -> T): T =
+    withContext(Dispatchers.IO) {
+        withTimeoutOrNull(30_000L) { load() } ?: throw SocketTimeoutException("Page read timed out")
+    }
 
 fun defaultPagingConfig(pageSize: Int = 30): PagingConfig =
     PagingConfig(

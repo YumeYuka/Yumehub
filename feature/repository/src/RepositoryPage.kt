@@ -164,12 +164,11 @@ fun RepositoryPage(
         if (host.navigationEnabled && details != null) overviewViewModel.open(sheet, details)
     }
     val openFork = { if (host.navigationEnabled && details != null) forkViewModel.open(details) }
-    LaunchedEffect(forkState?.created) {
-        forkState?.created?.let { created ->
+    LaunchedEffect(host, forkViewModel) {
+        forkViewModel.created.collect { created ->
             val forkOwner = created.owner?.login
             val forkName = created.name
             if (host.navigationEnabled && forkOwner != null && forkName != null) {
-                forkViewModel.consumeCreated()
                 overviewViewModel.refresh(force = true)
                 latestOpenRepository(forkOwner, forkName)
             }
@@ -509,7 +508,7 @@ fun RepositoryPage(
                 readmeAnchor = currentReadmeAnchor,
                 overviewState = overview,
                 onToggleStar = {
-                    if (host.navigationEnabled && !overview.busy) overviewViewModel.star()
+                    if (host.navigationEnabled) overviewViewModel.star()
                 },
                 onRetryOverviewReadme = {
                     if (host.navigationEnabled) viewModel.retryOverviewReadme()

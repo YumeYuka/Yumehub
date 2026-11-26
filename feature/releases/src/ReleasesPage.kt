@@ -38,7 +38,6 @@ import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
 import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
 import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
-import moe.yumeyuka.yumehub.ui.component.observeReaction
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseMetadataPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubDetailKind
@@ -139,8 +138,6 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
                     }
                 }),
         actions = {
-            val update =
-                detail?.let { viewModel.reactionUpdates.observeReaction(it.version.id, it.reactions) }
             GithubToolbarActions(
                 if (state.failure != null || presentation.hasVisibleDocumentFailure)
                     toolbarIcon(Lucide.RefreshCw, strings.Common.Retry) {
@@ -150,7 +147,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
                         }
                     }
                 else null,
-                toolbarIcon(Lucide.RotateCcwClock, strings.Release.Timeline, update?.pending != true) {
+                toolbarIcon(Lucide.RotateCcwClock, strings.Release.Timeline, host.navigationEnabled) {
                     if (host.navigationEnabled) showTimeline = true
                 },
             )

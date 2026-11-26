@@ -72,6 +72,11 @@ data class RepositoryOverview(
         get() = permission == "ADMIN" && !archived
 }
 
+internal fun CachedDataRepository.overviewResource(account: String, owner: String, name: String) = resource(
+    account, "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
+    RepositoryOverview.serializer(), tags = setOf(repositoryCacheTag(owner, name)),
+)
+
 /** 仓库首页的关系、统计与管理操作；正文、目录仍由 RepositoryContentRepository 提供。 */
 class RepositoryOverviewRepository(
     private val api: GitHubGraphQlApi,
@@ -86,12 +91,7 @@ class RepositoryOverviewRepository(
         get() = tokens.accountLogin.value
 
     fun resource(account: String, owner: String, name: String) =
-        cache.resource(
-            account,
-            "repository-home-v4:${owner.lowercase(Locale.ROOT)}/${name.lowercase(Locale.ROOT)}",
-            RepositoryOverview.serializer(),
-            tags = setOf(repositoryCacheTag(owner, name)),
-        )
+        cache.overviewResource(account, owner, name)
 
     suspend fun load(account: String, owner: String, name: String): RepositoryOverview {
         val session = session(account)
@@ -108,7 +108,9 @@ class RepositoryOverviewRepository(
     }
 
     /** 页面绑定时提前取得会话级写协调器；未取得前只暂停依赖它的写控件。 */
-    suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    fun trackStar(account: String, owner: String, name: String) =
+        cache.starredRows(account).track("$owner/$name", contents.details(account, owner, name).cached)
 
     suspend fun setStarred(
         account: String,
@@ -127,14 +129,11 @@ class RepositoryOverviewRepository(
                 true,
             )
         val result = data.requiredObject(field).requiredObject("starrable")
-        if (
-            result.requiredText("id") != state.id ||
-                result.requiredBoolean("viewerHasStarred") != selected
-        )
-            throw RepositoryOverviewException()
+        if (result.requiredText("id") != state.id) throw RepositoryOverviewException()
+        val actual = result.requiredBoolean("viewerHasStarred")
         val updated =
             (resource.cached ?: state).copy(
-                starred = selected,
+                starred = actual,
                 stars = result.requiredInt("stargazerCount"),
             )
         resource.update(updated)
@@ -150,8 +149,7 @@ class RepositoryOverviewRepository(
                         ),
                     ),
             )
-            .update(selected)
-        cache.changes(account).publish(DataDomain.Repositories, DataDomain.Relationships)
+            .update(actual)
         return updated
     }
 
@@ -161,7 +159,7 @@ class RepositoryOverviewRepository(
         name: String,
         value: String,
         types: Set<String> = emptySet(),
-    ) {
+    ): RepositoryOverview {
         require(value in setOf("UNSUBSCRIBED", "SUBSCRIBED", "IGNORED", "CUSTOM"))
         require(
             types.all {
@@ -185,24 +183,25 @@ class RepositoryOverviewRepository(
                 true,
             )
         val result = data.requiredObject("updateSubscription").requiredObject("subscribable")
-        if (
-            result.requiredText("id") != state.id ||
-                result.requiredText("viewerSubscription") != value
-        )
-            throw RepositoryOverviewException()
-        val confirmedTypes = result.subscriptionTypes()
-        if (value == "CUSTOM" && confirmedTypes != types) throw RepositoryOverviewException()
-        resource.update(
-            (resource.cached ?: state).copy(
-                subscription = value,
-                subscriptionTypes = confirmedTypes,
-            ),
-        )
+        if (result.requiredText("id") != state.id) throw RepositoryOverviewException()
+        val actual = result.requiredText("viewerSubscription")
+        if (actual == "CUSTOM" && result["viewerSubscriptionTypes"] !is JsonArray) throw RepositoryOverviewException()
+        val updated = (resource.cached ?: state).copy(subscription = actual, subscriptionTypes = result.subscriptionTypes())
+        resource.update(updated)
         cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Work, null)))
         cache.changes(account).publish(DataDomain.Work, DataDomain.Notifications)
+        return updated
     }
 
-    suspend fun saveDescription(account: String, owner: String, name: String, description: String) {
+    suspend fun readDescription(account: String, owner: String, name: String): String {
+        val node = execute(session(account),
+            "query RepositoryDescriptionRead(\$owner: String!, \$name: String!) { repository(owner: \$owner, name: \$name) { description } }",
+            buildJsonObject { put("owner", owner); put("name", name) },
+        ).requiredObject("repository")
+        return node.confirmedDescription()
+    }
+
+    suspend fun saveDescription(account: String, owner: String, name: String, description: String): String {
         val resource = resource(account, owner, name)
         val state = resource.cached ?: throw RepositoryOverviewException()
         check(state.canEditDescription)
@@ -218,15 +217,13 @@ class RepositoryOverviewRepository(
                 true,
             )
         val result = data.requiredObject("updateRepository").requiredObject("repository")
-        if (
-            result.requiredText("id") != state.id ||
-                result.text("description").orEmpty() != description
-        )
-            throw RepositoryOverviewException()
-        details.cached?.let { details.update(it.copy(description = description)) }
+        if (result.requiredText("id") != state.id) throw RepositoryOverviewException()
+        val actual = result.confirmedDescription()
+        details.cached?.let { details.update(it.copy(description = actual)) }
             ?: details.invalidate()
         cache.invalidateAndPersist(account, setOf(repositoryCacheTag(owner, name)))
         cache.changes(account).publish(DataDomain.Repositories)
+        return actual
     }
 
     suspend fun isPinned(account: String, id: String): Boolean =
@@ -266,7 +263,6 @@ class RepositoryOverviewRepository(
                     )
                 }
             }
-        if (confirmed.ids != ids) throw RepositoryOverviewException()
         val metadataById = metadata.associateBy { it.nodeId }
         favoritesResource.update(
             confirmed.repositories.map { repository ->
@@ -324,7 +320,6 @@ class RepositoryOverviewRepository(
                         account,
                     )
                 }
-            if (confirmed.ids != ids) throw RepositoryOverviewException()
             val metadataById = metadata.associateBy { it.nodeId }
             favoritesResource.update(
                 confirmed.repositories.map { repository ->
@@ -384,7 +379,7 @@ class RepositoryOverviewRepository(
             }
         currentCoroutineContext().ensureActive()
         synchronized(tokens.responseCacheSession.lock) { checkSession(session) }
-        if (response.errors.isNotEmpty()) throw RepositoryOverviewException()
+        if (write) response.checkWriteErrors() else if (response.errors.isNotEmpty()) throw RepositoryOverviewException()
         return response.data as? JsonObject ?: throw RepositoryOverviewException()
     }
 
@@ -493,6 +488,12 @@ internal fun parseRepositoryOverview(node: JsonObject): RepositoryOverview =
 class RepositoryOverviewException : Exception("Repository operation failed")
 
 class RepositoryFavoritesLimitException : Exception("Dashboard pins limit reached")
+
+private fun JsonObject.confirmedDescription(): String = when (val value = get("description")) {
+    JsonNull -> ""
+    is JsonPrimitive -> value.takeIf { it.isString }?.content ?: throw RepositoryOverviewException()
+    else -> throw RepositoryOverviewException()
+}
 
 private fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
 

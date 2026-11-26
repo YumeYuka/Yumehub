@@ -43,12 +43,12 @@ class RepositoryPagingSource(
             }
             val result =
                 initial
-                    ?: requestPage(
+                    ?: pageRead { requestPage(
                         page,
                         force =
                             params !is LoadParams.Refresh ||
                                 snapshot?.context?.forceRefresh != false,
-                    )
+                    ) }
             currentCoroutineContext().ensureActive()
             val uniqueRepositories =
                 synchronized(repositoryPages) {

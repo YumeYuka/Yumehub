@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import moe.yumeyuka.yumehub.data.storage.mmkv.ResponseCacheStore
+import okio.utf8Size
 
 /** 远端查询的一次结果。GraphQL 返回正文；REST 携带 ETag，未变时返回 [NotModified]。 */
 sealed interface RemoteFetch<out T> {
@@ -57,6 +58,9 @@ internal constructor(
     private var forceRequested = false
     private var revision = 0L
     private var writeSequence = 0L
+    private var bodyVersion = 0L
+    private var diskBodyVersion = -1L
+    private var bodyUpdatedAt = 0L
     private var hydrated = false
     private var invalidated = false
     // 内存中的新鲜度锚点：任一次成功校验（含 304 与正文未变）都会推进它，不改变已发布的 updatedAt。
@@ -115,11 +119,14 @@ internal constructor(
             invalidated = false
             val timestamp = System.currentTimeMillis().coerceAtLeast(1L)
             checkedAt = timestamp
+            bodyUpdatedAt = timestamp
+            bodyVersion++
             // 本地写入的正文不是服务端返回的表示，旧 ETag 不能再用于条件请求。
             validator = null
             mutableState.value = CachedDataState(data = value, updatedAt = timestamp)
             val version = revision
             persistInBackground(value, timestamp, version, etag = null)
+            ConfirmedWrites.current.get()?.record(this)
         }
     }
 
@@ -130,28 +137,19 @@ internal constructor(
             revision++
             cancelRequest()
             invalidated = true
-            mutableState.value =
-                mutableState.value.copy(
-                    loading = false,
-                    error = null,
-                    updatedAt = 0L,
-                )
+            checkedAt = 0L
+            mutableState.value = mutableState.value.copy(loading = false, error = null, updatedAt = 0L)
             val version = revision
-            val value = mutableState.value.data
-            if (value != null) {
-                // ETag 保留：下次以 If-None-Match 校验，服务端未变时只需一次 304。
-                persistInBackground(value, 0L, version, validator)
-            } else {
-                val sequence = ++writeSequence
-                repository.writeQueue.submit("response:${account}:$key") {
-                    ignoreStorageFailure {
-                        val session = repository.sessionId(account, generation)
-                        val diskKey = diskKey(session)
-                        repository.store.invalidate(session, diskKey) {
-                            mayPersist(version, sequence)
-                        }
-                    }
-                }
+            val body = mutableState.value.data
+            if (body != null) {
+                persistInBackground(body, bodyUpdatedAt, version, validator)
+                return@locked
+            }
+            val sequence = ++writeSequence
+            repository.writeQueue.snapshot("response:$account:$key") {
+                val session = repository.sessionId(account, generation)
+                val diskKey = diskKey(session)
+                suspend { repository.store.invalidate(session, diskKey) { mayPersist(version, sequence) } }
             }
         }
     }
@@ -219,7 +217,7 @@ internal constructor(
                 // ETag 只对应已持久化的同一份正文；没有正文时不发条件请求。
                 validator.takeIf { mutableState.value.data != null }
             }
-            return when (val fetched = fetch(etag)) {
+            return when (val fetched = moe.yumeyuka.yumehub.data.repository.pageRead { fetch(etag) }) {
                 is RemoteFetch.Fresh -> {
                     currentCoroutineContext().ensureActive()
                     accept(version, fetched.value, fetched.validator)
@@ -242,25 +240,26 @@ internal constructor(
     }
 
     // 调用方不持有锁；正文未变时只推进新鲜度与 ETag，不发布状态，页面不因相同数据重组。
-    private fun accept(version: Long, value: T, nextValidator: String?): T =
-        repository.locked {
+    private fun accept(version: Long, value: T, nextValidator: String?): T {
+        val unchanged = mutableState.value.data == value
+        return repository.locked {
             checkCurrent(version)
             val now = System.currentTimeMillis().coerceAtLeast(1L)
             val current = mutableState.value
-            val unchanged = !invalidated && current.data != null && current.data == value
             invalidated = false
             checkedAt = now
+            validator = nextValidator
             if (!unchanged) {
-                validator = nextValidator
-                mutableState.value = current.copy(data = value, updatedAt = now, error = null)
-                persistInBackground(value, now, version, nextValidator)
-            } else {
-                // 正文未变也要把本次校验时间写回磁盘，冷启动才能复用同一 ETag。
-                validator = nextValidator
-                persistInBackground(value, current.updatedAt, version, nextValidator)
+                bodyVersion++
+                bodyUpdatedAt = now
             }
+            if (!unchanged || current.updatedAt == 0L || current.error != null) {
+                mutableState.value = current.copy(data = value, updatedAt = bodyUpdatedAt, error = null)
+            }
+            persistInBackground(value, bodyUpdatedAt, version, nextValidator)
             value
         }
+    }
 
     // 304 只表示服务端表示未变；正文沿用当前内容，失效标记随之清除。
     private fun confirm(version: Long): T =
@@ -274,8 +273,8 @@ internal constructor(
             checkedAt = now
             if (wasInvalidated) {
                 // 失效后被服务端确认仍有效：恢复 updatedAt 并把确认结果写回磁盘。
-                mutableState.value = current.copy(updatedAt = now, error = null)
-                persistInBackground(value, now, version, validator)
+                mutableState.value = current.copy(updatedAt = bodyUpdatedAt, error = null)
+                persistInBackground(value, bodyUpdatedAt, version, validator)
             } else {
                 // 304 确认正文未变：持久推进 checkedAt，保留原 updatedAt 且不重发射 UI 状态。
                 persistInBackground(value, current.updatedAt, version, validator)
@@ -298,25 +297,20 @@ internal constructor(
         // 旧无 tags 的快照不能当作新鲜内容。
         val diskTags = response?.tags
         val value =
-            if (response != null && diskTags != null) {
+            if (response != null) {
                 ignoreStorageFailure { repository.json.decodeFromString(serializer, response.payload) }
             } else null
         val stale =
-            response != null &&
-                diskTags != null &&
-                value != null &&
-                (ignoreStorageFailure {
-                    repository.stale(
-                        account,
-                        diskTags,
-                        response.checkedAt.takeIf { it > 0L } ?: response.updatedAt,
-                    )
-                } == true)
+            response != null && (diskTags.isNullOrEmpty() || response.checkedAt <= 0L ||
+                ignoreStorageFailure { repository.stale(account, diskTags, response.checkedAt) } != false)
         repository.locked {
             checkCurrent(version)
             if (hydrated) return@locked
             hydrated = true
-            if (response != null && diskTags != null && value != null) {
+            if (response != null && value != null) {
+                bodyUpdatedAt = response.updatedAt
+                diskBodyVersion = bodyVersion
+                repository.recordRecentSize(account, key, this, response.bytes.toLong())
                 if (stale) {
                     // 被失效标记覆盖的正文只作为过期内容显示，下一次读取必须强制校验。
                     mutableState.value = mutableState.value.copy(data = value, updatedAt = 0L)
@@ -329,7 +323,7 @@ internal constructor(
                             data = value,
                             updatedAt = if (invalidated) 0L else response.updatedAt,
                         )
-                    checkedAt = response.checkedAt.takeIf { it > 0L } ?: response.updatedAt
+                    checkedAt = response.checkedAt
                     validator = response.etag
                 }
             }
@@ -341,27 +335,61 @@ internal constructor(
         val sequence = ++writeSequence
         val tags = tags
         val checkedAt = checkedAt
+        val body = bodyVersion
+        val indexed = diskBodyVersion == body
         val queueKey = "response:${account}:$key"
-        repository.writeQueue.submit(queueKey) {
-            ignoreStorageFailure {
-                val valid = { mayPersist(version, sequence) }
-                if (!valid()) return@ignoreStorageFailure
-                val session = repository.sessionId(account, generation)
-                val payload = repository.json.encodeToString(serializer, value)
-                repository.recordRecentSize(account, key, payload.length.toLong())
-                repository.store.save(
-                    session,
-                    diskKey(session),
-                    payload,
-                    timestamp,
-                    checkedAt,
-                    etag,
-                    tags.map { it.diskValue() },
-                    valid,
-                )
+        repository.writeQueue.snapshot(queueKey) {
+            val valid = { mayPersist(version, sequence) && repository.persistenceEnabled(account, generation) }
+            if (!valid()) return@snapshot null
+            val session = repository.sessionId(account, generation)
+            val diskKey = diskKey(session)
+            if (indexed) return@snapshot suspend {
+                if (!repository.store.touch(session, diskKey, checkedAt, etag, valid)) repository.locked {
+                    if (valid()) {
+                        diskBodyVersion = -1L
+                        persistInBackground(value, timestamp, version, etag)
+                    }
+                }
+            }
+            val payload = repository.json.encodeToString(serializer, value)
+            val bytes = payload.utf8Size()
+            val diskTags = tags.map { it.diskValue() }
+            if (!valid()) return@snapshot null
+            repository.recordRecentSize(account, key, this, bytes)
+            suspend {
+                repository.store.save(session, diskKey, payload, bytes, timestamp, checkedAt, etag, diskTags, valid)
+                repository.locked { if (valid()) diskBodyVersion = body }
             }
         }
     }
+
+    /** The marker must outlive the index entry for a server-confirmed update. */
+    internal suspend fun persistConfirmed() {
+        val frame = repository.locked {
+            if (!isCurrent()) throw expiredSession()
+            val value = mutableState.value.data ?: return@locked null
+            ConfirmedFrame(value, bodyVersion, bodyUpdatedAt, checkedAt, validator, tags)
+        } ?: return
+        check(repository.persistenceEnabled(account, generation)) { "Snapshot storage unavailable" }
+        val session = repository.sessionId(account, generation)
+        val key = diskKey(session)
+        val valid = { repository.locked { isCurrent() && bodyVersion == frame.version } }
+        if (repository.locked { diskBodyVersion == frame.version }) {
+            var indexed = false
+            repository.writeQueue.run { indexed = repository.store.touch(session, key, frame.checkedAt, frame.etag, valid) }
+            if (indexed) return
+        }
+        val payload = repository.json.encodeToString(serializer, frame.value)
+        val bytes = payload.utf8Size()
+        val labels = frame.tags.map { it.diskValue() }
+        repository.writeQueue.run {
+            repository.store.save(session, key, payload, bytes, frame.updatedAt, frame.checkedAt, frame.etag, labels, valid)
+            repository.locked { if (valid()) diskBodyVersion = frame.version }
+        }
+    }
+
+    private data class ConfirmedFrame<T>(val value: T, val version: Long, val updatedAt: Long,
+        val checkedAt: Long, val etag: String?, val tags: Set<CacheTag>)
 
     private fun mayPersist(version: Long, sequence: Long): Boolean = repository.locked {
         isCurrent() && revision == version && writeSequence == sequence

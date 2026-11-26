@@ -383,6 +383,13 @@ internal class WorkPropertiesController(
         }
     }
 
+    private fun WorkPropertiesState.withConfirmed(property: WorkProperty, candidates: List<WorkPropertyOption>, ids: List<String>?): WorkPropertiesState {
+        val base = value ?: return this
+        if (ids == null) return this
+        val byId = candidates.associateBy { it.id }
+        return copy(value = base.copy(values = base.values + (property to ids.mapNotNull(byId::get))))
+    }
+
     fun applyEditor(saveImmediately: Boolean = false) {
         val current = state()
         val editor = current.editor ?: return
@@ -415,12 +422,13 @@ internal class WorkPropertiesController(
                             tags = detail.mutationTags,
                             send = { _ ->
                                 if (reviewers) detail.saveReviewRequests(editor.original, editor.selected)
-                                else detail.saveProperty(property, editor.original, editor.selected)
-                                desiredIds
+                                else detail.saveProperty(property, editor.original, editor.selected) { coord.confirmStep(key, it) }
+                                if (reviewers) detail.reviewRequests().requested.map { it.id }
+                                else detail.properties().values.getValue(property).map { it.id }
                             },
                             readBack = {
                                 if (reviewers) detail.reviewRequests().requested.map { it.id }
-                                else detail.properties().values[property].orEmpty().map { it.id }
+                                else detail.properties().values.getValue(property).map { it.id }
                             },
                         )
                     if (result.phase == WritePhase.IDLE) {
@@ -428,7 +436,7 @@ internal class WorkPropertiesController(
                             val value = latest.value
                             latest.copy(
                                 value = value?.let {
-                                    if (reviewers) it else it.copy(values = it.values + (property to editor.selected))
+                                    if (reviewers) it else it.copy(values = it.values + (property to (editor.original + editor.selected).distinctBy { option -> option.id }.filter { option -> option.id in result.confirmed.orEmpty() }))
                                 },
                                 drafts = latest.drafts - property,
                                 editor = null,
@@ -442,15 +450,17 @@ internal class WorkPropertiesController(
                         val isUncertain = result.phase == WritePhase.UNCERTAIN
                         val opId = if (isUncertain) coord.findUncertainOperationId(key.kind, key.target) else null
                         update { latest ->
+                            val partial = latest.withConfirmed(property, editor.original + editor.selected, result.confirmed)
                             if (latest.editor != null) {
-                                latest.copy(
+                                partial.copy(
                                     submitting = false,
                                     uncertain = isUncertain,
                                     uncertainOperationId = opId,
-                                    editor = latest.editor.copy(needsReconcile = true),
+                                    editor = latest.editor.copy(original = partial.value?.values?.get(property) ?: editor.original, needsReconcile = true),
                                 )
                             } else {
-                                latest.copy(
+                                partial.copy(
+                                    drafts = partial.drafts + (property to editor.selected),
                                     submitting = false,
                                     saveFailed = true,
                                     uncertain = isUncertain,
@@ -513,17 +523,17 @@ internal class WorkPropertiesController(
                             desired = desiredIds,
                             tags = detail.mutationTags,
                             send = { _ ->
-                                detail.saveProperty(property, actual, selected)
-                                desiredIds
+                                detail.saveProperty(property, actual, selected) { coord.confirmStep(key, it) }
+                                detail.properties().values.getValue(property).map { it.id }
                             },
                             readBack = {
-                                detail.properties().values[property].orEmpty().map { it.id }
+                                detail.properties().values.getValue(property).map { it.id }
                             },
                         )
                     if (result.phase == WritePhase.IDLE) {
                         update { latest ->
                             latest.copy(
-                                value = latest.value?.let { it.copy(values = it.values + (property to selected)) },
+                                value = latest.value?.let { value -> value.copy(values = value.values + (property to (actual + selected).distinctBy { it.id }.filter { it.id in result.confirmed.orEmpty() })) },
                                 drafts = latest.drafts - property,
                             )
                         }
@@ -531,7 +541,7 @@ internal class WorkPropertiesController(
                         val isUncertain = result.phase == WritePhase.UNCERTAIN
                         val opId = if (isUncertain) coord.findUncertainOperationId(key.kind, key.target) else null
                         update {
-                            it.copy(
+                            it.withConfirmed(property, actual + selected, result.confirmed).copy(
                                 submitting = false,
                                 saveFailed = true,
                                 uncertain = isUncertain,
@@ -561,7 +571,9 @@ internal class WorkPropertiesController(
     fun acknowledgeUncertain() {
         val opId = state().uncertainOperationId ?: return
         scope.launch {
-            detail.mutations().acknowledge(opId)
+            val coord = detail.mutations()
+            coord.acknowledge(opId).join()
+            if (coord.pending.value.any { it.operationId == opId } || state().uncertainOperationId != opId) return@launch
             update {
                 it.copy(
                     uncertain = false,

@@ -19,6 +19,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
+import moe.yumeyuka.yumehub.data.cache.CommandAccepted
+import moe.yumeyuka.yumehub.data.cache.MutationKey
+import moe.yumeyuka.yumehub.data.cache.MutationKind
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.data.twofactor.MobileAuthRequest
 import moe.yumeyuka.yumehub.data.twofactor.MobileAuthStatus
@@ -26,7 +30,6 @@ import moe.yumeyuka.yumehub.data.twofactor.TwoFactorException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorNotifier
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRegistrationUncertainException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRepository
-import moe.yumeyuka.yumehub.data.twofactor.TwoFactorUncertainSubmissionException
 import moe.yumeyuka.yumehub.locale.GithubTxt
 import retrofit2.HttpException
 
@@ -47,7 +50,7 @@ data class TwoFactorUiState(
     val registrationUncertain: Boolean = false,
 ) {
     val isVisible: Boolean
-        get() = request != null && phase == TwoFactorPhase.Prompt
+        get() = phase == TwoFactorPhase.Prompt && (request != null || submissionUncertain)
 
     val requiresDigits: Boolean
         get() = request?.requiresChallenge == true
@@ -184,19 +187,28 @@ class TwoFactorViewModel(
     fun acknowledgeSubmissionUncertain() {
         val state = mutableState.value
         if (!state.submissionUncertain) return
-        val requestId = state.request?.id ?: uncertainRequestId
-        if (requestId != null && uncertainRequestId == requestId) {
+        val id = uncertainRequestId ?: return
+        val login = currentLogin ?: return
+        val generation = sessionGeneration ?: return
+        val coord = twoFactorRepository.decisions(login)
+        val marker = coord.pending.value.firstOrNull { it.kind == MutationKind.TWO_FACTOR_DECISION && it.target == id.toString() } ?: return
+        viewModelScope.launch {
+            coord.acknowledge(marker.operationId).join()
+            if (!ownsSession(login, generation) || uncertainRequestId != id || coord.currentCommand(decisionKey(id)).phase == WritePhase.UNCERTAIN) return@launch
             uncertainRequestId = null
-            settledRequestId = requestId
+            settledRequestId = id
+            mutableState.value = state.withoutRequest()
         }
-        mutableState.value = state.withoutRequest().copy(submissionUncertain = false)
     }
 
     fun acknowledgeRegistrationUncertain() {
         val login = currentLogin ?: return
         val generation = sessionGeneration ?: return
         viewModelScope.launch {
-            twoFactorRepository.acknowledgeUncertainRegistration(login)
+            try {
+                twoFactorRepository.acknowledgeUncertainRegistration(login, generation)
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { return@launch }
             if (ownsSession(login, generation)) {
                 receivingErrorReported = false
                 mutableState.value =
@@ -205,67 +217,35 @@ class TwoFactorViewModel(
         }
     }
 
+    private fun decisionKey(id: Int) = MutationKey(MutationKind.TWO_FACTOR_DECISION, id.toString(), CommandAccepted.serializer())
+
     private fun submit(
         request: MobileAuthRequest,
         login: String,
         action: suspend (Long) -> Unit,
     ) {
         val generation = sessionGeneration ?: return
-        if (uncertainRequestId == request.id) return
-        mutableState.value =
-            mutableState.value.copy(phase = TwoFactorPhase.Submitting, error = null)
+        val coord = twoFactorRepository.decisions(login)
+        val key = decisionKey(request.id)
+        if (uncertainRequestId == request.id || coord.currentCommand(key).result != null) return
+        val receipt = coord.submitCommand(key, emptySet(), send = {
+            action(generation)
+            CommandAccepted
+        }, readBack = { null })
+        mutableState.value = mutableState.value.copy(phase = TwoFactorPhase.Submitting, error = null)
         submission = viewModelScope.launch {
-            try {
-                withTimeout(REQUEST_TIMEOUT_MILLIS) { action(generation) }
-                updateIfCurrent(request.id, login, generation) {
-                    settledRequestId = request.id
-                    uncertainRequestId = null
-                    it.withoutRequest()
-                }
-            } catch (_: TimeoutCancellationException) {
-                updateIfCurrent(request.id, login, generation) {
-                    uncertainRequestId = request.id
-                    it.copy(
-                        phase = TwoFactorPhase.Prompt,
-                        submissionUncertain = true,
-                        error = GithubTxt.current.Common.MutationUncertain,
-                    )
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: TwoFactorUncertainSubmissionException) {
-                updateIfCurrent(request.id, login, generation) {
-                    uncertainRequestId = request.id
-                    it.copy(
-                        phase = TwoFactorPhase.Prompt,
-                        submissionUncertain = true,
-                        error = error.message ?: GithubTxt.current.Common.MutationUncertain,
-                    )
-                }
-            } catch (error: TwoFactorException) {
-                updateIfCurrent(request.id, login, generation) {
-                    if (error.definiteRejection) {
-                        it.copy(
-                            phase = TwoFactorPhase.Prompt,
-                            error = error.message ?: "提交验证失败，请重试",
-                        )
-                    } else {
+            val result = receipt?.await() ?: coord.currentCommand(key)
+            updateIfCurrent(request.id, login, generation) { current ->
+                when {
+                    result.phase == WritePhase.UNCERTAIN -> {
                         uncertainRequestId = request.id
-                        it.copy(
-                            phase = TwoFactorPhase.Prompt,
-                            submissionUncertain = true,
-                            error = error.message ?: GithubTxt.current.Common.MutationUncertain,
-                        )
+                        current.copy(phase = TwoFactorPhase.Prompt, submissionUncertain = true, error = GithubTxt.current.Common.MutationUncertain)
                     }
-                }
-            } catch (error: Exception) {
-                updateIfCurrent(request.id, login, generation) {
-                    uncertainRequestId = request.id
-                    it.copy(
-                        phase = TwoFactorPhase.Prompt,
-                        submissionUncertain = true,
-                        error = error.message ?: GithubTxt.current.Common.MutationUncertain,
-                    )
+                    receipt != null && result.phase == WritePhase.IDLE && result.result == CommandAccepted -> {
+                        settledRequestId = request.id
+                        current.withoutRequest()
+                    }
+                    else -> current.copy(phase = TwoFactorPhase.Prompt, error = result.message ?: GithubTxt.current.Common.MutationNotSubmitted)
                 }
             }
         }
@@ -398,6 +378,24 @@ class TwoFactorViewModel(
             return
         }
         val active = status.activeRequest?.takeUnless { it.id == settledRequestId }
+        val decisions = twoFactorRepository.decisions(login)
+        val previous = uncertainRequestId
+        if (current.submissionUncertain && previous != null && decisions.currentCommand(decisionKey(previous)).phase == WritePhase.IDLE) {
+            settledRequestId = previous
+            uncertainRequestId = null
+            mutableState.value = current.withoutRequest()
+            return
+        }
+        val pendingId = active?.id ?: decisions.pending.value.firstOrNull { it.kind == MutationKind.TWO_FACTOR_DECISION }?.target?.toIntOrNull()
+        if (pendingId != null) {
+            val decision = decisions.currentCommand(decisionKey(pendingId))
+            if (decision.phase == WritePhase.UNCERTAIN) {
+                uncertainRequestId = pendingId
+                mutableState.value = current.copy(request = active, digits = "", phase = TwoFactorPhase.Prompt, submissionUncertain = true)
+                return
+            }
+            if (decision.phase == WritePhase.PENDING || decision.result != null) return
+        }
         when {
             active == null -> {
                 // 不因 fetchStatus 消失而推断结果未知的审批已成功；保留待确认提示直到用户确认或有新请求到来。

@@ -82,7 +82,7 @@ internal fun LazyListScope.NotificationsScreen(
             "notifications-load-error",
             retryLabel,
             message,
-            onRetryLoad.takeUnless { state.isProcessing || state.isSelecting },
+            onRetryLoad,
         )
     }
     if (
@@ -126,7 +126,7 @@ internal fun LazyListScope.NotificationsScreen(
             NotificationRow(
                 notification,
                 notification?.let { state.previews[it] },
-                !state.isProcessing,
+                notification?.threadId in state.pendingThreadIds,
                 state.isSelecting,
                 notification?.threadId in state.selectedThreadIds,
                 notification?.threadId in state.uncertainThreadIds,
@@ -143,7 +143,7 @@ internal fun LazyListScope.NotificationsScreen(
             strings.Previous,
             onClick =
                 onLoadPrevious.takeIf {
-                    !state.isRefreshing && !state.isLoadingMore && !state.isProcessing
+                    !state.isRefreshing && !state.isLoadingMore
                 },
         )
     }
@@ -153,13 +153,13 @@ internal fun LazyListScope.NotificationsScreen(
             "notifications-next-page-error",
             retryLabel,
             appendError,
-            onLoadMore.takeUnless { state.isProcessing || state.isLoadingMore },
+            onLoadMore.takeUnless { state.isLoadingMore },
         )
     } else if (state.hasMore && !state.isLoadingMore) {
         notificationStatus(
             "notifications-next-page",
             strings.More,
-            onClick = onLoadMore.takeIf { !state.isLoadingMore && !state.isProcessing },
+            onClick = onLoadMore.takeUnless { state.isRefreshing },
         )
     }
 }
@@ -192,7 +192,6 @@ internal fun NotificationsControls(
             selected = state.filter,
             onSelected = onFilterChange,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !state.isProcessing,
             height = 36.dp,
         )
     }
@@ -287,7 +286,7 @@ private fun SelectionActions(
 private fun NotificationRow(
     notification: NotificationDto?,
     preview: NotificationPreviewDto?,
-    enabled: Boolean,
+    pending: Boolean,
     isSelecting: Boolean,
     isSelected: Boolean,
     uncertain: Boolean,
@@ -298,6 +297,7 @@ private fun NotificationRow(
 ) {
     val target = remember(notification) { notification?.toTarget() }
     val threadId = notification?.threadId
+    val enabled = !pending && !uncertain
     val selectable = isSelecting && threadId != null
     Box(if (selectable) Modifier.semantics { selected = isSelected } else Modifier) {
         NotificationCard(
@@ -305,6 +305,7 @@ private fun NotificationRow(
             preview = preview,
             isSelecting = isSelecting,
             isSelected = isSelected,
+            pending = pending,
             uncertain = uncertain,
             onLongClick =
                 if (enabled && !isSelecting && threadId != null) {

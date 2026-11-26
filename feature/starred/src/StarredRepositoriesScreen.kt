@@ -15,6 +15,7 @@ fun LazyListScope.StarredRepositoriesScreen(
     slots: GithubPagingSlots<RepositoryDto>,
     initialLoading: Boolean,
     onOpenRepository: (RepositoryDto) -> Unit,
+    hasAdditions: Boolean,
     emptyText: String? = null,
 ) {
     // 首屏四个骨架槽逐槽交给正文，追加只留一个尾槽。
@@ -30,6 +31,7 @@ fun LazyListScope.StarredRepositoriesScreen(
         repositories,
         emptyText.orEmpty(),
         loadingPlaceholder = {},
+        emptyPlaceholder = !hasAdditions,
         emptyMessage = emptyText,
         emptyIcon = Lucide.Star,
     )

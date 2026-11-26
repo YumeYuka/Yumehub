@@ -50,11 +50,16 @@ fun LazyListScope.collaborationPagingStatus(
             }
     }
 
-    if (items.loadState.refresh is LoadState.Error || items.loadState.append is LoadState.Error) {
+    val failure = (items.loadState.refresh as? LoadState.Error)
+        ?: (items.loadState.append as? LoadState.Error)
+        ?: (items.loadState.prepend as? LoadState.Error)
+    if (failure != null) {
         item(key = "collaboration-page-retry") {
             GlasmioGroupedList {
                 GlasmioListRow(
-                    title = LocalGithubStrings.current.Common.Retry,
+                    title = if (failure.error is IOException && items.itemCount == 0)
+                        LocalGithubStrings.current.Common.NoOfflineData else collaborationErrorMessage(failure.error),
+                    detail = LocalGithubStrings.current.Common.Retry,
                     onClick = items::retry,
                 )
             }

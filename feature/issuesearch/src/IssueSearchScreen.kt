@@ -2,6 +2,11 @@ package moe.yumeyuka.yumehub.feature.issuesearch
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.paging.compose.LazyPagingItems
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.Flow
+import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import io.github.yumeyucca.lucide.CircleDot
 import io.github.yumeyucca.lucide.GitPullRequest
 import io.github.yumeyucca.lucide.Lucide
@@ -18,10 +23,12 @@ internal fun LazyListScope.IssueSearchScreen(
     items: LazyPagingItems<WorkItem>,
     slots: GithubPagingSlots<WorkItem>,
     onOpenItem: (WorkTarget) -> Unit,
+    card: (CollaborationItemDto) -> Flow<CollaborationItemDto>,
 ) {
     githubPagingItems(slots, contentType = "work", placeholder = { GithubWorkItemPlaceholder() }) {
         entry ->
-        GithubWorkItemCard(entry.item, kind) { onOpenItem(entry.target) }
+        val rich by remember(entry.item) { card(entry.item) }.collectAsStateWithLifecycle(entry.item)
+        GithubWorkItemCard(rich, kind) { onOpenItem(entry.target) }
     }
     collaborationPagingStatus(
         items,

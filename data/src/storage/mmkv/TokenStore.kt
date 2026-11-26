@@ -197,6 +197,7 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
         check(externalStorage.encode("twoFactorKeyAlias.$login", alias)) {
             "Unable to persist the registered device key alias"
         }
+        externalStorage.sync()
     }
 
     internal fun prepareResponseCacheSession() =

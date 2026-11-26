@@ -74,6 +74,10 @@ internal class FeedViewModel(
     private val mutableCards = mutableStateMapOf<String, MutableState<FeedCardState>>()
     private val mutableOptions = MutableStateFlow<FeedOptions?>(null)
     private var settingsWrite: Job? = null
+    val settingsFailed = MutableStateFlow(false)
+    val remoteFilters = MutableStateFlow<Set<FeedFilter>?>(null)
+    val filterPhase = MutableStateFlow(WritePhase.IDLE)
+    private var applying: FeedOptions? = null
     val cards: SnapshotStateMap<String, MutableState<FeedCardState>> = mutableCards
     val options = mutableOptions.asStateFlow()
     val events =
@@ -82,18 +86,7 @@ internal class FeedViewModel(
             }
             .flatMapLatest { query ->
                 val (session, options) = query
-                if (account != session?.login) {
-                    jobs.values.toList().forEach { it.cancel() }
-                    jobs.clear()
-                    cardObservers.values.toList().forEach { it.cancel() }
-                    cardObservers.clear()
-                    automaticReads.clear()
-                    visible = emptyMap()
-                    mutableCards.clear()
-                    account = session?.login
-                    coordinator = null
-                    coordinatorAccount = null
-                }
+                if (session != null) bind(session)
                 if (session == null || options.filters.isEmpty()) flowOf(PagingData.empty())
                 else
                     feedPager(
@@ -124,64 +117,67 @@ internal class FeedViewModel(
     }
 
     init {
-        viewModelScope.launch {
-            mutableOptions.value = withContext(Dispatchers.IO) { FeedOptions(loadFilters(), loadSort()) }
-        }
+        restoreOptions()
         viewModelScope.launch {
             auth.session.collectLatest { session ->
-                if (session == null) {
-                    coordinator = null
-                    coordinatorAccount = null
-                    return@collectLatest
-                }
-                val loaded =
-                    try {
-                        dashboard.mutations(session.login)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Exception) {
-                        null
-                    }
-                if (account == session.login) {
-                    coordinator = loaded
-                    coordinatorAccount = session.login
-                    mutableCards.keys.toList().forEach { key ->
-                        val event = visible[key]
-                        if (event != null) ensureSlotObserver(session.login, key, event)
-                    }
-                }
-                cache.changes(session.login).versions.collect {
-                    mutableCards.entries.toList().forEach { (key, holder) ->
-                        val coord = coordinator
-                        val mutationKey = mutationKeyFor(key)
-                        val slotState =
-                            if (coord != null && mutationKey != null) coord.current(mutationKey)
-                            else null
-                        if (slotState != null && (slotState.desired != null || slotState.phase != WritePhase.IDLE)) {
-                            return@forEach
+                jobs.values.forEach(Job::cancel); jobs.clear(); automaticReads.clear()
+                cardObservers.values.forEach(Job::cancel); cardObservers.clear()
+                mutableCards.clear(); visible = emptyMap(); applying = null
+                remoteFilters.value = null; filterPhase.value = WritePhase.IDLE
+                coordinator = null; coordinatorAccount = null; account = session?.login
+                if (session == null) return@collectLatest
+                bind(session)
+                kotlinx.coroutines.coroutineScope {
+                    launch { dashboard.effectiveFilters(session.login).collect { values ->
+                        remoteFilters.value = values?.let { FeedFilter.entries.filterTo(linkedSetOf()) { filter -> filter.serverGroup in it } }
+                    } }
+                    launch { dashboard.filterCommand(session.login).collect { command ->
+                        filterPhase.value = command.phase
+                        if (command.phase == WritePhase.IDLE && command.result != null) applying?.let { choice ->
+                            applying = null
+                            val same = mutableOptions.value == choice
+                            saveOptions(choice)
+                            if (same) pagingRepository.invalidate(session.login, feedPagingKey(choice.filters, choice.sort))
                         }
-                        if (!holder.value.busy) {
-                            val selected =
-                                when {
-                                    key.startsWith("user:") ->
-                                        followingResource(session.login, key.removePrefix("user:"))
-                                            .cached
-                                    key.startsWith("repo:") ->
-                                        repositoryParts(key).let { (owner, name) ->
-                                            starredResource(session.login, owner, name).cached
-                                        }
-                                    else -> null
-                                }
-                            if (selected != null)
-                                holder.value = holder.value.copy(selected = selected)
-                        }
-                    }
+                    } }
                 }
             }
         }
     }
 
+    private fun bind(session: AuthSession) {
+        account = session.login
+        coordinator = dashboard.mutations(session.login)
+        coordinatorAccount = session.login
+    }
+
+    fun restoreOptions() {
+        settingsFailed.value = false
+        viewModelScope.launch {
+            try { mutableOptions.value = withContext(Dispatchers.IO) { FeedOptions(loadFilters(), loadSort()) } }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) { settingsFailed.value = true }
+        }
+    }
+
+    fun adoptFilters() {
+        val current = mutableOptions.value ?: return
+        remoteFilters.value?.let { saveOptions(current.copy(filters = it)) }
+    }
+
     fun applyOptions(options: FeedOptions) {
+        val login = account ?: return
+        if (options.filters.isEmpty() || options.filters == remoteFilters.value ||
+            (options.filters == mutableOptions.value?.filters && remoteFilters.value == null)) {
+            saveOptions(options)
+            return
+        }
+        if (filterPhase.value == WritePhase.PENDING) return
+        applying = options
+        if (!dashboard.applyFilters(login, options.filters.mapTo(linkedSetOf()) { it.serverGroup })) applying = null
+    }
+
+    private fun saveOptions(options: FeedOptions) {
         val current = mutableOptions.value ?: return
         if (options == current) return
         mutableOptions.value = options
@@ -211,6 +207,7 @@ internal class FeedViewModel(
     fun setVisible(events: List<FeedEventDto>) {
         val next = events.mapNotNull { event -> event.cardKey()?.let { it to event } }.toMap()
         for (key in visible.keys - next.keys) {
+            cardObservers.remove(key)?.cancel()
             val read = automaticReads.remove(key) ?: continue
             if (jobs[key] === read) {
                 jobs.remove(key)
@@ -286,41 +283,29 @@ internal class FeedViewModel(
         val key = event.cardKey() ?: return
         val activeAccount = account ?: return
         val state = mutableCards[key]?.value ?: cachedCard(activeAccount, event) ?: return
-        val selected = state.selected ?: return
         val mutationKey = mutationKeyFor(key) ?: return
-        val target = !selected
+        val coord = coordinator?.takeIf { coordinatorAccount == activeAccount } ?: return
+        val slot = coord.current(mutationKey)
+        if (slot.phase == WritePhase.UNCERTAIN) {
+            coord.reconcile(mutationKey) { requireNotNull(dashboard.refreshCard(activeAccount, event).viewerSelected) }
+            return
+        }
+        val target = !(slot.visible ?: state.selected ?: return retry(event))
         ensureSlotObserver(activeAccount, key, event)
-        viewModelScope.launch {
-            val coord =
-                coordinator?.takeIf { coordinatorAccount == activeAccount }
-                    ?: try {
-                        dashboard.mutations(activeAccount).also {
-                            if (account == activeAccount) {
-                                coordinator = it
-                                coordinatorAccount = activeAccount
-                            }
-                        }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        update(key, state.copy(actionError = collaborationErrorMessage(error)))
-                        return@launch
-                    }
-            ensureSlotObserver(activeAccount, key, event)
             val userLogin = key.takeIf { it.startsWith("user:") }?.removePrefix("user:")
             val tags =
                 if (userLogin != null) {
                     setOf(
                         CacheTag(DataDomain.Profile, userLogin.lowercase()),
                         relationshipCacheTag(userLogin),
-                        CacheTag(DataDomain.Relationships, null),
                     )
                 } else {
                     val (owner, name) = repositoryParts(key)
+                    dashboard.trackStar(activeAccount, "$owner/$name", state.repository)
                     setOf(
                         repositoryCacheTag(owner, name),
                         relationshipCacheTag("${owner.lowercase()}/${name.lowercase()}"),
-                        CacheTag(DataDomain.Repositories, null),
+                        relationshipCacheTag("viewer:starred"),
                     )
                 }
             val accepted =
@@ -330,30 +315,19 @@ internal class FeedViewModel(
                     desired = target,
                     tags = tags,
                     send = { nextSelected ->
-                        val confirmed =
-                            dashboard.setSelected(
-                                activeAccount,
-                                event.copy(subjectId = state.subjectId),
-                                nextSelected,
-                            )
-                        if (userLogin == null) {
-                            pagingRepository.invalidate(activeAccount, StarredRepositoriesPagingKey)
-                        }
-                        confirmed
+                        dashboard.setSelected(activeAccount, event.copy(subjectId = state.subjectId), nextSelected)
                     },
                     readBack = {
                         val refreshed = dashboard.refreshCard(activeAccount, event)
-                        refreshed.viewerSelected ?: nextSelectedFallback(state.selected)
+                        requireNotNull(refreshed.viewerSelected)
                     },
                 )
             if (!accepted) {
                 val current = mutableCards[key]?.value ?: state
                 update(key, current.copy(actionError = GithubTxt.current.Common.MutationUncertain))
             }
-        }
     }
 
-    private fun nextSelectedFallback(value: Boolean?): Boolean = value ?: false
 
     private fun ensureSlotObserver(activeAccount: String, key: String, event: FeedEventDto) {
         val mutationKey = mutationKeyFor(key) ?: return
@@ -361,11 +335,16 @@ internal class FeedViewModel(
         if (cardObservers[key]?.isActive == true) return
         cardObservers[key] =
             viewModelScope.launch {
+                launch {
+                    val stored = if (key.startsWith("user:")) followingResource(activeAccount, mutationKey.target)
+                        else repositoryParts(key).let { (owner, name) -> starredResource(activeAccount, owner, name) }
+                    stored.restore()?.let { coord.seedFromCache(mutationKey, it) }
+                }
                 coord.observe(mutationKey).collect { write ->
                     if (account != activeAccount) return@collect
                     val current =
                         mutableCards[key]?.value ?: cachedCard(activeAccount, event) ?: return@collect
-                    val projected = applyWriteState(activeAccount, key, current, write.confirmed, write.desired, write.phase, write.message)
+                    val projected = applyWriteState(activeAccount, key, current, write.visible, write.phase, write.message)
                     update(key, projected)
                 }
             }
@@ -383,8 +362,7 @@ internal class FeedViewModel(
             activeAccount,
             key,
             base,
-            write.confirmed,
-            write.desired,
+            write.visible,
             write.phase,
             write.message,
         )
@@ -394,12 +372,11 @@ internal class FeedViewModel(
         activeAccount: String,
         key: String,
         current: FeedCardState,
-        confirmed: Boolean?,
-        desired: Boolean?,
+        visible: Boolean?,
         phase: WritePhase,
         message: String?,
     ): FeedCardState {
-        val nextSelected = desired ?: confirmed ?: current.selected
+        val nextSelected = visible ?: current.selected
         val oldSelected = current.selected
         val isRepo = key.startsWith("repo:")
         val currentRepo = current.repository
@@ -411,8 +388,7 @@ internal class FeedViewModel(
                         ?: repositoryParts(key).let { (owner, name) ->
                             repositoryResource(activeAccount, owner, name).cached?.stargazersCount
                         }
-                        ?: 0
-                currentRepo.copy(stargazersCount = (baseCount + delta).coerceAtLeast(0))
+                if (baseCount != null) currentRepo.copy(stargazersCount = (baseCount + delta).coerceAtLeast(0)) else currentRepo
             } else currentRepo
         val actionError =
             when (phase) {
@@ -424,6 +400,7 @@ internal class FeedViewModel(
         return current.copy(
             repository = nextRepo,
             selected = nextSelected,
+            phase = phase,
             actionError = actionError,
         )
     }

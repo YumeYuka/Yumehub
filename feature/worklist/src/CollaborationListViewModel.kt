@@ -6,6 +6,7 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,33 +16,27 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import moe.yumeyuka.yumehub.data.api.dto.WorkCreationDraft
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.CollaborationListFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationScopeFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationStateFilter
 import moe.yumeyuka.yumehub.data.api.dto.AssigneeOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationFilterOptions
-import moe.yumeyuka.yumehub.data.cache.CacheTag
-import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
+import moe.yumeyuka.yumehub.data.cache.workListCacheTag
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.WorkListRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 
 internal data class WorkCreationState(
-    val title: String = "",
-    val body: String = "",
-    val base: String = "",
-    val head: String = "",
-    val issueTypeId: String? = null,
-    val milestoneId: String? = null,
-    val labelIds: List<String> = emptyList(),
-    val assignees: List<AssigneeOptionDto> = emptyList(),
-    val issueTemplate: String? = null,
+    val draft: WorkCreationDraft = WorkCreationDraft(),
+    val formRevision: Long = 0L,
     val draftRestored: Boolean = false,
     val visible: Boolean = false,
     val submitting: Boolean = false,
@@ -49,7 +44,6 @@ internal data class WorkCreationState(
     val uncertain: Boolean = false,
     val uncertainOperationId: String? = null,
     val errorMessage: String? = null,
-    val createdNumber: Int? = null,
 )
 
 internal data class BranchPickerState(
@@ -82,7 +76,7 @@ internal class CollaborationListViewModel(
     private val repo: String,
     private val kind: CollaborationKind,
     private val login: String,
-    private val draftStore: CommentDraftStore? = null,
+    private val draftStore: CommentDraftStore,
 ) : ViewModel() {
     val scopes =
         if (kind == CollaborationKind.Issue) {
@@ -132,9 +126,21 @@ internal class CollaborationListViewModel(
     private val mutableCreationState = MutableStateFlow(WorkCreationState())
     internal val creationState = mutableCreationState.asStateFlow()
     private var creationObserverStarted = false
+    val created = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    private var submittingHere = false
+    private var navigateOnSuccess = false
+    private var initialized = false
+
+    fun initializeCreation(visible: Boolean) {
+        if (initialized) return
+        initialized = true
+        setCreationVisible(visible)
+    }
 
     fun itemsFor(filter: CollaborationListFilter) =
         source.repositoryItems(login, owner, repo, kind, filter)
+
+    fun card(item: moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto) = source.card(login, item)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val revalidation: StateFlow<RevalidationState> =
@@ -149,91 +155,45 @@ internal class CollaborationListViewModel(
     }
 
     fun setCreationVisible(visible: Boolean) {
+        if (!visible) navigateOnSuccess = false
         mutableCreationState.update { it.copy(visible = visible) }
+        if (visible) loadFilterOptions()
         if (visible && !mutableCreationState.value.draftRestored) {
             viewModelScope.launch {
-                val restoredBody = draftStore?.loadOrNull(login, "$createDraftKey/body").orEmpty()
-                val restoredTitle = draftStore?.loadOrNull(login, "$createDraftKey/title").orEmpty()
-                mutableCreationState.update { current ->
-                    if (current.draftRestored) current
-                    else
-                        current.copy(
-                            title = current.title.ifBlank { restoredTitle },
-                            body = current.body.ifBlank { restoredBody },
-                            draftRestored = true,
-                        )
+                try {
+                    val encoded = draftStore.loadOrNull(login, createDraftKey)
+                    val restored = if (encoded != null) Json.decodeFromString<WorkCreationDraft>(encoded) else WorkCreationDraft(
+                        title = draftStore.load(login, "$createDraftKey/title"), body = draftStore.load(login, "$createDraftKey/body"),
+                    )
+                    mutableCreationState.update { if (it.draftRestored) it else it.copy(draft = restored, draftRestored = true) }
+                } catch (error: kotlinx.serialization.SerializationException) {
+                    mutableCreationState.update { it.copy(failed = true) }
                 }
             }
         }
         ensureCreationObserver()
     }
 
-    fun updateCreationDraft(
-        title: String? = null,
-        body: String? = null,
-        base: String? = null,
-        head: String? = null,
-        issueTypeId: String? = mutableCreationState.value.issueTypeId,
-        milestoneId: String? = mutableCreationState.value.milestoneId,
-        labelIds: List<String>? = null,
-        assignees: List<AssigneeOptionDto>? = null,
-        issueTemplate: String? = mutableCreationState.value.issueTemplate,
-    ) {
-        mutableCreationState.update {
-            it.copy(
-                title = title ?: it.title,
-                body = body ?: it.body,
-                base = base ?: it.base,
-                head = head ?: it.head,
-                issueTypeId = issueTypeId,
-                milestoneId = milestoneId,
-                labelIds = labelIds ?: it.labelIds,
-                assignees = assignees ?: it.assignees,
-                issueTemplate = issueTemplate,
-                failed = false,
-                errorMessage = null,
-            )
-        }
-        if (title != null) draftStore?.save(login, "$createDraftKey/title", title)
-        if (body != null) draftStore?.save(login, "$createDraftKey/body", body)
+    fun updateCreationDraft(draft: WorkCreationDraft) {
+        val current = mutableCreationState.value
+        if (!current.draftRestored || current.submitting || current.uncertain || current.draft == draft) return
+        mutableCreationState.value = current.copy(draft = draft, failed = false, errorMessage = null)
+        draftStore.saveEncoded(login, createDraftKey) { Json.encodeToString(draft) }
     }
 
-    fun submitCreation(
-        title: String,
-        body: String,
-        base: String,
-        head: String,
-        issueTypeId: String?,
-        milestoneId: String?,
-        labelIds: List<String>,
-        assigneeIds: List<String>,
-        issueTemplate: String?,
-    ) {
+    fun submitCreation(draft: WorkCreationDraft) {
         val current = mutableCreationState.value
-        if (current.submitting || current.uncertain) return
-        val trimmedTitle = title.trim()
-        val trimmedBase = base.trim()
-        val trimmedHead = head.trim()
-        mutableCreationState.update {
-            it.copy(
-                title = title,
-                body = body,
-                base = base,
-                head = head,
-                issueTypeId = issueTypeId,
-                milestoneId = milestoneId,
-                labelIds = labelIds,
-                issueTemplate = issueTemplate,
-                submitting = true,
-                failed = false,
-                errorMessage = null,
-                createdNumber = null,
-            )
-        }
+        if (!current.draftRestored || current.submitting || current.uncertain || draft.title.isBlank()) return
+        submittingHere = true
+        navigateOnSuccess = current.visible
+        mutableCreationState.value = current.copy(draft = draft, submitting = true, failed = false, errorMessage = null)
         viewModelScope.launch {
-            val savedTitle = draftStore?.saveConfirmed(login, "$createDraftKey/title", title) ?: true
-            val savedBody = draftStore?.saveConfirmed(login, "$createDraftKey/body", body) ?: true
-            if (!savedTitle || !savedBody) {
+            val encoded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Json.encodeToString(draft) }
+            val store = draftStore
+            val account = login
+            val draftKey = createDraftKey
+            if (!store.saveConfirmed(account, draftKey, encoded)) {
+                submittingHere = false
                 mutableCreationState.update { it.copy(submitting = false, failed = true) }
                 return@launch
             }
@@ -241,48 +201,41 @@ internal class CollaborationListViewModel(
             ensureCreationObserver(coord)
             val tags =
                 setOf(
-                    CacheTag(DataDomain.Work, null),
+                    workListCacheTag(owner, repo),
                     repositoryCacheTag(owner, repo),
                 )
-            val accepted =
+            val work = source
+            val owner = this@CollaborationListViewModel.owner
+            val name = repo
+            val kind = this@CollaborationListViewModel.kind
+            val receipt =
                 coord.submitCommand(
                     key = creationKey,
                     tags = tags,
-                    send = {
-                        create(
-                            trimmedTitle,
-                            body,
-                            trimmedBase,
-                            trimmedHead,
-                            issueTypeId,
-                            milestoneId,
-                            labelIds,
-                            assigneeIds,
-                            issueTemplate,
-                        )
+                    onConfirmed = {
+                        store.removeIfUnchanged(account, draftKey, encoded)
+                        store.removeIfUnchanged(account, "$draftKey/title", draft.title)
+                        store.removeIfUnchanged(account, "$draftKey/body", draft.body)
                     },
+                    send = { work.create(account, owner, name, kind, draft) },
                     readBack = { null },
                 )
-            if (!accepted) {
-                val opId =
-                    coord.pending.value.firstOrNull {
-                        it.kind == creationKey.kind && it.target == creationKey.target
-                    }?.operationId
-                mutableCreationState.update {
-                    it.copy(
-                        submitting = false,
-                        failed = true,
-                        uncertain = true,
-                        uncertainOperationId = opId,
-                    )
-                }
+            val command = receipt?.await() ?: coord.currentCommand(creationKey)
+            submittingHere = false
+            val number = command.result
+            if (receipt != null && command.phase == WritePhase.IDLE && number != null) {
+                val navigate = navigateOnSuccess && mutableCreationState.value.visible
+                mutableCreationState.value = WorkCreationState(draftRestored = true, formRevision = mutableCreationState.value.formRevision + 1,
+                    visible = mutableCreationState.value.visible && !navigate)
+                if (navigate) created.tryEmit(number)
+            } else {
+                mutableCreationState.update { it.copy(submitting = command.phase == WritePhase.PENDING,
+                    uncertain = command.phase == WritePhase.UNCERTAIN, uncertainOperationId = command.submissionId,
+                    failed = command.phase != WritePhase.PENDING, errorMessage = command.message) }
             }
         }
     }
 
-    fun consumeCreatedNumber() {
-        mutableCreationState.update { it.copy(createdNumber = null) }
-    }
 
     fun acknowledgeCreationUncertain() {
         val opId = mutableCreationState.value.uncertainOperationId
@@ -294,9 +247,6 @@ internal class CollaborationListViewModel(
                         .firstOrNull { it.kind == creationKey.kind && it.target == creationKey.target }
                         ?.operationId
             if (id != null) coord.acknowledge(id)
-            mutableCreationState.update {
-                it.copy(uncertain = false, uncertainOperationId = null, failed = false, errorMessage = null)
-            }
         }
     }
 
@@ -306,83 +256,16 @@ internal class CollaborationListViewModel(
         viewModelScope.launch {
             val coord = existing ?: source.mutations(login)
             coord.observeCommand(creationKey).collect { cmd ->
-                when (cmd.phase) {
-                    WritePhase.PENDING ->
-                        mutableCreationState.update { it.copy(submitting = true, failed = false) }
-                    WritePhase.IDLE -> {
-                        val number = cmd.result
-                        if (number != null) {
-                            draftStore?.remove(login, "$createDraftKey/title")
-                            draftStore?.remove(login, "$createDraftKey/body")
-                            val showCreated = mutableCreationState.value.visible
-                            mutableCreationState.value =
-                                WorkCreationState(
-                                    draftRestored = true,
-                                    visible = false,
-                                    createdNumber = number.takeIf { showCreated },
-                                )
-                        } else {
-                            mutableCreationState.update {
-                                it.copy(submitting = false, uncertain = false, uncertainOperationId = null)
-                            }
-                        }
-                    }
-                    WritePhase.REJECTED ->
-                        mutableCreationState.update {
-                            it.copy(
-                                submitting = false,
-                                failed = true,
-                                uncertain = false,
-                                errorMessage = cmd.message,
-                            )
-                        }
-                    WritePhase.UNCERTAIN -> {
-                        val opId =
-                            coord.pending.value.firstOrNull {
-                                it.kind == creationKey.kind && it.target == creationKey.target
-                            }?.operationId
-                        mutableCreationState.update {
-                            it.copy(
-                                submitting = false,
-                                failed = true,
-                                uncertain = true,
-                                uncertainOperationId = opId,
-                                errorMessage = cmd.message,
-                            )
-                        }
-                    }
+                if (!submittingHere) mutableCreationState.update { state ->
+                    state.copy(submitting = cmd.phase == WritePhase.PENDING, uncertain = cmd.phase == WritePhase.UNCERTAIN,
+                        uncertainOperationId = cmd.submissionId.takeIf { cmd.phase == WritePhase.UNCERTAIN },
+                        failed = state.failed && !state.uncertain,
+                        errorMessage = if (state.uncertain) null else state.errorMessage)
                 }
             }
         }
     }
 
-    suspend fun create(
-        title: String,
-        body: String,
-        base: String,
-        head: String,
-        issueTypeId: String?,
-        milestoneId: String?,
-        labelIds: List<String>,
-        assigneeIds: List<String>,
-        issueTemplate: String?,
-    ): Int =
-        if (kind == CollaborationKind.Issue) {
-            source.createIssue(
-                login,
-                owner,
-                repo,
-                title,
-                body,
-                issueTypeId,
-                milestoneId,
-                labelIds,
-                assigneeIds,
-                issueTemplate,
-            )
-        } else {
-            source.createPullRequest(login, owner, repo, base, head, title, body)
-        }
 
     fun searchBranches(query: String) {
         val normalized = query.trim()
@@ -424,10 +307,6 @@ internal class CollaborationListViewModel(
         else loadAssignees(state.query)
     }
 
-    init {
-        // 预取筛选选项，避免菜单展开后条目数量变化导致级联菜单状态不稳定。
-        loadFilterOptions()
-    }
 
     fun retryFilterOptions() {
         optionsRequested = false

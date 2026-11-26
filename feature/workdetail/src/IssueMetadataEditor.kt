@@ -112,7 +112,6 @@ internal class IssueMetadataEditor(
     fun dismiss() {
         loadJob?.cancel()
         val current = state.value
-        if (current.saving && current.closeChoices) return
         mutableState.value = IssueMetadataState(saving = current.saving)
     }
 
@@ -137,7 +136,7 @@ internal class IssueMetadataEditor(
                             send = { desired ->
                                 try {
                                     detail.saveIssueType(baseline, desired.value)
-                                    desired
+                                    NullableValue(detail.issueTypes().selected.singleOrNull()?.id)
                                 } catch (error: WorkDetailReviewChangedException) {
                                     failure = error
                                     throw error
@@ -165,7 +164,7 @@ internal class IssueMetadataEditor(
                             send = { _ ->
                                 try {
                                     detail.saveIssueAssignees(baseline, selected)
-                                    desiredIds
+                                    detail.issueAssignees().selected.map { it.id }
                                 } catch (error: WorkDetailReviewChangedException) {
                                     failure = error
                                     throw error
@@ -189,6 +188,7 @@ internal class IssueMetadataEditor(
             val coord = detail.mutations()
             var failure: Exception? = null
             val key = fieldKey(field.id)
+            var observed: IssueField? = null
             val result =
                 coord.submitAndAwait(
                     key = key,
@@ -198,15 +198,17 @@ internal class IssueMetadataEditor(
                     send = { desired ->
                         try {
                             detail.saveIssueField(baseline.issueId, field, value)
-                            desired
+                            val updated = detail.issueFields().fields.first { it.id == field.id }
+                            observed = updated
+                            NullableValue(updated.value?.toMutationToken())
                         } catch (error: WorkDetailReviewChangedException) {
                             failure = error
                             throw error
                         }
                     },
                     readBack = {
-                        val refreshed = detail.issueFields().fields.firstOrNull { it.id == field.id }
-                        NullableValue(refreshed?.value?.toMutationToken())
+                        val refreshed = detail.issueFields().fields.first { it.id == field.id }
+                        NullableValue(refreshed.value?.toMutationToken())
                     },
                 )
             if (result.phase == WritePhase.IDLE) {
@@ -214,7 +216,7 @@ internal class IssueMetadataEditor(
                     val active = current.fields ?: return@update current
                     if (active.issueId != baseline.issueId) current
                     else current.copy(fields = active.copy(fields = active.fields.map {
-                        if (it.id == field.id) it.copy(value = value) else it
+                        if (it.id == field.id) observed ?: it else it
                     }))
                 }
             } else {
@@ -226,7 +228,9 @@ internal class IssueMetadataEditor(
     fun acknowledgeUncertain() {
         val opId = state.value.uncertainOperationId ?: return
         scope.launch {
-            detail.mutations().acknowledge(opId)
+            val coord = detail.mutations()
+            coord.acknowledge(opId).join()
+            if (coord.pending.value.any { it.operationId == opId } || state.value.uncertainOperationId != opId) return@launch
             mutableState.update {
                 it.copy(uncertain = false, uncertainOperationId = null, saveFailed = false)
             }

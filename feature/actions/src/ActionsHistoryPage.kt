@@ -51,9 +51,8 @@ internal class ActionsHistoryModel(
         private set
     private var uncertainOperationId: String? = null
     private var uncertainTarget: String? = null
-    private val observedDispatchKeys = mutableSetOf<String>()
 
-    private val dispatchResults = Channel<Boolean>(Channel.CONFLATED)
+    private val dispatchResults = Channel<WritePhase>(Channel.CONFLATED)
     val results = dispatchResults.receiveAsFlow()
 
     fun dispatch(workflowId: String, branch: String, inputs: Map<String, String>): Boolean {
@@ -63,42 +62,7 @@ internal class ActionsHistoryModel(
         val key = MutationKey(MutationKind.WORKFLOW_DISPATCH, target, CommandAccepted.serializer())
         viewModelScope.launch {
             val coord = workflows.mutations(account)
-            if (observedDispatchKeys.add(target)) {
-                launch {
-                    coord.observeCommand(key).collect { cmd ->
-                        when (cmd.phase) {
-                            WritePhase.PENDING -> submitting = true
-                            WritePhase.IDLE -> {
-                                submitting = false
-                                if (cmd.result != null) {
-                                    uncertain = false
-                                    uncertainOperationId = null
-                                    uncertainTarget = null
-                                    dispatchResults.trySend(true)
-                                }
-                            }
-                            WritePhase.REJECTED -> {
-                                submitting = false
-                                uncertain = false
-                                dispatchResults.trySend(false)
-                            }
-                            WritePhase.UNCERTAIN -> {
-                                submitting = false
-                                uncertain = true
-                                uncertainTarget = target
-                                uncertainOperationId =
-                                    coord.pending.value
-                                        .firstOrNull {
-                                            it.kind == key.kind && it.target == key.target
-                                        }
-                                        ?.operationId
-                                dispatchResults.trySend(false)
-                            }
-                        }
-                    }
-                }
-            }
-            val accepted =
+            val receipt =
                 coord.submitCommand(
                     key = key,
                     tags = setOf(CacheTag(DataDomain.Work, null)),
@@ -108,16 +72,12 @@ internal class ActionsHistoryModel(
                     },
                     readBack = { null },
                 )
-            if (!accepted) {
-                submitting = false
-                uncertain = true
-                uncertainTarget = target
-                uncertainOperationId =
-                    coord.pending.value
-                        .firstOrNull { it.kind == key.kind && it.target == key.target }
-                        ?.operationId
-                dispatchResults.trySend(false)
-            }
+            val cmd = receipt?.await() ?: coord.currentCommand(key)
+            submitting = false
+            uncertain = cmd.phase == WritePhase.UNCERTAIN
+            uncertainTarget = target.takeIf { uncertain }
+            uncertainOperationId = cmd.submissionId.takeIf { uncertain }
+            dispatchResults.trySend(if (receipt == null && !uncertain) WritePhase.REJECTED else cmd.phase)
         }
         return true
     }
@@ -135,7 +95,9 @@ internal class ActionsHistoryModel(
                                 (target == null || it.target == target)
                         }
                         ?.operationId
-            if (id != null) coord.acknowledge(id)
+            if (id == null) return@launch
+            coord.acknowledge(id).join()
+            if (coord.pending.value.any { it.operationId == id }) return@launch
             uncertain = false
             uncertainOperationId = null
             uncertainTarget = null
@@ -219,11 +181,15 @@ internal fun ActionsHistoryPage(
     var acknowledgeDispatchVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(vm, context, activity) {
-        vm.results.collect { confirmed ->
-            refreshAfterSubmit++
+        vm.results.collect { phase ->
+            if (phase != WritePhase.REJECTED) refreshAfterSubmit++
             Toast.makeText(
                     context,
-                    if (confirmed) activity.RunSubmitted else activity.RunUncertain,
+                    when (phase) {
+                        WritePhase.IDLE -> activity.RunSubmitted
+                        WritePhase.UNCERTAIN -> activity.RunUncertain
+                        else -> strings.Common.MutationNotSubmitted
+                    },
                     Toast.LENGTH_LONG,
                 )
                 .show()

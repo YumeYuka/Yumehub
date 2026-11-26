@@ -64,17 +64,18 @@ internal class WorkDetailGraphQl(
         property: WorkProperty,
         original: List<WorkPropertyOption>,
         selected: List<WorkPropertyOption>,
+        onStep: ((List<String>) -> Unit)? = null,
     ) {
-        properties.save(property, original, selected)
+        properties.save(property, original, selected, onStep = onStep)
     }
 
-    suspend fun editPullRequest(id: String, field: String, value: String) {
+    suspend fun editPullRequest(id: String, field: String, value: String): String {
         require(field == "title" || field == "baseRefName")
-        session
+        return session
             .execute(
                 """
                 mutation EditPullRequest(${'$'}input: UpdatePullRequestInput!) {
-                    updatePullRequest(input: ${'$'}input) { pullRequest { id } }
+                    updatePullRequest(input: ${'$'}input) { pullRequest { id $field } }
                 }
                 """
                     .trimIndent(),
@@ -91,19 +92,19 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("updatePullRequest")
             .graphObject("pullRequest")
-            .graphRequiredText("id")
+            .requireNode(id).graphRequiredText(field)
     }
 
-    suspend fun editBody(id: String, body: String) {
+    suspend fun editBody(id: String, body: String): String {
         val operation = if (kind == CollaborationKind.Issue) "updateIssue" else "updatePullRequest"
         val inputField = if (kind == CollaborationKind.Issue) "id" else "pullRequestId"
         val resultField = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
-        session
+        return session
             .execute(
                 """
             mutation EditWorkBody(${'$'}id: ID!, ${'$'}body: String) {
                 $operation(input: {$inputField: ${'$'}id, body: ${'$'}body}) {
-                    $resultField { id }
+                    $resultField { id body }
                 }
             }
         """
@@ -116,19 +117,19 @@ internal class WorkDetailGraphQl(
             )
             .graphObject(operation)
             .graphObject(resultField)
-            .graphRequiredText("id")
+            .requireNode(id).graphText("body") ?: throw GithubPageException()
     }
 
-    suspend fun editTitle(id: String, title: String) {
+    suspend fun editTitle(id: String, title: String): String {
         val operation = if (kind == CollaborationKind.Issue) "updateIssue" else "updatePullRequest"
         val inputField = if (kind == CollaborationKind.Issue) "id" else "pullRequestId"
         val resultField = if (kind == CollaborationKind.Issue) "issue" else "pullRequest"
-        session
+        return session
             .execute(
                 """
             mutation EditWorkTitle(${'$'}id: ID!, ${'$'}title: String!) {
                 $operation(input: {$inputField: ${'$'}id, title: ${'$'}title}) {
-                    $resultField { id }
+                    $resultField { id title }
                 }
             }
         """
@@ -141,11 +142,11 @@ internal class WorkDetailGraphQl(
             )
             .graphObject(operation)
             .graphObject(resultField)
-            .graphRequiredText("id")
+            .requireNode(id).graphRequiredText("title")
     }
 
-    suspend fun closeIssue(id: String) {
-        session
+    suspend fun closeIssue(id: String): String {
+        return session
             .execute(
                 """
                 mutation CloseWorkIssue(${'$'}id: ID!) {
@@ -158,18 +159,18 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("closeIssue")
             .graphObject("issue")
-            .graphRequiredText("id")
+            .requireNode(id).graphRequiredText("state").lowercase(Locale.ROOT)
     }
 
-    suspend fun setLocked(id: String, locked: Boolean) {
+    suspend fun setLocked(id: String, locked: Boolean): Boolean {
         val operation = if (locked) "lockLockable" else "unlockLockable"
         val inputType = if (locked) "LockLockableInput" else "UnlockLockableInput"
         val record = if (locked) "lockedRecord" else "unlockedRecord"
-        session
+        return session
             .execute(
                 """
             mutation LockWork(${'$'}input: $inputType!) {
-                $operation(input: ${'$'}input) { $record { locked } }
+                $operation(input: ${'$'}input) { $record { ... on Node { id } locked } }
             }
         """
                     .trimIndent(),
@@ -177,11 +178,11 @@ internal class WorkDetailGraphQl(
                 write = true,
             )
             .graphObject(operation)
-            .graphObject(record)
+            .graphObject(record).requireNode(id).flag("locked")
     }
 
-    suspend fun closePullRequest(id: String) {
-        session
+    suspend fun closePullRequest(id: String): String {
+        return session
             .execute(
                 """
                 mutation CloseWorkPullRequest(${'$'}id: ID!) {
@@ -194,7 +195,7 @@ internal class WorkDetailGraphQl(
             )
             .graphObject("closePullRequest")
             .graphObject("pullRequest")
-            .graphRequiredText("id")
+            .requireNode(id).graphRequiredText("state").lowercase(Locale.ROOT)
     }
 
     private fun variables(extra: JsonObjectBuilder.() -> Unit = {}) = buildJsonObject {
@@ -259,7 +260,7 @@ internal class WorkDetailGraphQl(
             state =
                 (node.graphText("issueState") ?: node.graphRequiredText("pullRequestState"))
                     .lowercase(Locale.ROOT),
-            body = node.graphText("body"),
+            body = node.graphText("body") ?: throw GithubPageException(),
             bodyHtml = bodyHtml,
             taskProgress = bodyHtml?.workTaskProgress(),
             nodeId = node.graphRequiredText("id"),
@@ -738,6 +739,11 @@ internal fun pullRequestReviewComment(
 private fun JsonObject.databaseId(): Long =
     (get("databaseId") as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }
         ?: throw GithubPageException()
+
+private fun JsonObject.requireNode(id: String): JsonObject {
+    if (graphRequiredText("id") != id) throw GithubPageException()
+    return this
+}
 
 private fun JsonObject.requiredInt(key: String): Int =
     (get(key) as? JsonPrimitive)?.intOrNull ?: throw GithubPageException()

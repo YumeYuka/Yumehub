@@ -77,10 +77,9 @@ private class FeedPagingSource(
                     }
                     initial
                 } else {
-                    loadNetwork(
-                        params.key,
-                        force = params !is LoadParams.Refresh || context.forceRefresh,
-                    )
+                    moe.yumeyuka.yumehub.data.repository.pageRead {
+                        loadNetwork(params.key, force = params !is LoadParams.Refresh || context.forceRefresh)
+                    }
                 }
             cursors[result.page] = result.requestCursor
             cursors[result.page + 1] = result.nextCursor

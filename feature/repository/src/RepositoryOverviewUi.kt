@@ -32,6 +32,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
@@ -83,9 +84,15 @@ internal fun RepositoryHeaderCard(
         onToggleStar,
         onFork,
         onOpenLink,
-        // 星标请求进行中只禁用这颗胶囊，其余入口保持可点。
-        starEnabled = enabled && !state.busy,
+        starEnabled = enabled && state.coordinatorReady && overview != null,
     )
+    val common = LocalGithubStrings.current.Common
+    val status = when (state.starPhase) {
+        WritePhase.PENDING -> common.MutationPending
+        WritePhase.UNCERTAIN -> "${common.MutationUncertain} · ${common.MutationReconcile}"
+        else -> null
+    }
+    if (status != null) Text(status, style = GlasmioTheme.textStyles.footnote, modifier = Modifier.padding(horizontal = 4.dp))
 }
 
 /** 仓库设置里的网站地址转成展示用的主机名，去掉协议与末尾斜杠。 */

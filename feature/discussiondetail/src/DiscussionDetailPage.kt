@@ -93,7 +93,7 @@ fun DiscussionDetailPage(
       } else null
   val comments = state.comments
   val window = comments?.state?.collectAsStateWithLifecycle()?.value
-  val contentReady = state.detail != null && window?.ready == true
+  val contentReady = state.detail != null
   val presentation =
       rememberGithubDetailPresentation(
           key = "discussion-detail",
@@ -115,7 +115,7 @@ fun DiscussionDetailPage(
       bottomContent = {
         GlasmioButton(
             onClick = openComposer,
-            enabled = state.detail != null && host.navigationEnabled,
+            enabled = state.detail != null && state.draftReady && state.commentPhase != WritePhase.PENDING && host.navigationEnabled,
             size = GlasmioButtonSize.Large,
             style = GlassSurfaceStyle.Navigation,
             sampleBackdrop = true,
@@ -129,6 +129,15 @@ fun DiscussionDetailPage(
       },
   ) {
     val detail = state.detail
+    val phases = listOf(state.answerPhase, state.upvotePhase, state.pollPhase, state.commentPhase)
+    if (phases.any { it != WritePhase.IDLE }) item {
+      val uncertain = WritePhase.UNCERTAIN in phases
+      GlasmioListRow(title = when {
+          uncertain -> strings.Common.MutationUncertain
+          WritePhase.PENDING in phases -> strings.Common.MutationPending
+          else -> strings.Common.MutationNotSubmitted
+      }, detail = strings.Common.MutationReconcile.takeIf { uncertain }, onClick = if (uncertain) viewModel::revalidate else null)
+    }
     val loading = detail == null && !state.failed
     if (detail != null || loading) {
       readingItem(key = "discussion-body") {
@@ -140,11 +149,11 @@ fun DiscussionDetailPage(
             val parent = detail.parent
             if (parent != null)
                 DiscussionCommentCard(
-                    comment = parent,
+                    comment = parent.copy(isAnswer = parent.id == (state.answer ?: NullableValue(detail.answerId)).value),
                     pageUrl = detail.url,
                     onOpenReplies = null,
                     enabled = host.navigationEnabled,
-                    answerEnabled = !state.actionRunning,
+                    answerEnabled = state.answerPhase != WritePhase.UNCERTAIN,
                     reactionUpdates = viewModel.reactionUpdates,
                     onReply = openComposer,
                     onSetAnswer = viewModel::setAnswer,
@@ -156,7 +165,7 @@ fun DiscussionDetailPage(
               DiscussionPostCard(
                   detail = detail,
                   enabled = host.navigationEnabled,
-                  upvoteEnabled = !state.actionRunning,
+                  upvoteEnabled = state.upvotePhase != WritePhase.UNCERTAIN,
                   reactionUpdates = viewModel.reactionUpdates,
                   onToggleReaction = { content, reacted ->
                     viewModel.toggleReaction(detail.id, content, reacted)
@@ -195,7 +204,7 @@ fun DiscussionDetailPage(
                 enabled =
                     poll.viewerCanVote &&
                         !poll.viewerHasVoted &&
-                        !state.actionRunning &&
+                        state.pollPhase != WritePhase.PENDING && state.pollPhase != WritePhase.UNCERTAIN &&
                         host.navigationEnabled,
             )
           }
@@ -210,11 +219,11 @@ fun DiscussionDetailPage(
           placeholder = { GithubReadingGroup { ReadingTextPlaceholder() } },
       ) { comment, _ ->
         DiscussionCommentCard(
-            comment = comment,
+            comment = comment.copy(isAnswer = comment.id == (state.answer ?: NullableValue(detail.answerId)).value),
             pageUrl = detail.url,
             onOpenReplies = openReplies,
             enabled = host.navigationEnabled,
-            answerEnabled = !state.actionRunning,
+            answerEnabled = state.answerPhase != WritePhase.UNCERTAIN,
             reactionUpdates = viewModel.reactionUpdates,
             onReply = openComposer.takeIf { route.parentId != null },
             onSetAnswer = { commentId, answer ->
@@ -431,17 +440,20 @@ internal data class DiscussionDetailState(
     val detail: GithubDiscussionDetail? = null,
     val comments: ThreadWindow<GithubDiscussionComment>? = null,
     val failed: Boolean = false,
-    val actionRunning: Boolean = false,
+    val answer: NullableValue<String>? = null,
+    val draftReady: Boolean = false,
     val actionFailed: Boolean = false,
     val upvotePhase: WritePhase = WritePhase.IDLE,
     val answerPhase: WritePhase = WritePhase.IDLE,
     val pollPhase: WritePhase = WritePhase.IDLE,
+    val commentPhase: WritePhase = WritePhase.IDLE,
 )
 
 internal class DiscussionDetailViewModel(
     private val source: DiscussionRepository,
     private val route: DiscussionDetailRoute,
     private val account: String,
+    private val drafts: moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(DiscussionDetailState())
   val state = mutableState.asStateFlow()
@@ -449,9 +461,10 @@ internal class DiscussionDetailViewModel(
   private val mutableReactionFailure = MutableStateFlow<Exception?>(null)
   val reactionFailure = mutableReactionFailure.asStateFlow()
   private var job: Job? = null
-  private var revalidationJob: Job? = null
   private var commentDraft = ""
-  private var coordinator: MutationCoordinator? = null
+  private val coordinator = source.mutations(account)
+  private val resource = source.resource(account, route.owner, route.name, route.number, route.parentId)
+  private val draftKey = "discussion-comment/${route.owner.lowercase()}/${route.name.lowercase()}/${route.number}/${route.parentId.orEmpty()}"
   private var confirmedDetail: GithubDiscussionDetail? = null
   private val reactionObservers = mutableMapOf<String, Job>()
   private var detailObserversStarted = false
@@ -459,15 +472,14 @@ internal class DiscussionDetailViewModel(
 
   init {
     viewModelScope.launch {
-      coordinator =
-          try {
-            source.mutations(account)
-          } catch (error: CancellationException) {
-            throw error
-          } catch (_: Exception) {
-            null
-          }
-      confirmedDetail?.let { startDetailObservers(it) }
+      commentDraft = drafts.load(account, draftKey)
+      mutableState.update { it.copy(draftReady = true) }
+    }
+    viewModelScope.launch {
+      resource.state.collect { cached ->
+        cached.data?.let(::present)
+        if (cached.error != null) mutableState.update { it.copy(failed = true) }
+      }
     }
     load()
   }
@@ -500,12 +512,23 @@ internal class DiscussionDetailViewModel(
       )
 
   private fun startDetailObservers(detail: GithubDiscussionDetail) {
-    val coord = coordinator ?: return
+    val coord = coordinator
     if (detailObserversStarted) return
     detailObserversStarted = true
     viewModelScope.launch {
+      coord.observeCommand(commentKey(detail.id)).collect { cmd -> mutableState.update { it.copy(commentPhase = cmd.phase) } }
+    }
+    detail.poll?.let { poll ->
+      viewModelScope.launch {
+        coord.observeCommand(pollKey(poll.id)).collect { cmd ->
+          mutableState.update { state -> state.copy(pollPhase = cmd.phase,
+              detail = cmd.result?.takeIf { cmd.phase == WritePhase.IDLE }?.let { state.detail?.copy(poll = it) } ?: state.detail) }
+        }
+      }
+    }
+    viewModelScope.launch {
       coord.observe(upvoteKey(detail.id)).collect { write ->
-        val next = write.desired ?: write.confirmed
+        val next = write.visible
         mutableState.update { current ->
           current.copy(
               detail =
@@ -526,118 +549,62 @@ internal class DiscussionDetailViewModel(
         mutableState.update { current ->
           current.copy(
               answerPhase = write.phase,
-              actionRunning = write.phase == WritePhase.PENDING,
+              answer = write.visible,
               actionFailed =
                   current.actionFailed ||
                       write.phase == WritePhase.REJECTED ||
                       write.phase == WritePhase.UNCERTAIN,
           )
         }
-        if (write.phase == WritePhase.IDLE && write.confirmed != null) {
-          load()
-        }
       }
     }
   }
 
-  fun load() {
-    job?.cancel()
-    revalidationJob?.cancel()
-    job = viewModelScope.launch {
-      mutableState.update { it.copy(failed = false) }
-      try {
-        val coord = coordinator
-        val detail = source.load(account, route.owner, route.name, route.number, route.parentId)
-        confirmedDetail = detail
-        if (coord != null) {
-          val upKey = upvoteKey(detail.id)
-          val stamp = coord.beginRead(upKey)
-          coord.publishConfirmed(
-              upKey,
-              stamp,
-              DiscussionUpvoteState(detail.upvoted, detail.upvotes),
-          )
-          startDetailObservers(detail)
-        }
-        val previous = state.value
-        val comments =
-            previous.comments?.takeIf { previous.detail?.id == detail.id }
-                ?: source.comments(
-                    viewModelScope,
-                    account,
-                    route.parentId ?: detail.id,
-                    route.parentId != null,
-                )
-        comments.load(ThreadDirection.Latest)
-        val upvoteSlot = coord?.current(upvoteKey(detail.id))?.let { it.desired ?: it.confirmed }
-        val projectedDetail =
-            if (upvoteSlot != null) {
-              detail.copy(upvoted = upvoteSlot.upvoted, upvotes = upvoteSlot.upvotes)
-            } else detail
-        mutableState.update { it.copy(detail = projectedDetail, comments = comments) }
-      } catch (error: CancellationException) {
-        throw error
-      } catch (_: Exception) {
-        mutableState.update { it.copy(failed = true) }
-      }
-    }
+  private fun present(detail: GithubDiscussionDetail) {
+    confirmedDetail = detail
+    startDetailObservers(detail)
+    val up = coordinator.current(upvoteKey(detail.id)).visible
+    val previous = state.value
+    val comments = previous.comments?.takeIf { previous.detail?.id == detail.id } ?: source.comments(
+        viewModelScope, account, route.parentId ?: detail.id, route.parentId != null,
+    ).also { it.load(ThreadDirection.Latest) }
+    mutableState.update { it.copy(detail = if (up == null) detail else detail.copy(upvoted = up.upvoted, upvotes = up.upvotes),
+        comments = comments, failed = false) }
   }
 
-  fun revalidate() {
-    val previous = state.value.detail ?: return
+  fun load() = request(force = state.value.failed)
+  fun revalidate() = request(force = true)
+
+  private fun request(force: Boolean) {
     if (job?.isActive == true) return
-    revalidationJob?.cancel()
-    revalidationJob = viewModelScope.launch {
-      mutableState.update { it.copy(failed = false) }
+    val id = confirmedDetail?.id
+    val up = id?.let(::upvoteKey)
+    val answer = id?.let(::answerKey)
+    val upStamp = up?.let(coordinator::beginRead)
+    val answerStamp = answer?.let(coordinator::beginRead)
+    job = viewModelScope.launch {
       try {
-        val coord = coordinator
-        val upKey = upvoteKey(previous.id)
-        val stamp = coord?.beginRead(upKey)
-        val detail = source.load(account, route.owner, route.name, route.number, route.parentId)
-        confirmedDetail = detail
-        if (coord != null && stamp != null) {
-          coord.publishConfirmed(upKey, stamp, DiscussionUpvoteState(detail.upvoted, detail.upvotes))
+        val detail = source.load(account, route.owner, route.name, route.number, route.parentId, force)
+        if (detail.id == id && force) {
+          if (up != null && upStamp != null) coordinator.publishConfirmed(up, upStamp, DiscussionUpvoteState(detail.upvoted, detail.upvotes))
+          if (answer != null && answerStamp != null) coordinator.publishConfirmed(answer, answerStamp, NullableValue(detail.answerId))
         }
-        val upvoteSlot = coord?.current(upKey)?.let { it.desired ?: it.confirmed }
-        val projectedDetail =
-            if (upvoteSlot != null) {
-              detail.copy(upvoted = upvoteSlot.upvoted, upvotes = upvoteSlot.upvotes)
-            } else detail
-        mutableState.update { current ->
-          if (current.detail?.id == previous.id && detail.id == previous.id) {
-            current.copy(detail = projectedDetail)
-          } else {
-            current
-          }
-        }
-      } catch (error: CancellationException) {
-        throw error
-      } catch (_: Exception) {
-        mutableState.update { it.copy(failed = true) }
-      }
+      } catch (error: CancellationException) { throw error }
+      catch (_: Exception) { mutableState.update { it.copy(failed = true) } }
     }
   }
 
   fun toggleUpvote() {
     val detail = state.value.detail ?: return
     if (!detail.canUpvote && !detail.upvoted) return
-    val nextUpvoted = !detail.upvoted
-    val nextCount = (detail.upvotes + if (nextUpvoted) 1 else -1).coerceAtLeast(0)
+    val slot = coordinator.current(upvoteKey(detail.id))
+    if (slot.phase == WritePhase.UNCERTAIN) { revalidate(); return }
+    val previous = slot.visible ?: DiscussionUpvoteState(detail.upvoted, detail.upvotes)
+    val nextUpvoted = !previous.upvoted
+    val nextCount = (previous.upvotes + if (nextUpvoted) 1 else -1).coerceAtLeast(0)
     mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      val coord =
-          coordinator
-              ?: try {
-                source.mutations(account).also {
-                  coordinator = it
-                  startDetailObservers(detail)
-                }
-              } catch (error: CancellationException) {
-                throw error
-              } catch (_: Exception) {
-                mutableState.update { it.copy(actionFailed = true) }
-                return@launch
-              }
+      val coord = coordinator
       val base = confirmedDetail ?: detail
       val accepted =
           coord.submit(
@@ -650,7 +617,7 @@ internal class DiscussionDetailViewModel(
                 DiscussionUpvoteState(upvoted, count)
               },
               readBack = {
-                val reloaded = source.load(account, route.owner, route.name, route.number, route.parentId)
+                val reloaded = source.load(account, route.owner, route.name, route.number, route.parentId, force = true)
                 DiscussionUpvoteState(reloaded.upvoted, reloaded.upvotes)
               },
           )
@@ -664,22 +631,9 @@ internal class DiscussionDetailViewModel(
     val detail = state.value.detail ?: return
     mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      val coord =
-          coordinator
-              ?: try {
-                source.mutations(account).also {
-                  coordinator = it
-                  startDetailObservers(detail)
-                }
-              } catch (error: CancellationException) {
-                throw error
-              } catch (_: Exception) {
-                mutableState.update { it.copy(actionFailed = true) }
-                return@launch
-              }
+      val coord = coordinator
       val desiredId = if (answer) commentId else null
-      val currentAnswerId =
-          state.value.comments?.state?.value?.items?.firstOrNull { it.isAnswer }?.id
+      val currentAnswerId = confirmedDetail?.answerId
       val accepted =
           coord.submit(
               answerKey(detail.id),
@@ -687,19 +641,10 @@ internal class DiscussionDetailViewModel(
               desired = NullableValue(desiredId),
               tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
               send = { desired ->
-                val answerId = desired.value
-                if (answerId != null) {
-                  source.setAnswer(account, answerId, true)
-                } else {
-                  source.setAnswer(account, commentId, false)
-                }
-                desired
+                NullableValue(source.setAnswer(account, detail.id, desired.value ?: commentId, desired.value != null))
               },
               readBack = {
-                source.load(account, route.owner, route.name, route.number, route.parentId)
-                NullableValue(
-                    state.value.comments?.state?.value?.items?.firstOrNull { it.isAnswer }?.id,
-                )
+                NullableValue(source.load(account, route.owner, route.name, route.number, route.parentId, force = true).answerId)
               },
           )
       if (!accepted) {
@@ -711,7 +656,7 @@ internal class DiscussionDetailViewModel(
   fun votePoll(optionId: String) {
     val poll = state.value.detail?.poll ?: return
     if (
-        state.value.pollPhase == WritePhase.PENDING ||
+        state.value.pollPhase == WritePhase.PENDING || state.value.pollPhase == WritePhase.UNCERTAIN ||
             !poll.viewerCanVote ||
             poll.viewerHasVoted ||
             poll.options.none { it.id == optionId }
@@ -719,32 +664,8 @@ internal class DiscussionDetailViewModel(
         return
     mutableState.update { it.copy(actionFailed = false) }
     viewModelScope.launch {
-      val coord =
-          coordinator
-              ?: try {
-                source.mutations(account).also { coordinator = it }
-              } catch (error: CancellationException) {
-                throw error
-              } catch (_: Exception) {
-                mutableState.update { it.copy(actionFailed = true) }
-                return@launch
-              }
+      val coord = coordinator
       val key = pollKey(poll.id)
-      launch {
-        coord.observeCommand(key).collect { cmd ->
-          mutableState.update { current ->
-            current.copy(
-                detail = cmd.result?.let { voted -> current.detail?.copy(poll = voted) }
-                    ?: current.detail,
-                pollPhase = cmd.phase,
-                actionFailed =
-                    current.actionFailed ||
-                        cmd.phase == WritePhase.REJECTED ||
-                        cmd.phase == WritePhase.UNCERTAIN,
-            )
-          }
-        }
-      }
       val accepted =
           coord.submitCommand(
               key,
@@ -752,11 +673,11 @@ internal class DiscussionDetailViewModel(
               send = { source.votePoll(account, poll.id, optionId) },
               readBack = {
                 val reloaded =
-                    source.load(account, route.owner, route.name, route.number, route.parentId)
+                    source.load(account, route.owner, route.name, route.number, route.parentId, force = true)
                 reloaded.poll?.takeIf { it.viewerHasVoted }
               },
           )
-      if (!accepted) {
+      if (accepted == null) {
         mutableState.update { it.copy(actionFailed = true) }
       }
     }
@@ -769,7 +690,7 @@ internal class DiscussionDetailViewModel(
   ) {
     val sourceReactions = state.value.reactableGroups(subjectId) ?: return
     val coord = coordinator
-    val slotReactions = coord?.current(reactionKey(subjectId))?.let { it.desired ?: it.confirmed }
+    val slotReactions = coord.current(reactionKey(subjectId)).visible
     val previous = reactionUpdates.current(subjectId, sourceReactions)
     val reactions = slotReactions ?: previous?.reactions ?: sourceReactions
     if (reactions.any { it.content == content && it.viewerReacted } != reacted) return
@@ -778,24 +699,13 @@ internal class DiscussionDetailViewModel(
     reactionUpdates.set(subjectId, pending)
     mutableReactionFailure.value = null
     viewModelScope.launch {
-      val activeCoord =
-          coord
-              ?: try {
-                source.mutations(account).also { coordinator = it }
-              } catch (error: CancellationException) {
-                reactionUpdates.set(subjectId, previous)
-                throw error
-              } catch (error: Exception) {
-                reactionUpdates.set(subjectId, previous)
-                mutableReactionFailure.value = error
-                return@launch
-              }
+      val activeCoord = coord
       if (reactionObservers[subjectId]?.isActive != true) {
         reactionObservers[subjectId] =
             launch {
               activeCoord.observe(reactionKey(subjectId)).collect { write ->
                 val baseline = state.value.reactableGroups(subjectId) ?: sourceReactions
-                val value = write.desired ?: write.confirmed
+                val value = write.visible
                 if (value != null) {
                   reactionUpdates.set(
                       subjectId,
@@ -822,15 +732,11 @@ internal class DiscussionDetailViewModel(
               send = { nextDesired ->
                 val baseline =
                     activeCoord.current(reactionKey(subjectId)).confirmed ?: sourceReactions
-                convergeGithubReactions(baseline, nextDesired) { targetContent, currentReacted ->
+                convergeGithubReactions(baseline, nextDesired, { activeCoord.confirmStep(reactionKey(subjectId), it) }) { targetContent, currentReacted ->
                   source.toggleReaction(account, subjectId, targetContent, currentReacted)
                 }
               },
-              readBack = {
-                val reloaded =
-                    source.load(account, route.owner, route.name, route.number, route.parentId)
-                if (reloaded.id == subjectId) reloaded.reactions else sourceReactions
-              },
+              readBack = { source.reactions(account, subjectId) },
           )
       if (!accepted) {
         reactionUpdates.set(subjectId, previous)
@@ -847,13 +753,14 @@ internal class DiscussionDetailViewModel(
             title = title,
             kind = GithubEditorKind.Markdown,
             source = commentDraft,
-            submitEnabled = validComment(commentDraft),
+            submitEnabled = validComment(commentDraft) && state.value.commentPhase != WritePhase.UNCERTAIN,
             pageUrl = detail.url,
             repositoryRootUrl = "https://github.com/${route.owner}/${route.name}",
             submitLabel = GithubTxt.current.WorkDetail.Publish,
             onSourceChange = { text ->
               commentDraft = text
-              editor.update(submitEnabled = validComment(text), error = null)
+              drafts.save(account, draftKey, text)
+              editor.update(submitEnabled = validComment(text) && state.value.commentPhase != WritePhase.UNCERTAIN, error = null)
             },
             onSubmit = { submitComment(detail.id, editor) },
         )
@@ -862,84 +769,33 @@ internal class DiscussionDetailViewModel(
 
   private fun submitComment(discussionId: String, editor: GithubEditorSession) {
     val body = editor.source
-    if (!validComment(body)) return
+    if (!validComment(body) || state.value.commentPhase == WritePhase.UNCERTAIN) return
     editor.update(submitting = true, submitEnabled = false, error = null)
     viewModelScope.launch {
-      val coord =
-          coordinator
-              ?: try {
-                source.mutations(account).also { coordinator = it }
-              } catch (error: CancellationException) {
-                editor.update(submitting = false)
-                throw error
-              } catch (_: Exception) {
-                editor.update(
-                    submitting = false,
-                    editable = true,
-                    submitEnabled = true,
-                    error = GithubTxt.current.Activity.CommentFailed,
-                )
-                return@launch
-              }
+      val coord = coordinator
+      if (!drafts.saveConfirmed(account, draftKey, body)) {
+        editor.update(submitting = false, editable = true, submitEnabled = true, error = GithubTxt.current.Common.MutationNotSubmitted)
+        return@launch
+      }
       val key = commentKey(discussionId)
-      val observeJob =
-          launch {
-            coord.observeCommand(key).collect { cmd ->
-              when (cmd.phase) {
-                WritePhase.IDLE ->
-                    if (cmd.result != null) {
-                      if (route.parentId == null) {
-                        mutableState.update { current ->
-                          current.copy(
-                              detail =
-                                  current.detail?.let { it.copy(commentsCount = it.commentsCount + 1) },
-                          )
-                        }
-                      }
-                      state.value.comments?.load(ThreadDirection.Latest)
-                      commentDraft = ""
-                      editor.complete()
-                      editor.update(submitting = false)
-                    }
-                WritePhase.PENDING ->
-                    editor.update(submitting = true, submitEnabled = false, error = null)
-                WritePhase.UNCERTAIN -> {
-                  load()
-                  editor.update(
-                      submitting = false,
-                      editable = false,
-                      submitEnabled = false,
-                      error = GithubTxt.current.Activity.CommentUnconfirmed,
-                  )
-                }
-                WritePhase.REJECTED ->
-                    editor.update(
-                        submitting = false,
-                        editable = true,
-                        submitEnabled = true,
-                        error = GithubTxt.current.Activity.CommentFailed,
-                    )
-              }
-            }
-          }
-      val accepted =
-          coord.submitCommand(
-              key,
-              tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
-              send = {
-                source.addComment(account, discussionId, route.parentId, body)
-                CommandAccepted
-              },
-              readBack = { null },
-          )
-      if (!accepted) {
-        observeJob.cancel()
-        editor.update(
-            submitting = false,
-            editable = false,
-            submitEnabled = false,
-            error = GithubTxt.current.Activity.CommentUnconfirmed,
-        )
+      val store = drafts
+      val login = account
+      val storedKey = draftKey
+      val receipt = coord.submitCommand(key, tags = setOf(workTag, CacheTag(DataDomain.Work, null)),
+          onConfirmed = { store.removeIfUnchanged(login, storedKey, body) },
+          send = { source.addComment(login, discussionId, route.parentId, body); CommandAccepted }, readBack = { null })
+      val cmd = receipt?.await() ?: coord.currentCommand(key)
+      if (receipt != null && cmd.phase == WritePhase.IDLE) {
+        if (commentDraft == body) commentDraft = ""
+        state.value.comments?.load(ThreadDirection.Latest)
+        revalidate()
+        editor.update(submitting = false)
+        editor.complete()
+      } else {
+        val unknown = cmd.phase == WritePhase.UNCERTAIN
+        if (unknown) revalidate()
+        editor.update(submitting = false, editable = true, submitEnabled = !unknown && cmd.phase != WritePhase.PENDING,
+            error = if (unknown) GithubTxt.current.Activity.CommentUnconfirmed else GithubTxt.current.Common.MutationNotSubmitted)
       }
     }
   }
@@ -963,6 +819,6 @@ private fun validComment(text: String): Boolean = text.isNotBlank() && text.leng
 
 val discussionDetailFeatureModule = module {
   viewModel { (route: DiscussionDetailRoute, account: String) ->
-    DiscussionDetailViewModel(get(), route, account)
+    DiscussionDetailViewModel(get(), route, account, get())
   }
 }

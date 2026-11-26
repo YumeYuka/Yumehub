@@ -41,12 +41,10 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
     val lists by viewModel.lists.collectAsStateWithLifecycle()
     val listsLoading by viewModel.listsLoading.collectAsStateWithLifecycle()
     val listsFailed by viewModel.listsFailed.collectAsStateWithLifecycle()
-    val creating by viewModel.creating.collectAsStateWithLifecycle()
-    var createVisible by rememberSaveable { mutableStateOf(false) }
-    var listName by rememberSaveable { mutableStateOf("") }
-    var createFailed by rememberSaveable { mutableStateOf(false) }
+    val creation by viewModel.creation.collectAsStateWithLifecycle()
     val selectedList by viewModel.selectedList.collectAsStateWithLifecycle()
     val search by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val changes by viewModel.membership.collectAsStateWithLifecycle()
     var searchVisible by remember(login) { mutableStateOf(false) }
     var searchInput by
         rememberSaveable(login, stateSaver = TextFieldValue.Saver) {
@@ -67,7 +65,7 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         viewModel.search(searchInput.text)
     }
     GithubBackHandler(
-        enabled = searchVisible && !listsExpanded && !createVisible,
+        enabled = searchVisible && !listsExpanded && !creation.visible,
         onBack = dismissSearch,
     )
     GithubPageSearchLayout(
@@ -85,6 +83,13 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                 rememberGithubPagingSlots(repositories, "starred", paging.initialLoading) {
                     it.id?.toString() ?: it.fullName
                 }
+            val loaded = repositories.itemSnapshotList.items
+            val additions = remember(changes, loaded, search, selectedList) {
+                if (selectedList != null || search.isNotBlank() || changes.isEmpty()) emptyList() else {
+                    val present = loaded.mapNotNullTo(hashSetOf()) { it.fullName?.lowercase() }
+                    changes.mapNotNull { (slug, change) -> change.repository?.takeIf { change.member == true && slug !in present && change.phase != moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED } }
+                }
+            }
         GithubPage(
             title = selectedList?.name ?: strings.Profile.Starred,
             listState = paging.listState,
@@ -111,11 +116,15 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                 }
             },
         ) {
+            additions.forEach { repo -> item(key = "star-change:${repo.fullName}") {
+                moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard(repo, onClick = { onOpenRepository(repo) }, showCover = false)
+            } }
             StarredRepositoriesScreen(
                 repositories,
                 slots,
                 paging.initialLoading,
                 onOpenRepository,
+                hasAdditions = additions.isNotEmpty(),
                 emptyText =
                     if (search.isBlank())
                         strings.Profile.CollectionEmpty(
@@ -144,29 +153,19 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         onCreateList = {
             listsExpanded = false
             listSearch = ""
-            listName = ""
-            createFailed = false
-            createVisible = true
+            viewModel.showCreation(true)
         },
     )
-    val createUncertain by viewModel.createUncertain.collectAsStateWithLifecycle()
     StarredListCreateSheet(
-        visible = createVisible,
-        name = listName,
-        creating = creating,
-        failed = createFailed,
-        uncertain = createUncertain,
-        onNameChange = { listName = it },
-        onDismiss = { createVisible = false },
-        onCreate = {
-            viewModel.createList(listName) { success ->
-                createFailed = !success
-                if (success) {
-                    createVisible = false
-                    listName = ""
-                }
-            }
-        },
+        visible = creation.visible,
+        name = creation.name,
+        ready = creation.restored,
+        creating = creation.submitting,
+        failed = creation.failed,
+        uncertain = creation.uncertain,
+        onNameChange = viewModel::changeName,
+        onDismiss = { viewModel.showCreation(false) },
+        onCreate = viewModel::createList,
         onAcknowledgeUncertain = viewModel::acknowledgeCreateUncertain,
     )
 }

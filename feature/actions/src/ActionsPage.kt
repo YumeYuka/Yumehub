@@ -18,6 +18,7 @@ import io.github.yumeyucca.lucide.ExternalLink
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Package
 import io.github.yumeyucca.lucide.RefreshCw
+import io.github.yumeyucca.lucide.RotateCcw
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -87,8 +88,7 @@ internal class ActionsDetailModel(
         private set
 
     private var rerunUncertainOpId: String? = null
-    private var rerunObservedSuite: String? = null
-    private val rerunResultsChannel = Channel<Boolean>(Channel.CONFLATED)
+    private val rerunResultsChannel = Channel<WritePhase>(Channel.CONFLATED)
     val rerunResults = rerunResultsChannel.receiveAsFlow()
 
     private var artifactRequest: kotlinx.coroutines.Job? = null
@@ -183,39 +183,7 @@ internal class ActionsDetailModel(
         val key = MutationKey(MutationKind.CHECK_RERUN, suiteId, CommandAccepted.serializer())
         viewModelScope.launch {
             val coord = repo.mutations(account)
-            if (rerunObservedSuite != suiteId) {
-                rerunObservedSuite = suiteId
-                launch {
-                    coord.observeCommand(key).collect { cmd ->
-                        when (cmd.phase) {
-                            WritePhase.PENDING -> rerunning = true
-                            WritePhase.IDLE -> {
-                                rerunning = false
-                                if (cmd.result != null) {
-                                    rerunUncertain = false
-                                    rerunUncertainOpId = null
-                                    rerunResultsChannel.trySend(true)
-                                }
-                            }
-                            WritePhase.REJECTED -> {
-                                rerunning = false
-                                rerunUncertain = false
-                                rerunResultsChannel.trySend(false)
-                            }
-                            WritePhase.UNCERTAIN -> {
-                                rerunning = false
-                                rerunUncertain = true
-                                rerunUncertainOpId =
-                                    coord.pending.value
-                                        .firstOrNull { it.kind == key.kind && it.target == key.target }
-                                        ?.operationId
-                                rerunResultsChannel.trySend(false)
-                            }
-                        }
-                    }
-                }
-            }
-            val accepted =
+            val receipt =
                 coord.submitCommand(
                     key = key,
                     tags = setOf(CacheTag(DataDomain.Work, null)),
@@ -225,15 +193,11 @@ internal class ActionsDetailModel(
                     },
                     readBack = { null },
                 )
-            if (!accepted) {
-                rerunning = false
-                rerunUncertain = true
-                rerunUncertainOpId =
-                    coord.pending.value
-                        .firstOrNull { it.kind == key.kind && it.target == key.target }
-                        ?.operationId
-                rerunResultsChannel.trySend(false)
-            }
+            val cmd = receipt?.await() ?: coord.currentCommand(key)
+            rerunning = false
+            rerunUncertain = cmd.phase == WritePhase.UNCERTAIN
+            rerunUncertainOpId = cmd.submissionId.takeIf { rerunUncertain }
+            rerunResultsChannel.trySend(if (receipt == null && !rerunUncertain) WritePhase.REJECTED else cmd.phase)
         }
     }
 
@@ -246,7 +210,9 @@ internal class ActionsDetailModel(
                     ?: coord.pending.value
                         .firstOrNull { it.kind == MutationKind.CHECK_RERUN && it.target == suiteId }
                         ?.operationId
-            if (id != null) coord.acknowledge(id)
+            if (id == null) return@launch
+            coord.acknowledge(id).join()
+            if (coord.pending.value.any { it.operationId == id }) return@launch
             rerunUncertain = false
             rerunUncertainOpId = null
         }
@@ -291,12 +257,14 @@ fun ActionsPage(
     var confirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(vm, context, strings) {
-        vm.rerunResults.collect { confirmed ->
-            confirm = false
-            vm.load()
-            val message =
-                if (confirmed) strings.Activity.RerunSubmitted
-                else strings.Activity.RunUncertain
+        vm.rerunResults.collect { phase ->
+            if (phase == WritePhase.IDLE) confirm = false
+            if (phase != WritePhase.REJECTED) vm.load()
+            val message = when (phase) {
+                WritePhase.IDLE -> strings.Activity.RerunSubmitted
+                WritePhase.UNCERTAIN -> strings.Activity.RunUncertain
+                else -> strings.Common.MutationNotSubmitted
+            }
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
@@ -331,6 +299,8 @@ fun ActionsPage(
         actions = {
             GithubToolbarActions(
                 toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = vm::load),
+                if (detail?.canRerunFailed == true) toolbarIcon(Lucide.RotateCcw,
+                    strings.Activity.RerunFailed, enabled = !vm.rerunning) { confirm = true } else null,
                 url?.let {
                     toolbarIcon(Lucide.ExternalLink, strings.Repository.OpenInBrowser) { browser(it) }
                 },

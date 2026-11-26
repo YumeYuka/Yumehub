@@ -75,6 +75,7 @@ data class NotificationsUiState(
     val actionError: String? = null,
     val isSelecting: Boolean = false,
     val selectedThreadIds: Set<String> = emptySet(),
+    val pendingThreadIds: Set<String> = emptySet(),
     val uncertainThreadIds: Set<String> = emptySet(),
 ) {
     val visibleNotifications: List<NotificationDto>
@@ -99,7 +100,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private var nextPage: Int? = null
     private var pagingPaused = false
     private var failedAction: ThreadAction? = null
-    private var coordinator: MutationCoordinator? = null
+    private val coordinator = repository.mutations(account)
     private val threadObservers = mutableMapOf<String, Job>()
     private val overlayStates = mutableMapOf<String, NotificationThreadState>()
     private var pendingUncertainTargets: Set<String> = emptySet()
@@ -110,16 +111,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         // 首次进入由 GithubRefreshEffect 统一触发，避免 init 与首次激活各请求一次第一页。
         observeQuery(refresh = false)
         viewModelScope.launch {
-            val coord =
-                try {
-                    repository.mutations(account)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    return@launch
-                }
-            if (!repository.account.equals(account, ignoreCase = true)) return@launch
-            coordinator = coord
+            val coord = coordinator
             launch {
                 coord.pending.collect { summaries ->
                     pendingUncertainTargets =
@@ -156,12 +148,9 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         threadObservers[threadId] =
             viewModelScope.launch {
                 coord.observe(threadKey(threadId)).collect { write ->
-                    val state = write.desired ?: write.confirmed
-                    if (state != null && write.phase != WritePhase.IDLE) {
-                        overlayStates[threadId] = state
-                    } else if (write.phase == WritePhase.IDLE) {
-                        overlayStates.remove(threadId)
-                    }
+                    val projected = write.desired.takeIf { write.phase == WritePhase.PENDING }
+                        ?: write.confirmed.takeIf { write.phase == WritePhase.UNCERTAIN }
+                    if (projected != null) overlayStates[threadId] = projected else overlayStates.remove(threadId)
                     if (write.phase == WritePhase.UNCERTAIN) {
                         pendingUncertainTargets = pendingUncertainTargets + threadId
                     } else if (write.phase == WritePhase.IDLE || write.phase == WritePhase.REJECTED) {
@@ -174,27 +163,18 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
 
     fun revalidate() {
         val state = mutableUiState.value
-        if (state.isProcessing || state.isSelecting) return
         repository.refresh(account, state.query())
     }
 
     fun reconcileUncertain() {
         revalidate()
-        val coord = coordinator ?: return
-        pendingUncertainTargets.toList().forEach { threadId ->
-            coord.reconcile(threadKey(threadId)) {
-                val existing =
-                    resource.cached?.notifications?.firstOrNull { it.id == threadId }
-                NotificationThreadState(
-                    unread = existing?.unread ?: false,
-                    done = mutableUiState.value.filter == NotificationFilter.Done,
-                )
-            }
+        pendingUncertainTargets.forEach { id ->
+            coordinator.reconcile(threadKey(id)) { repository.readThreadState(account, id) }
         }
     }
 
     fun acknowledgeUncertain() {
-        val coord = coordinator ?: return
+        val coord = coordinator
         coord.pending.value
             .filter { it.kind == MutationKind.NOTIFICATION }
             .forEach { coord.acknowledge(it.operationId) }
@@ -205,11 +185,10 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         if (
             state.isRefreshing ||
                 state.isLoadingMore ||
-                state.isProcessing ||
-                pagingPaused ||
                 listJob?.isActive == true
         )
             return
+        if (pagingPaused) { revalidate(); return }
         val next = nextPage ?: return
         if (loadedThroughPage - loadedFromPage >= 9) {
             // 保持最近 10 页窗口；只加载下一页再整体替换会把已显示的上下文塌缩成单页。
@@ -224,19 +203,18 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         if (
             state.isRefreshing ||
                 state.isLoadingMore ||
-                state.isProcessing ||
-                pagingPaused ||
                 listJob?.isActive == true ||
                 loadedFromPage <= 1
         )
             return
+        if (pagingPaused) { revalidate(); return }
         val start = (loadedFromPage - 10).coerceAtLeast(1)
         loadPages(start, loadedFromPage - 1, replace = true)
     }
 
     fun selectFilter(filter: NotificationFilter) {
         val state = mutableUiState.value
-        if (state.isProcessing || state.filter == filter) return
+        if (state.filter == filter) return
         loadedThroughPage = 0
         mutableUiState.value =
             state
@@ -252,7 +230,6 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     fun selectRepository(repository: String?) {
         val state = mutableUiState.value
         if (
-            state.isProcessing ||
                 state.repository == repository ||
                 repository != null && repository !in state.repositories
         ) {
@@ -272,7 +249,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
 
     fun selectReason(reason: NotificationReasonFilter) {
         val state = mutableUiState.value
-        if (state.isProcessing || state.reasonFilter == reason) return
+        if (state.reasonFilter == reason) return
         mutableUiState.value =
             state
                 .clearSelectionRetry()
@@ -287,7 +264,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
 
     fun endSelection() {
         val state = mutableUiState.value
-        if (state.isProcessing || !state.isSelecting) return
+        if (!state.isSelecting) return
         mutableUiState.value =
             state.clearSelectionRetry().copy(isSelecting = false, selectedThreadIds = emptySet())
     }
@@ -314,53 +291,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     fun markOpened(notification: NotificationDto) {
         repository.rememberOpenedWork(account, notification)
         val threadId = notification.threadId ?: return
-        val state = mutableUiState.value
-        if (
-            !notification.unread ||
-                state.isProcessing ||
-                state.isSelecting ||
-                threadId in state.uncertainThreadIds
-        )
-            return
-        viewModelScope.launch {
-            val coord =
-                coordinator
-                    ?: try {
-                        repository.mutations(account).also { coordinator = it }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Exception) {
-                        return@launch
-                    }
-            ensureThreadObserver(coord, threadId)
-            val key = threadKey(threadId)
-            val isDone = state.filter == NotificationFilter.Done
-            val confirmed = NotificationThreadState(unread = notification.unread, done = isDone)
-            val desired = NotificationThreadState(unread = false, done = isDone)
-            coord.submit(
-                key,
-                confirmed = confirmed,
-                desired = desired,
-                tags = setOf(CacheTag(DataDomain.Notifications, null)),
-                send = {
-                    repository.sendThreadAction(account, threadId, ThreadActionKind.MarkRead)
-                    desired
-                },
-                readBack = { confirmed },
-            )
-            val finalState = coord.observe(key).first { it.phase != WritePhase.PENDING }
-            if (finalState.phase == WritePhase.REJECTED && failedAction == null && !mutableUiState.value.isProcessing) {
-                failedAction = ThreadAction(setOf(threadId), ThreadActionKind.MarkRead)
-                mutableUiState.value =
-                    mutableUiState.value.copy(
-                        actionError =
-                            GithubTxt.current.Notifications.ActionFailure(
-                                GithubTxt.current.Notifications.MarkRead,
-                                finalState.message ?: GithubTxt.current.Notifications.RequestFailed,
-                            ),
-                    )
-            }
-        }
+        if (notification.unread && !uiState.value.isSelecting) process(ThreadAction(setOf(threadId), ThreadActionKind.MarkRead))
     }
 
     fun markSelectedRead() = processSelection(ThreadActionKind.MarkRead)
@@ -435,9 +366,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 else notification.copy(unread = overlay.unread)
             }
         val selected =
-            current.selectedThreadIds.intersect(
-                notifications.mapNotNull { it.threadId }.toSet(),
-            )
+            current.selectedThreadIds.intersect(baseNotifications.mapNotNullTo(mutableSetOf()) { it.threadId } + current.pendingThreadIds)
         val stateWithValidRetry =
             if (selected == current.selectedThreadIds) current else current.clearSelectionRetry()
         val error = (cached.error as? Exception)?.messageForUser()
@@ -457,8 +386,8 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 hasCachedContent = snapshot != null,
                 isRefreshing = cached.loading && !appending || snapshot == null && error == null,
                 isLoadingMore = cached.loading && appending,
-                hasMore = !pagingPaused && nextPage != null,
-                hasPrevious = !pagingPaused && loadedFromPage > 1,
+                hasMore = nextPage != null,
+                hasPrevious = loadedFromPage > 1,
                 loadError = error.takeUnless { appending },
                 appendError = error.takeIf { appending },
                 selectedThreadIds = selected,
@@ -511,144 +440,59 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private fun process(action: ThreadAction) {
         val state = mutableUiState.value
         if (
-            state.isProcessing ||
+            (action.fromSelection && state.isProcessing) ||
                 action.threadIds.isEmpty() ||
                 action.threadIds.any(String::isBlank)
         )
             return
-        listGeneration++
-        listJob?.cancel()
-        appending = false
+        val ids = action.threadIds - state.pendingThreadIds - state.uncertainThreadIds
+        if (ids.isEmpty()) return
+        val records = state.notifications.associateBy { it.threadId }
+        val submitted = linkedMapOf<String, Boolean>()
         failedAction = null
-        mutableUiState.value =
-            state.copy(
-                isProcessing = true,
-                isRefreshing = false,
-                isLoadingMore = false,
-                actionError = null,
-            )
+        mutableUiState.value = state.copy(isProcessing = state.isProcessing || action.fromSelection,
+            pendingThreadIds = state.pendingThreadIds + ids, actionError = null)
+        val coord = coordinator
+        for (id in ids) {
+            val row = records[id] ?: continue
+            val confirmed = NotificationThreadState(row.unread, state.filter.done)
+            val key = threadKey(id)
+            ensureThreadObserver(coord, id)
+            val desired = action.kind.project(confirmed)
+            submitted[id] = coord.submit(key, confirmed, desired,
+                setOf(CacheTag(DataDomain.Notifications, row.repository?.fullName?.lowercase())),
+                send = { repository.sendThreadAction(account, id, action.kind); it },
+                readBack = { repository.readThreadState(account, id) })
+        }
         viewModelScope.launch {
-            val coord =
-                coordinator
-                    ?: try {
-                        repository.mutations(account).also { coordinator = it }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        mutableUiState.value =
-                            mutableUiState.value.copy(
-                                isProcessing = false,
-                                actionError =
-                                    GithubTxt.current.Notifications.ActionFailure(
-                                        action.kind.label,
-                                        error.messageForUser(),
-                                    ),
-                            )
-                        return@launch
-                    }
             val confirmedIds = mutableSetOf<String>()
             val rejectedIds = mutableSetOf<String>()
             val uncertainIds = mutableSetOf<String>()
             val notSentIds = mutableSetOf<String>()
             var lastFailureMessage: String? = null
-            var stopped = false
-            val allIds = action.threadIds.toList()
-            for (batch in allIds.chunked(3)) {
-                if (stopped) {
-                    notSentIds.addAll(batch)
-                    continue
-                }
-                val results = coroutineScope {
-                    batch
-                        .map { threadId ->
-                            async {
-                                val existing =
-                                    resource.cached?.notifications?.firstOrNull { it.id == threadId }
-                                val currentUnread = existing?.unread ?: (state.filter == NotificationFilter.Unread)
-                                val currentDone = state.filter == NotificationFilter.Done
-                                val confirmedState =
-                                    NotificationThreadState(currentUnread, currentDone)
-                                val desiredState =
-                                    when (action.kind) {
-                                        ThreadActionKind.MarkRead ->
-                                            NotificationThreadState(false, currentDone)
-                                        ThreadActionKind.MarkUnread ->
-                                            NotificationThreadState(true, currentDone)
-                                        ThreadActionKind.MarkDone ->
-                                            NotificationThreadState(currentUnread, true)
-                                        ThreadActionKind.MarkUndone ->
-                                            NotificationThreadState(currentUnread, false)
-                                    }
-                                ensureThreadObserver(coord, threadId)
-                                val key = threadKey(threadId)
-                                val submitted =
-                                    coord.submit(
-                                        key,
-                                        confirmed = confirmedState,
-                                        desired = desiredState,
-                                        tags = setOf(CacheTag(DataDomain.Notifications, null)),
-                                        send = {
-                                            repository.sendThreadAction(account, threadId, action.kind)
-                                            desiredState
-                                        },
-                                        readBack = { confirmedState },
-                                    )
-                                if (!submitted) {
-                                    Triple(threadId, BatchOutcome.Uncertain, GithubTxt.current.Common.MutationUncertain)
-                                } else {
-                                    val settled =
-                                        coord.observe(key).first { it.phase != WritePhase.PENDING }
-                                    when (settled.phase) {
-                                        WritePhase.IDLE -> Triple(threadId, BatchOutcome.Confirmed, null)
-                                        WritePhase.REJECTED ->
-                                            Triple(
-                                                threadId,
-                                                BatchOutcome.Rejected,
-                                                settled.message ?: GithubTxt.current.Notifications.RequestFailed,
-                                            )
-                                        WritePhase.UNCERTAIN ->
-                                            Triple(
-                                                threadId,
-                                                BatchOutcome.Uncertain,
-                                                GithubTxt.current.Common.MutationUncertain,
-                                            )
-                                        WritePhase.PENDING -> Triple(threadId, BatchOutcome.Uncertain, null)
-                                    }
-                                }
-                            }
-                        }
-                        .awaitAll()
-                }
-                for ((threadId, outcome, msg) in results) {
-                    when (outcome) {
-                        BatchOutcome.Confirmed -> confirmedIds.add(threadId)
-                        BatchOutcome.Rejected -> {
-                            rejectedIds.add(threadId)
-                            if (lastFailureMessage == null) lastFailureMessage = msg
-                        }
-                        BatchOutcome.Uncertain -> {
-                            uncertainIds.add(threadId)
-                            stopped = true
-                        }
-                        BatchOutcome.NotSent -> notSentIds.add(threadId)
-                    }
-                }
-                applySnapshot(resource.state.value)
+            val outcomes = coroutineScope {
+                ids.map { id -> async {
+                    if (id !in submitted) return@async Triple(id, BatchOutcome.NotSent, null)
+                    val settled = coord.observe(threadKey(id)).first { it.phase != WritePhase.PENDING }
+                    Triple(id, when (settled.phase) {
+                        WritePhase.IDLE -> if (submitted[id] == true) BatchOutcome.Confirmed else BatchOutcome.NotSent
+                        WritePhase.REJECTED -> BatchOutcome.Rejected
+                        else -> BatchOutcome.Uncertain
+                    }, settled.message)
+                } }.awaitAll()
+            }
+            for ((id, outcome, message) in outcomes) when (outcome) {
+                BatchOutcome.Confirmed -> confirmedIds.add(id)
+                BatchOutcome.Rejected -> { rejectedIds.add(id); lastFailureMessage = message }
+                BatchOutcome.Uncertain -> uncertainIds.add(id)
+                BatchOutcome.NotSent -> notSentIds.add(id)
             }
             // 未知项绝不进入可以直接重发的 failedAction；只允许重发未发送或明确拒绝的条目。
             val retryable = rejectedIds + notSentIds
-            if (retryable.isNotEmpty()) failedAction = action.copy(threadIds = retryable)
+            if (retryable.isNotEmpty() && state.query() == mutableUiState.value.query()) failedAction = action.copy(threadIds = retryable)
             val current = mutableUiState.value
             val selected = current.selectedThreadIds - confirmedIds - uncertainIds
-            val selectionFinished = state.selectedThreadIds.isNotEmpty() && selected.isEmpty()
-            val pausePaging = uncertainIds.isNotEmpty()
-            if (pausePaging) {
-                pagingPaused = true
-                listGeneration++
-                listJob?.cancel()
-                nextPage = null
-                repository.pausePaging(account, current.query())
-            }
+            val selectionFinished = action.fromSelection && selected.isEmpty()
             val actionLabel = action.kind.label
             val errorText =
                 when {
@@ -673,13 +517,11 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 current.copy(
                     isSelecting = current.isSelecting && !selectionFinished,
                     selectedThreadIds = selected,
-                    isProcessing = false,
-                    isRefreshing = current.isRefreshing && !pausePaging,
-                    isLoadingMore = current.isLoadingMore && !pausePaging,
-                    hasMore = current.hasMore && !pausePaging,
-                    hasPrevious = current.hasPrevious && !pausePaging,
+                    isProcessing = current.isProcessing && !action.fromSelection,
+                    pendingThreadIds = current.pendingThreadIds - ids,
                     actionError = errorText,
                 )
+            if (uncertainIds.isNotEmpty()) revalidate()
         }
     }
 

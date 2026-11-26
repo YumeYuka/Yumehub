@@ -18,6 +18,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import moe.yumeyuka.yumehub.data.cache.WritePhase
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
@@ -48,6 +51,9 @@ fun ExplorePage(
     val restoredOptions by feed.options.collectAsStateWithLifecycle()
     val options = restoredOptions
     val filters = options?.filters.orEmpty()
+    val remote by feed.remoteFilters.collectAsStateWithLifecycle()
+    val phase by feed.filterPhase.collectAsStateWithLifecycle()
+    val settingsFailed by feed.settingsFailed.collectAsStateWithLifecycle()
     val slotKey = remember(options) {
         "feed-${options?.sort?.name}:${filters.map { it.name }.sorted()}"
     }
@@ -107,6 +113,19 @@ fun ExplorePage(
                 ExploreDiscoverSection(onOpenTrending, onOpenFeatured)
             }
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
+            if (settingsFailed) item { GlasmioListRow(title = strings.Common.Retry, onClick = feed::restoreOptions) }
+            if (phase != WritePhase.IDLE || (options != null && remote != null && remote != filters)) item {
+                GlasmioGroupedList {
+                    if (remote != null && remote != filters) GlasmioListRow(title = strings.Explore.UseRemoteFilters, onClick = feed::adoptFilters)
+                    GlasmioListRow(title = when (phase) {
+                        WritePhase.UNCERTAIN -> strings.Common.MutationUncertain
+                        WritePhase.PENDING -> strings.Common.MutationPending
+                        WritePhase.REJECTED -> strings.Common.MutationNotSubmitted
+                        WritePhase.IDLE -> strings.Explore.ApplyFilters
+                    }, enabled = options != null && phase != WritePhase.UNCERTAIN && phase != WritePhase.PENDING,
+                    onClick = { options?.let(feed::applyOptions) })
+                }
+            }
             if (options == null) return@GithubPage
             FeedScreen(
                 events = events,

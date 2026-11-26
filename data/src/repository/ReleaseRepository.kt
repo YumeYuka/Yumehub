@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.data.repository
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -13,6 +14,8 @@ import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
+import moe.yumeyuka.yumehub.data.cache.CachedDataState
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
@@ -65,14 +68,16 @@ class ReleaseRepository(
     private val cache: CachedDataRepository,
     private val paging: PagingRepository,
 ) {
-    suspend fun load(
+    fun observe(
         account: String,
         owner: String,
         name: String,
         tag: String?,
-    ): GithubReleaseResult =
-        releaseResource(account, owner, name, tag)
-            .await {
+        versionId: String?,
+    ): Flow<CachedDataState<GithubReleaseResult>> =
+        if (versionId != null) versionResource(account, versionId).observe {
+            RemoteFetch.Fresh(readVersion(account, versionId))
+        } else releaseResource(account, owner, name, tag).observe {
                 val data =
                     GithubGraphQlSession(api, tokens, account)
                         .execute(
@@ -91,17 +96,16 @@ class ReleaseRepository(
                     } else {
                         repo.nullableRelease("release")
                     }
-                GithubReleaseResult(release?.releaseDetail())
+                RemoteFetch.Fresh(GithubReleaseResult(release?.releaseDetail()))
             }
 
-    suspend fun loadVersion(account: String, id: String): GithubReleaseResult =
-        versionResource(account, id).await {
+    suspend fun readVersion(account: String, id: String): GithubReleaseResult {
             val data =
                 GithubGraphQlSession(api, tokens, account)
                     .execute(ReleaseVersionQuery, buildJsonObject { put("id", id) })
             val node = data.nullableRelease("node")
             if (node != null && node.graphRequiredText("id") != id) throw GithubPageException()
-            GithubReleaseResult(node?.releaseDetail())
+            return GithubReleaseResult(node?.releaseDetail())
         }
 
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)

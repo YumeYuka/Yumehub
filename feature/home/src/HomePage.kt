@@ -310,4 +310,5 @@ private fun mutationKindLabel(kind: MutationKind, strings: GithubStrings): Strin
         MutationKind.WORKFLOW_DISPATCH -> strings.Activity.RunWorkflow
         MutationKind.CHECK_RERUN -> strings.Activity.RerunFailed
         MutationKind.FEED_FILTERS -> strings.Common.MutationUncertain
+        MutationKind.TWO_FACTOR_DECISION -> strings.TwoFactor.NotificationTitle
     }

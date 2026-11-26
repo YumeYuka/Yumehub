@@ -1,9 +1,12 @@
 package moe.yumeyuka.yumehub.data.repository
 
+import moe.yumeyuka.yumehub.data.cache.relationshipCacheTag
 import androidx.paging.PagingData
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import moe.yumeyuka.yumehub.data.cache.RemoteFetch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -27,6 +30,7 @@ class ProfileCollectionsRepository(
         get() = tokenStore.accountLogin.value
 
     suspend fun mutations(account: String): MutationCoordinator = cache.mutations(account)
+    fun starredChanges(account: String) = cache.starredRows(account).changes
 
     fun repositoriesKey(login: String, organization: Boolean): String {
         val type = if (organization) "Organization" else "User"
@@ -91,10 +95,21 @@ class ProfileCollectionsRepository(
             ::repositoryItem,
             query.trim().takeIf(String::isNotEmpty),
             serializer = RepositoryDto.serializer(),
-            tags = setOf(CacheTag(DataDomain.Repositories, null)),
+            tags = setOf(relationshipCacheTag(if (account.equals(login, true)) "viewer:starred" else "stars:${login.lowercase(Locale.ROOT)}")),
         )
 
-    suspend fun userLists(account: String, login: String): List<UserRepositoryList> {
+    fun userListsTag(login: String) = CacheTag(DataDomain.Repositories, "user-lists:${login.lowercase(Locale.ROOT)}")
+
+    private fun catalog(account: String, login: String) = cache.resource(account,
+        "user-lists-v1:${login.lowercase(Locale.ROOT)}", ListSerializer(UserRepositoryList.serializer()), tags = setOf(userListsTag(login)))
+
+    fun observeUserLists(account: String, login: String) = catalog(account, login).observe {
+        RemoteFetch.Fresh(fetchUserLists(account, login))
+    }
+
+    fun refreshUserLists(account: String, login: String) = catalog(account, login).refresh(force = true) { fetchUserLists(account, login) }
+
+    private suspend fun fetchUserLists(account: String, login: String): List<UserRepositoryList> {
         val session = GithubGraphQlSession(api, tokenStore, account)
         val query =
             "query UserLists(\u0024login: String!, \u0024first: Int!, \u0024after: String) { " +
@@ -141,9 +156,11 @@ class ProfileCollectionsRepository(
             .graphObject("createUserList")
             .graphObject("list")
             .let(::userRepositoryList)
-            .also {
-                cache.invalidateAndPersist(account, setOf(CacheTag(DataDomain.Repositories, null)))
-                cache.changes(account).publish(DataDomain.Repositories)
+            .also { created ->
+                val catalog = catalog(account, account)
+                catalog.state.value.data?.let { lists ->
+                    if (lists.none { it.id == created.id }) catalog.update(lists + created)
+                }
             }
     }
 

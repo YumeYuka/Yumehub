@@ -59,6 +59,8 @@ internal class IssueSearchViewModel(
             }
         }
 
+    fun card(item: CollaborationItemDto) = source.card(login, item)
+
     fun selectFilter(filter: CollaborationListFilter) {
         if (filter.scope in scopes) mutableFilter.value = filter.copy(searchQuery = mutableFilter.value.searchQuery)
     }

@@ -13,6 +13,7 @@ enum class DataDomain {
     Relationships,
     Profile,
     Content,
+    Paging,
 }
 
 class DataChanges {

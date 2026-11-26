@@ -58,7 +58,6 @@ fun NotificationsPage(
     GithubRefreshEffect(
         viewModel,
         DataDomain.Notifications,
-        enabled = !state.isProcessing && !state.isSelecting,
         pollWhileVisible = true,
         onRefresh = viewModel::revalidate,
     )
@@ -117,11 +116,7 @@ fun NotificationsPage(
         enabled = searching && !filtersVisible && !state.isSelecting,
         onBack = closeSearch,
     )
-    GithubBackHandler(enabled = state.isSelecting && !state.isProcessing) {
-        if (!viewModel.uiState.value.isProcessing) {
-            viewModel.endSelection()
-        }
-    }
+    GithubBackHandler(enabled = state.isSelecting, onBack = viewModel::endSelection)
 
     GithubPage(
         title = strings.Title,
@@ -153,7 +148,7 @@ fun NotificationsPage(
                             searching = true
                         }
                     } else null,
-                    if (!state.isSelecting) toolbarIcon(Lucide.ListFilter, strings.FilterTitle, !state.isProcessing) {
+                    if (!state.isSelecting) toolbarIcon(Lucide.ListFilter, strings.FilterTitle) {
                         hideKeyboard()
                         filtersVisible = true
                     } else null,
@@ -232,7 +227,7 @@ fun NotificationsPage(
         repositories = state.repositories,
         selectedRepository = state.repository,
         selectedReason = state.reasonFilter,
-        enabled = !state.isProcessing,
+        enabled = true,
         onDismiss = { filtersVisible = false },
         onApply = { repository, reason ->
             viewModel.selectRepository(repository)
@@ -244,8 +239,8 @@ fun NotificationsPage(
         notification = threadActions,
         preview = threadActions?.let(state.previews::get),
         isDone = state.filter == NotificationFilter.Done,
-        canChangeReadState = !state.isProcessing,
-        canChangeDoneState = !state.isProcessing,
+        canChangeReadState = threadActions?.threadId !in state.pendingThreadIds && threadActions?.threadId !in state.uncertainThreadIds,
+        canChangeDoneState = threadActions?.threadId !in state.pendingThreadIds && threadActions?.threadId !in state.uncertainThreadIds,
         onDismiss = { threadActions = null },
         onSetUnread = { id, unread ->
             threadActions = null

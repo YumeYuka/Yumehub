@@ -32,6 +32,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubSection
 internal fun StarredListCreateSheet(
     visible: Boolean,
     name: String,
+    ready: Boolean,
     creating: Boolean,
     failed: Boolean,
     uncertain: Boolean,
@@ -62,7 +63,7 @@ internal fun StarredListCreateSheet(
                 actions = {
                     GlasmioIconButton(
                         onClick = onCreate,
-                        enabled = name.isNotBlank() && !creating && !uncertain,
+                        enabled = ready && name.isNotBlank() && !creating && !uncertain,
                     ) {
                         GithubIcon(Lucide.Check, contentDescription = profile.NewList)
                     }
@@ -79,7 +80,7 @@ internal fun StarredListCreateSheet(
                     value = name,
                     onValueChange = onNameChange,
                     placeholder = profile.ListNamePlaceholder,
-                    enabled = !creating && !uncertain,
+                    enabled = ready && !creating && !uncertain,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
