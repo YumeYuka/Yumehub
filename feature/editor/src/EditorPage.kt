@@ -1,7 +1,5 @@
 package moe.yumeyuka.yumehub.feature.editor
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,8 +35,7 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorBackdropSource
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorContentInsets
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorHeaderHeight
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-
-private val FileReadFade = tween<Float>(220)
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 @Composable
 fun EditorPage(session: GithubEditorSession) {
@@ -115,7 +112,6 @@ private fun EditorSessionPage(session: GithubEditorSession) {
                                     modifier = Modifier.weight(1f).fillMaxWidth(),
                                 )
                             GithubEditorKind.Code -> {
-                                // 采样图层常驻在过渡外侧，顶栏录到的内容与屏幕使用同一个淡入进度。
                                 EditorFileReadContent(
                                     status = fileReadStatus,
                                     modifier =
@@ -164,31 +160,26 @@ private fun EditorSessionPage(session: GithubEditorSession) {
 internal fun EditorFileReadContent(
     status: GithubFileReadStatus?,
     modifier: Modifier = Modifier,
+    showEditor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val contentInsets = LocalGithubEditorContentInsets.current
-    Crossfade(
-        targetState = status,
-        modifier = modifier,
-        animationSpec = FileReadFade,
-        label = "editor-file-read",
-    ) { displayedStatus ->
-        when (displayedStatus) {
-            GithubFileReadStatus.Loading ->
-                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
-            is GithubFileReadStatus.Failed -> {
+    Box(modifier) {
+        when {
+            status is GithubFileReadStatus.Failed -> {
                 GlasmioGroupedList(Modifier.padding(contentInsets).padding(16.dp)) {
-                    GlasmioListRow(title = displayedStatus.message, systemName = null)
-                    displayedStatus.retry?.let { retry ->
-                        GlasmioListRow(
-                            title = LocalGithubStrings.current.Common.Retry,
-                            enabled = status === displayedStatus,
-                            onClick = retry,
-                        )
+                    GlasmioListRow(title = status.message, systemName = null)
+                    status.retry?.let { retry ->
+                        GlasmioListRow(title = LocalGithubStrings.current.Common.Retry, onClick = retry)
                     }
                 }
             }
-            null -> content()
+            status == GithubFileReadStatus.Loading ->
+                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
+            !showEditor -> Unit // Preview owns both its renderer and its first-draw placeholder.
+            !LocalGithubRouteEntryReady.current ->
+                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
+            else -> content()
         }
     }
 }

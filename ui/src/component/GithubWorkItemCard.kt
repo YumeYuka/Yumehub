@@ -25,6 +25,7 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import androidx.compose.runtime.remember
 import moe.yumeyuka.yumehub.data.api.dto.workTarget
@@ -33,13 +34,20 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
 
 /** 议题和拉取请求沿用讨论列表的作者、摘要与底部统计布局。 */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun GithubWorkItemCard(
-    item: CollaborationItemDto,
+    item: CollaborationItemDto?,
     kind: CollaborationKind,
     onClick: (() -> Unit)? = null,
 ) {
+    GithubLoadingCard(loading = item == null, deferUntilEntry = false, placeholder = { WorkItemSkeleton() }) {
+        if (item != null) WorkItemContent(item, kind, onClick)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WorkItemContent(item: CollaborationItemDto, kind: CollaborationKind, onClick: (() -> Unit)?) {
     val target = remember(item.htmlUrl, item.number) { item.workTarget() }
     val write = rememberWorkRowProjection(target)
     val shown = remember(item, write) { write.apply(item) }
@@ -47,7 +55,7 @@ fun GithubWorkItemCard(
     val repository = item.repositoryName?.substringAfterLast('/')?.takeIf(String::isNotBlank)
     val meta = listOfNotNull(repository, "#${item.number}").joinToString(" · ")
     val relativeTime = githubRelativeTime(item.updatedAt, strings.Notifications)
-    GithubActivityCard(
+    GithubActivityCardContent(
         onClick = onClick,
         header = {
             GithubWorkItemHeader(item.user, meta, relativeTime) {
@@ -61,17 +69,18 @@ fun GithubWorkItemCard(
             }
         },
         summary = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column {
                 GithubActivityCardSummary(shown.title, shown.bodyPreview, titleMaxLines = 2)
-                workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
-                shown.subIssuesTotal
-                    ?.takeIf { it > 0 }
-                    ?.let { total ->
-                        GithubWorkItemMeta(
-                            Lucide.ListChecks,
-                            "${shown.subIssuesCompleted ?: 0}/$total",
-                        )
-                    }
+                GithubCardField(workMergeProgress(write.mergePhase)) {
+                    Text(it, Modifier.padding(top = 10.dp), style = GlasmioTheme.textStyles.caption1)
+                }
+                GithubCardField(shown.subIssuesTotal?.takeIf { it > 0 }) { total ->
+                    GithubWorkItemMeta(
+                        Lucide.ListChecks,
+                        "${shown.subIssuesCompleted ?: 0}/$total",
+                        Modifier.padding(top = 10.dp),
+                    )
+                }
             }
         },
         metadata = {
@@ -88,10 +97,10 @@ fun GithubWorkItemCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     GithubWorkItemMeta(Lucide.MessageSquare, comments)
-                    participants?.let { GithubWorkItemMeta(Lucide.UsersRound, it) }
+                    GithubCardField(participants) { GithubWorkItemMeta(Lucide.UsersRound, it) }
                 }
-                if ((item.participantsCount ?: item.participantAvatars.size) > 1) {
-                    GithubActivityAvatarStack(item.participantAvatars)
+                GithubCardField(item.participantAvatars.takeIf { (item.participantsCount ?: it.size) > 1 && it.isNotEmpty() }) {
+                    GithubActivityAvatarStack(it)
                 }
             }
         },
@@ -156,9 +165,10 @@ internal fun GithubWorkItemStatusIcon(
 }
 
 @Composable
-private fun GithubWorkItemMeta(icon: ImageVector, text: String) {
+private fun GithubWorkItemMeta(icon: ImageVector, text: String, modifier: Modifier = Modifier) {
     val color = GlasmioTheme.colors.secondaryContent
     Row(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -174,50 +184,27 @@ private fun GithubWorkItemMeta(icon: ImageVector, text: String) {
     }
 }
 
+
 @Composable
-fun GithubWorkItemPlaceholder(modifier: Modifier = Modifier) {
+internal fun WorkItemSkeleton() {
     val styles = GlasmioTheme.textStyles
-    GithubLoadingCard(
-        loading = true,
-        modifier = modifier,
-        placeholder = {
-            Column(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AvatarPlaceholder(GithubActivityAuthorAvatarSize)
-                    Column(
-                        Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        TextLinePlaceholder(styles.subheadline, fraction = 0.34f)
-                        TextLinePlaceholder(styles.caption1, fraction = 0.5f)
-                    }
-                    TextPlaceholder(
-                        Modifier.width(20.dp),
-                        height = 20.dp,
-                        fraction = 1f,
-                        corner = PlaceholderTokens.BlockCorner,
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextLinePlaceholder(githubWorkItemTitleStyle(), fraction = 0.76f)
-                    TextLinePlaceholder(styles.footnote, fraction = 0.92f)
-                    TextLinePlaceholder(styles.footnote, fraction = 0.58f)
-                }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextLinePlaceholder(styles.footnote, Modifier.width(112.dp))
-                    AvatarPlaceholder(24.dp)
-                }
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            AvatarPlaceholder(GithubActivityAuthorAvatarSize)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextLinePlaceholder(styles.subheadline, fraction = 0.34f)
+                TextLinePlaceholder(styles.caption1, fraction = 0.5f)
             }
-        },
-    ) {}
+            TextPlaceholder(Modifier.width(20.dp), height = 20.dp, fraction = 1f, corner = PlaceholderTokens.BlockCorner)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextLinePlaceholder(githubWorkItemTitleStyle(), fraction = 0.76f)
+            TextLinePlaceholder(styles.footnote, fraction = 0.92f)
+            TextLinePlaceholder(styles.footnote, fraction = 0.58f)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            TextLinePlaceholder(styles.footnote, Modifier.width(112.dp))
+            AvatarPlaceholder(24.dp)
+        }
+    }
 }

@@ -39,7 +39,7 @@ internal fun WorkReviewRequestsSheet(
     val live = state.editor?.takeIf { it.property == WorkProperty.Reviewers }
     // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
     var retained by remember { mutableStateOf<WorkPropertyEditor?>(null) }
-    if (live != null) retained = live
+    androidx.compose.runtime.SideEffect { if (live != null) retained = live }
     val editor = live ?: retained
     LaunchedEffect(viewModel) { viewModel?.edit(WorkProperty.Reviewers) }
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)

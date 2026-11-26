@@ -39,11 +39,6 @@ fun ProfilePage(
     ) {
         viewModel.refresh()
     }
-    if (
-        state == ProfileUiState.Error || (state as? ProfileUiState.Content)?.refreshFailed == true
-    ) {
-        GithubLoadFailureToast(Unit, strings.Profile.LoadFailed)
-    }
     if (statusEditor?.let { !it.visible && it.failed } == true) {
         GithubLoadFailureToast(Unit, strings.Profile.StatusSaveFailed)
     }
@@ -59,6 +54,8 @@ fun ProfilePage(
         ProfileAccountContent(
             state = state,
             strings = strings.Profile,
+            onRetryProfile = viewModel::refresh,
+            onRetryReadme = viewModel::retryReadme,
             onEditStatus = viewModel::openStatusEditor,
             onOpenSettings = onOpenSettings,
             onOpenFollowing = onOpenFollowing,

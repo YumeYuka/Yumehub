@@ -213,46 +213,37 @@ class ProfileRepository(
                 "GitHub returned a different profile"
             }
             val profile = user.toProfile()
-            return if (profile.isOrganization) loadOrganizationReadme(expected, profile)
-            else profile
+            if (!profile.isOrganization) return profile
+            return try {
+                loadProfileReadme(expected, profile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                profile.copy(readmeResolved = false)
+            }
         }
         if (unavailable) throw ProfileUnavailableException()
         throw ProfileException()
     }
 
-    private suspend fun loadOrganizationReadme(
-        expected: String,
-        profile: ProfileDto,
-    ): ProfileDto =
-        try {
-            val organization =
-                GithubGraphQlSession(graphQlApi, tokenStore, expected)
-                    .execute(
-                        OrganizationReadmeQuery,
-                        buildJsonObject { put("login", profile.login) },
-                    )
-                    .graphObject("organization")
-            check(organization.graphRequiredText("login").equals(profile.login, true))
-            val readme = organization["readme"]
-            if (readme == JsonNull) {
-                profile.copy(readmeResolved = true)
-            } else {
-                val payload = readme as? JsonObject ?: throw ProfileException()
-                val html = payload.graphText("contentHTML") ?: throw ProfileException()
-                val path = payload.graphRequiredText("path")
-                if (html.length > 4 * 1024 * 1024 || !isRepositoryContentPath(path))
-                    throw ProfileException()
-                profile.copy(
-                    readmeHtml = html.takeIf(String::isNotBlank),
-                    readmePath = path,
-                    readmeResolved = true,
-                )
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            profile.copy(readmeResolved = false)
+    /** Retry only the document; a missing document clears the previous body. */
+    suspend fun loadProfileReadme(expected: String, profile: ProfileDto): ProfileDto {
+        val session = GithubGraphQlSession(graphQlApi, tokenStore, expected)
+        val query = if (profile.isOrganization) OrganizationReadmeQuery else UserReadmeQuery
+        val owner = session.execute(query, buildJsonObject { put("login", profile.login) })
+            .graphObject(if (profile.isOrganization) "organization" else "user")
+        check(owner.graphRequiredText("login").equals(profile.login, ignoreCase = true))
+        if (profile.nodeId != null) check(owner.graphRequiredText("id") == profile.nodeId)
+        val readme = owner["readme"]
+        if (readme == JsonNull || owner["showProfileReadme"]?.jsonPrimitive?.contentOrNull == "false") {
+            return profile.copy(readmeHtml = null, readmePath = null, readmeResolved = true)
         }
+        val payload = readme as? JsonObject ?: throw ProfileException()
+        val html = payload.graphText("contentHTML") ?: throw ProfileException()
+        val path = payload.graphRequiredText("path")
+        if (html.length > 4 * 1024 * 1024 || !isRepositoryContentPath(path)) throw ProfileException()
+        return profile.copy(readmeHtml = html.takeIf(String::isNotBlank), readmePath = path, readmeResolved = true)
+    }
 
     suspend fun setFollowing(expected: String, userId: String, selected: Boolean): Boolean {
         val session = GithubGraphQlSession(graphQlApi, tokenStore, expected)
@@ -446,11 +437,20 @@ private val OrganizationReadmeQuery =
     """
     query UserOrganizationQuery(${'$'}login: String!) {
         organization(login: ${'$'}login) {
-            login readme { contentHTML path }
+            id login readme { contentHTML path }
         }
     }
     """
         .trimIndent()
+
+private val UserReadmeQuery =
+    """
+    query UserReadme(${'$'}login: String!) {
+        user(login: ${'$'}login) {
+            id login showProfileReadme readme: profileReadme { contentHTML path }
+        }
+    }
+    """.trimIndent()
 
 private fun userProfileQuery(
     includePrivateFields: Boolean,

@@ -13,6 +13,7 @@ data class WorkspacesRoute(
     val anchor: String? = null,
     val gitObject: GithubRepositoryLocation.GitObject? = null,
     val linkUrl: String? = null,
+    val license: Boolean = false,
 ) : GithubRoute
 
 /** 当前分支的提交历史页面。 */

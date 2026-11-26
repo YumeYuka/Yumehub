@@ -7,26 +7,37 @@ class GithubPagingSlotKeys(private val prefix: String) {
     private var pendingKey: String? = null
     private var initialKeys = emptyList<String>()
     private var sequence = 0L
+    internal var rejectedFrame: java.lang.ref.WeakReference<List<*>>? = null
+        private set
+
+    internal fun rejectFrame(frame: List<*>) {
+        if (rejectedFrame?.get() !== frame) rejectedFrame = java.lang.ref.WeakReference(frame)
+    }
 
     fun update(
         ids: List<String?>,
         loading: Boolean,
         initialLoading: Boolean = false,
     ): List<String> {
-        if (initialLoading) {
+        if (initialLoading && ids.isEmpty()) {
             if (initialKeys.isEmpty()) initialKeys = List(4) { "$prefix:initial:${sequence++}" }
             return initialKeys
         }
-        val currentIds = ids.filterNotNull().toSet()
+        val currentIds = ids.filterNotNullTo(mutableSetOf())
         aliases.keys.retainAll(currentIds)
         initialKeys.forEachIndexed { index, key -> ids.getOrNull(index)?.let { aliases[it] = key } }
         initialKeys = emptyList()
         pendingKey?.let { key ->
-            ids.firstOrNull { it != null && it !in previousIds }
-                ?.let { id ->
+            // A prepended entity must never inherit the append slot.
+            val lastExisting = ids.indexOfLast { it != null && it in previousIds }
+            if (lastExisting >= 0) {
+                for (index in lastExisting + 1 until ids.size) {
+                    val id = ids[index] ?: continue
                     aliases[id] = key
                     pendingKey = null
+                    break
                 }
+            }
         }
         if (loading) {
             if (pendingKey == null) pendingKey = "$prefix:loading:${sequence++}"

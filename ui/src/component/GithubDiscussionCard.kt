@@ -25,14 +25,23 @@ import io.github.yumeyucca.lucide.ThumbsUp
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionListItemDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 
 /** 仓库与个人讨论列表共用的卡片；分类、标签和回复数按需出现。 */
 @Composable
 fun GithubDiscussionCard(
-    item: DiscussionListItemDto,
+    item: DiscussionListItemDto?,
     onClick: (() -> Unit)? = null,
 ) {
+    GithubLoadingCard(item == null, deferUntilEntry = false, placeholder = { WorkItemSkeleton() }) {
+        if (item != null) DiscussionCardContent(item, onClick)
+    }
+}
+
+@Composable
+private fun DiscussionCardContent(item: DiscussionListItemDto, onClick: (() -> Unit)?) {
     val strings = LocalGithubStrings.current
     val colors = GlasmioTheme.colors
     val styles = GlasmioTheme.textStyles
@@ -40,7 +49,7 @@ fun GithubDiscussionCard(
     val meta =
         listOfNotNull(githubRelativeTime(item.createdAt, strings.Notifications), tag)
             .joinToString(" · ")
-    GithubActivityCard(
+    GithubActivityCardContent(
         onClick = onClick,
         header = {
             Row(
@@ -68,8 +77,7 @@ fun GithubDiscussionCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        item.authorAssociation?.let(strings.Activity.DiscussionAuthorRole)?.let {
-                            role ->
+                        GithubCardField(item.authorAssociation?.let(strings.Activity.DiscussionAuthorRole)) { role ->
                             Text(
                                 role,
                                 style = styles.caption1,
@@ -78,14 +86,15 @@ fun GithubDiscussionCard(
                             )
                         }
                     }
-                    if (meta.isNotEmpty())
+                    GithubCardField(meta.takeIf(String::isNotEmpty)) { value ->
                         Text(
-                            meta,
+                            value,
                             style = styles.caption1,
                             color = colors.secondaryContent,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
                 }
             }
         },
@@ -145,7 +154,9 @@ fun GithubDiscussionCard(
                 if (item.closed) {
                     GithubDiscussionStatusIcon(closed = true, size = 16.dp)
                 }
-                GithubDiscussionParticipantAvatars(item.commentAuthors)
+                GithubCardField(item.commentAuthors.takeIf { it.isNotEmpty() }) { authors ->
+                    GithubDiscussionParticipantAvatars(authors)
+                }
             }
         },
     )

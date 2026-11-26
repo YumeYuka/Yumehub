@@ -29,7 +29,6 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RefreshCw
 import java.time.Duration
 import java.time.Instant
-import moe.yumeyuka.yumehub.core.model.GithubRepositoryLocation
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.WorkspaceCommit
 import moe.yumeyuka.yumehub.data.repository.WorkspaceEntry
@@ -37,7 +36,6 @@ import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
@@ -55,28 +53,15 @@ import org.koin.core.parameter.parametersOf
 
 @Composable
 fun WorkspacesPage(
-    owner: String,
-    name: String,
-    ref: String? = null,
-    path: String = "",
-    file: Boolean = false,
-    anchor: String? = null,
-    gitObject: GithubRepositoryLocation.GitObject? = null,
-    linkUrl: String? = null,
+    route: WorkspacesRoute,
     onOpenCommitHistory: (String) -> Unit,
 ) {
     val locale = LocalGithubStrings.current
     val strings = locale.Workspaces
     val viewModel: WorkspacesViewModel =
         koinViewModel(
-            key =
-                "workspaces-$owner-$name-$ref-$path-$file-$anchor-${gitObject?.refAndPath}-" +
-                    "${gitObject?.directory}-${gitObject?.anchor}-$linkUrl",
-            parameters = {
-                parametersOf(
-                    WorkspacesRoute(owner, name, ref, path, file, anchor, gitObject, linkUrl),
-                )
-            },
+            key = "workspaces-$route",
+            parameters = { parametersOf(route) },
         )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     GithubRefreshEffect(
@@ -92,8 +77,7 @@ fun WorkspacesPage(
     val context = LocalContext.current
     val latestStrings by rememberUpdatedState(strings)
     val latestContext by rememberUpdatedState(context)
-    val listState = LocalGithubPageState.current?.listState("workspaces")
-    var scrolledPath by rememberSaveable { mutableStateOf(state.path) }
+    val listState = LocalGithubPageState.current?.listState("workspaces:${state.ref}:${state.path}")
     var branchPickerVisible by rememberSaveable { mutableStateOf(false) }
     val entries = (state.entries as? WorkspacesLoad.Ready)?.value.orEmpty()
     val entriesLoading =
@@ -129,21 +113,9 @@ fun WorkspacesPage(
             host.onOpenEditor(pendingEditor)
         }
     }
-    LaunchedEffect(state.path, listState) {
-        if (state.path == scrolledPath) return@LaunchedEffect
-        scrolledPath = state.path
-        listState?.scrollToItem(0)
-    }
     if (state.path.isNotEmpty()) {
         GithubBackHandler { if (host.navigationEnabled) viewModel.navigateUp() }
     }
-    val failure =
-        (state.repository as? WorkspacesLoad.Error)?.message
-            ?: (state.entries as? WorkspacesLoad.Error)?.message
-            ?: (state.commit as? WorkspacesLoad.Error)?.message
-            ?: (state.entries as? WorkspacesLoad.Ready)?.refreshError
-            ?: (state.commit as? WorkspacesLoad.Ready)?.refreshError
-    GithubLoadFailureToast(failure, failure.orEmpty())
     GithubPage(
         title = strings.Title,
         onBack = { if (!viewModel.navigateUp()) host.onBack() },
@@ -151,7 +123,7 @@ fun WorkspacesPage(
         itemSpacing = 0.dp,
         actions = {
             val failed =
-                gitObject != null &&
+                (route.gitObject != null || route.license) &&
                     (state.repository is WorkspacesLoad.Error ||
                         state.entries is WorkspacesLoad.Error)
             val canBrowse = host.navigationEnabled && state.ref != null
@@ -168,7 +140,7 @@ fun WorkspacesPage(
                         if (host.navigationEnabled) state.ref?.let(onOpenCommitHistory)
                     },
                 if (failed)
-                    linkUrl?.let {
+                    route.linkUrl?.let {
                         toolbarIcon(
                             Lucide.ExternalLink,
                             locale.Repository.OpenInBrowser,
@@ -190,14 +162,17 @@ fun WorkspacesPage(
         workspacesScreen(
             state = state,
             strings = strings,
-            enabled = true,
+            enabled = host.navigationEnabled,
             entries = entries,
             entryKeys = entryKeys,
+            onRetryEntries = viewModel::retry,
             onRetryCommit = { if (host.navigationEnabled) viewModel.retryCommit() },
             onOpenCommitHistory = {
                 val commit = state.commit
                 if (host.navigationEnabled && commit is WorkspacesLoad.Ready)
-                    commit.value?.oid?.let { open("https://github.com/$owner/$name/commit/$it") }
+                    commit.value?.oid?.let {
+                        open("https://github.com/${route.owner}/${route.name}/commit/$it")
+                    }
             },
             onOpenDirectory = { if (host.navigationEnabled) viewModel.openDirectory(it) },
             onOpenFile = { path, name, submoduleGitUrl ->
@@ -226,11 +201,20 @@ private fun LazyListScope.workspacesScreen(
     enabled: Boolean,
     entries: List<WorkspaceEntry>,
     entryKeys: List<String>,
+    onRetryEntries: () -> Unit,
     onRetryCommit: () -> Unit,
     onOpenCommitHistory: () -> Unit,
     onOpenDirectory: (String) -> Unit,
     onOpenFile: (String, String, String?) -> Unit,
 ) {
+    val directoryError = (state.repository as? WorkspacesLoad.Error)?.message
+        ?: (state.entries as? WorkspacesLoad.Error)?.message
+        ?: (state.entries as? WorkspacesLoad.Ready)?.refreshError
+    if (directoryError != null) {
+        item(key = "workspace-directory-error") {
+            GlasmioGroupedList { WorkspaceRetryRow(directoryError, onRetryEntries) }
+        }
+    }
     if (state.repository is WorkspacesLoad.Error) return
     item(key = "workspaces-commit") {
         GlasmioGroupedList(modifier = Modifier.padding(bottom = 12.dp)) {
@@ -315,16 +299,23 @@ private fun CommitBlock(
         placeholder = { WorkspaceCommitPlaceholder() },
     ) {
         when (val commit = state.commit) {
-            WorkspacesLoad.Loading,
-            is WorkspacesLoad.Error -> Unit
-            is WorkspacesLoad.Ready ->
+            WorkspacesLoad.Loading -> Unit
+            is WorkspacesLoad.Error -> WorkspaceRetryRow(commit.message, onRetry)
+            is WorkspacesLoad.Ready -> {
                 WorkspaceCommitCard(
                     commit = commit.value,
                     strings = strings,
-                    onClick = onOpenHistory.takeIf { enabled },
+                    onClick = onOpenHistory.takeIf { enabled && commit.value?.oid != null },
                 )
+            }
         }
     }
+    (state.commit as? WorkspacesLoad.Ready)?.refreshError?.let { WorkspaceRetryRow(it, onRetry) }
+}
+
+@Composable
+internal fun WorkspaceRetryRow(message: String, onRetry: () -> Unit) {
+    GlasmioListRow(title = message, detail = LocalGithubStrings.current.Common.Retry, onClick = onRetry)
 }
 
 @Composable

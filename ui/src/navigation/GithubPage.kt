@@ -83,13 +83,8 @@ fun GithubPage(
     horizontalPadding: Dp = 12.dp,
     itemSpacing: Dp = 10.dp,
     backgroundColor: Color? = null,
-    listTransition: GithubListTransition? = null,
     contentHeader: (@Composable () -> Unit)? = null,
     bottomContent: (@Composable () -> Unit)? = null,
-    detailPresentation: GithubDetailPresentation? = null,
-    onRetryDetail: () -> Unit = {},
-    detailHeaderPlaceholder: @Composable () -> Unit = {},
-    detailBottomPlaceholder: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
     val host = requireNotNull(LocalGithubPageHost.current) { "GithubPage 必须由 GithubPageHost 提供" }
@@ -151,13 +146,8 @@ fun GithubPage(
             horizontalPadding = horizontalPadding,
             itemSpacing = itemSpacing,
             backgroundColor = backgroundColor,
-            listTransition = listTransition,
             contentHeader = contentHeader,
             bottomContent = bottomContent,
-            detailPresentation = detailPresentation,
-            onRetryDetail = onRetryDetail,
-            detailHeaderPlaceholder = detailHeaderPlaceholder,
-            detailBottomPlaceholder = detailBottomPlaceholder,
         )
     }
 }

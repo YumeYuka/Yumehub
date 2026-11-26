@@ -9,16 +9,11 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.cachedIn
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
 import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
@@ -45,41 +40,13 @@ internal class ActionsHistoryModel(
     fun dispatch(workflowId: String, branch: String, inputs: Map<String, String>): Boolean =
         commands.submit(target(workflowId)) { workflows.dispatch(account, workflowId, branch, inputs) }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val runs =
-        selected
-            .flatMapLatest { workflow ->
-                if (workflow == null) workflows.history(account, route.owner, route.name)
-                else
-                    activities.items(
-                        account,
-                        route.owner,
-                        route.name,
-                        RepositoryActivityKind.WorkflowRuns,
-                        workflow.id,
-                    )
-            }
-            .cachedIn(viewModelScope)
+    fun runs(workflowId: String?) =
+        if (workflowId == null) workflows.history(account, route.owner, route.name)
+        else activities.items(account, route.owner, route.name, RepositoryActivityKind.WorkflowRuns, workflowId)
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val revalidation: StateFlow<RevalidationState> =
-        selected
-            .flatMapLatest { workflow ->
-                if (workflow == null) {
-                    workflows.revalidation(account, workflows.historyKey(route.owner, route.name))
-                } else {
-                    activities.revalidation(
-                        account,
-                        activities.itemsKey(
-                            route.owner,
-                            route.name,
-                            RepositoryActivityKind.WorkflowRuns,
-                            workflow.id,
-                        ),
-                    )
-                }
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    fun revalidation(workflowId: String?) =
+        if (workflowId == null) workflows.revalidation(account, workflows.historyKey(route.owner, route.name))
+        else activities.revalidation(account, activities.itemsKey(route.owner, route.name, RepositoryActivityKind.WorkflowRuns, workflowId))
 
     fun retryRevalidation() {
         val workflow = selected.value
@@ -112,6 +79,9 @@ internal fun ActionsHistoryPage(
         )
     val selection by vm.selected.collectAsState()
     val selected = selection
+    val workflowId = selected?.id
+    val runs = remember(vm, workflowId) { vm.runs(workflowId) }
+    val revalidation = remember(vm, workflowId) { vm.revalidation(workflowId) }
     val target = selected?.id?.let(vm::target)
     val command = vm.commands.stateFor(target)
     val strings = LocalGithubStrings.current
@@ -150,16 +120,15 @@ internal fun ActionsHistoryPage(
             }
         }
     }
-    GithubLoadFailureToast(failed.takeIf { it && filter }, activity.LoadFailed)
     GithubActivityListPage(
         title = strings.Repository.ActionsTitle,
-        source = vm.runs,
+        source = runs,
         subtitle = when (command?.phase) {
             WritePhase.PENDING -> "${selected?.name} · ${strings.Common.MutationPending}"
             WritePhase.UNCERTAIN -> "${selected?.name} · ${strings.Common.MutationUncertain}"
             else -> selected?.name
         },
-        revalidation = vm.revalidation,
+        revalidation = revalidation,
         onRetryRevalidation = vm::retryRevalidation,
         contentKey = "$route:${selected?.id}",
         canOpen = { it.targetId != null },
@@ -224,7 +193,8 @@ internal fun ActionsHistoryPage(
                             when {
                                 failed ->
                                     GlasmioListRow(
-                                        title = strings.Common.Retry,
+                                        title = activity.LoadFailed,
+                                        detail = strings.Common.Retry,
                                         onClick = { retry++ },
                                     )
                                 !showAll && options.isEmpty() ->

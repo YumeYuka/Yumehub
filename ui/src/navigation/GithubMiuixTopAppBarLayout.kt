@@ -67,7 +67,6 @@ import androidx.compose.ui.util.lerp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import kotlin.math.abs
 import kotlinx.coroutines.launch
-import moe.yumeyuka.yumehub.ui.component.placeholders.DetailTitlePlaceholder
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
@@ -102,7 +101,6 @@ internal fun GithubMiuixTopAppBarLayout(
     largeTitleOnClick: (() -> Unit)? = null,
     largeTitleBlurRadius: Dp = 0.dp,
 ) {
-    val detailPresentation = LocalGithubDetailPresentation.current?.chromeState
     val titleClip = remember { TopAppBarTitleClip() }
     // Producer lambdas — reads stay in layout/draw phases so scroll never recomposes this subtree.
     val scrolledOffset = remember(scrollBehavior) { { scrollBehavior?.state?.heightOffset ?: 0f } }
@@ -138,10 +136,11 @@ internal fun GithubMiuixTopAppBarLayout(
                 scrollBehavior?.state?.let { state -> state.collapsedFraction * 3f >= 1f } ?: false
             }
         }
-    val smallTitleAlpha = remember { Animatable(if (smallTitleVisible) 1f else 0f) }
-    val smallTitleTranslationY = remember { Animatable(if (smallTitleVisible) 0f else 20f) }
+    val collapseState = scrollBehavior?.state
+    val smallTitleAlpha = remember(collapseState) { Animatable(if (smallTitleVisible) 1f else 0f) }
+    val smallTitleTranslationY = remember(collapseState) { Animatable(if (smallTitleVisible) 0f else 20f) }
 
-    LaunchedEffect(smallTitleVisible) {
+    LaunchedEffect(collapseState, smallTitleVisible) {
         if (smallTitleVisible) {
             val showSpec = folmeSpring<Float>(damping = 1.0f, response = 0.3f)
             launch { smallTitleAlpha.animateTo(1f, showSpec) }
@@ -172,7 +171,6 @@ internal fun GithubMiuixTopAppBarLayout(
                     translationY = smallTitleTranslationY.value
                 },
             ) {
-                GithubDetailRegion(detailPresentation, { DetailTitlePlaceholder(compact = true) }) {
                     Text(
                         text = title,
                         color = animatedTitleColor,
@@ -188,7 +186,6 @@ internal fun GithubMiuixTopAppBarLayout(
                             Modifier.clipTopAppBarTitle(titleClip) { titleClip.titleOrigin }
                                 .padding(horizontal = titlePadding),
                     )
-                }
             }
             Box(
                 Modifier.layoutId("actionIcons").padding(end = actionIconPadding),
@@ -234,11 +231,7 @@ internal fun GithubMiuixTopAppBarLayout(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     largeTitleEyebrow?.invoke()
-                    GithubDetailRegion(
-                        detailPresentation,
-                        { DetailTitlePlaceholder() },
-                        Modifier.fillMaxWidth(),
-                    ) {
+                    Box(Modifier.fillMaxWidth()) {
                         val baseTitleStyle =
                             largeTitleStyle ?: GlasmioTheme.typography.headlineLarge
                         if (largeTitleStyle != null && largeTitleMaxLines > 1) {

@@ -23,7 +23,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -114,7 +113,6 @@ private fun NativeHtmlContainer(
     val minimumHeight = with(density) { 1.toDp() }
     val latestActions by rememberUpdatedState(actions)
     var ready by remember(content, documentRevision) { mutableStateOf(false) }
-    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var requestedAnchor by remember { mutableStateOf<String?>(null) }
     var anchorRequestVersion by remember { mutableStateOf(0) }
     val openAnchor: (String) -> Unit = { anchor ->
@@ -133,19 +131,6 @@ private fun NativeHtmlContainer(
         withFrameNanos {}
         requesters[target.nodeKey]?.bringIntoView()
     }
-    LaunchedEffect(content, documentRevision, coordinates) {
-        withFrameNanos {}
-        val laidOut = coordinates
-        if (
-            !ready &&
-                laidOut?.isAttached == true &&
-                laidOut.size.width > 0 &&
-                laidOut.size.height > 0
-        ) {
-            ready = true
-            latestActions.onReady?.invoke()
-        }
-    }
     BoxWithConstraints(
         modifier =
             modifier
@@ -156,7 +141,12 @@ private fun NativeHtmlContainer(
                         Modifier.verticalScroll(scrollState)
                     else Modifier,
                 )
-                .onGloballyPositioned { coordinates = it },
+                .onGloballyPositioned { coordinates ->
+                    if (!ready && coordinates.size.width > 0 && coordinates.size.height > 0) {
+                        ready = true
+                        latestActions.onReady?.invoke()
+                    }
+                },
         propagateMinConstraints = true,
     ) {
         val context =

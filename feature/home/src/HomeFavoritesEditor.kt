@@ -28,7 +28,6 @@ import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
@@ -65,7 +64,6 @@ internal fun HomeFavoritesEditor(
         }
         pane.loading = false
     }
-    if (active) GithubLoadFailureToast(pane.error, strings.Home.RepositoryLoadFailed)
 
     val candidates =
         remember(pane.items, draft?.selectedIds, searching) {
@@ -75,34 +73,26 @@ internal fun HomeFavoritesEditor(
     key(query) {
         LazyColumn(
             modifier = modifier.fillMaxWidth(),
+            state = pane.scroll,
             userScrollEnabled = enabled,
             contentPadding = PaddingValues(12.dp),
         ) {
             if (!searching) {
                 item(key = "pinned") {
-                    if (draft != null) {
-                        HomeReorderGroup(
-                            title = strings.Home.PinnedRepositories,
-                            items = draft.selected,
-                            emptyTitle = strings.Home.NoFavorites,
-                            strings = strings.Home,
-                            shown = true,
-                            label = { it.fullName.orEmpty() },
-                            leading = { FavoriteOwnerAvatar(it) },
-                            onToggle = { if (enabled) favorites.toggleFavorite(it) },
-                            onReorder = { if (enabled) favorites.reorderFavorites(it) },
-                        )
-                    } else {
-                        GithubSectionHeader(strings.Home.PinnedRepositories)
-                        GlasmioGroupedList {
-                            if (edit.error == HomeFavoritesEditError.Load) {
-                                GlasmioListRow(
-                                    title = strings.Common.Retry,
-                                    onClick = favorites::loadDraft,
-                                )
-                            } else TitleRowPlaceholder(showTopSeparator = false)
-                        }
-                    }
+                    val failed = draft == null && edit.error == HomeFavoritesEditError.Load
+                    HomeReorderGroup(
+                        title = strings.Home.PinnedRepositories,
+                        items = draft?.selected.orEmpty(),
+                        emptyTitle = if (failed) strings.Common.Retry else strings.Home.NoFavorites,
+                        loading = draft == null && !failed,
+                        onEmptyClick = if (failed) favorites::loadDraft else null,
+                        strings = strings.Home,
+                        shown = true,
+                        label = { it.fullName.orEmpty() },
+                        leading = { FavoriteOwnerAvatar(it) },
+                        onToggle = { if (enabled) favorites.toggleFavorite(it) },
+                        onReorder = { if (enabled) favorites.reorderFavorites(it) },
+                    )
                 }
             }
             if (!searching && candidates.isNotEmpty()) {
@@ -134,7 +124,6 @@ internal fun HomeFavoritesEditor(
                         last = index == candidates.lastIndex,
                         checked = draft?.selectedIds?.contains(repo.nodeId) == true,
                         enabled = enabled && draft != null,
-                        modifier = Modifier.animateItem(),
                         onToggle = favorites::toggleFavorite,
                     )
                 }
@@ -143,7 +132,8 @@ internal fun HomeFavoritesEditor(
                 pane.error != null ->
                     item {
                         GlasmioListRow(
-                            title = strings.Common.Retry,
+                            title = strings.Home.RepositoryLoadFailed,
+                            detail = strings.Common.Retry,
                             enabled = enabled,
                             onClick = pane::loadMore,
                         )
@@ -170,6 +160,7 @@ internal fun HomeFavoritesEditor(
 }
 
 internal class FavoriteCandidates {
+    val scroll = androidx.compose.foundation.lazy.LazyListState()
     var request by mutableStateOf(0)
         private set
 
@@ -200,13 +191,12 @@ private fun FavoriteRepositoryRow(
     last: Boolean,
     checked: Boolean,
     enabled: Boolean,
-    modifier: Modifier,
     onToggle: (RepositoryDto) -> Unit,
 ) {
     GlasmioGroupedList(
         framed = false,
         modifier =
-            modifier.glasmioGroupedListBackground(
+            Modifier.glasmioGroupedListBackground(
                 ContinuousRoundedRectangle(
                     topStart = if (first) 26.dp else 0.dp,
                     topEnd = if (first) 26.dp else 0.dp,

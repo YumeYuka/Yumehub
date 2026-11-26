@@ -1,8 +1,8 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 
 internal val GithubActivityAuthorAvatarSize = 34.dp
 
@@ -24,7 +25,7 @@ internal fun GithubActivityCardSummary(
     titleMaxLines: Int = 3,
 ) {
     val colors = GlasmioTheme.colors
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.fillMaxWidth()) {
         Text(
             title,
             style = titleStyle,
@@ -32,9 +33,10 @@ internal fun GithubActivityCardSummary(
             maxLines = titleMaxLines,
             overflow = TextOverflow.Ellipsis,
         )
-        bodyPreview?.takeIf(String::isNotBlank)?.let { preview ->
+        GithubCardField(bodyPreview?.takeIf(String::isNotBlank)) { preview ->
             Text(
                 preview,
+                modifier = Modifier.padding(top = 4.dp),
                 style = bodyStyle,
                 fontWeight = FontWeight.Normal,
                 color = colors.secondaryContent,

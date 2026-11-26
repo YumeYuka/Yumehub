@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
 import android.net.Uri
+import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
@@ -26,7 +27,7 @@ import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 
 @Composable
-internal fun WorkDescriptionCard(
+internal fun WorkDescriptionContent(
     entry: CollaborationItemDto,
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
@@ -61,7 +62,6 @@ internal fun WorkDescriptionCard(
       add(GlasmioCascadingMenuItem(title = strings.Common.Edit, onClick = viewModel::openBodyEditor))
     }
   }
-  GithubReadingGroup {
     GithubCommentAuthorHeader(
         entry.user?.login,
         entry.user?.avatarUrl,
@@ -77,7 +77,8 @@ internal fun WorkDescriptionCard(
         nodeId = entry.nodeId,
         inCommentCard = true,
     )
-    entry.nodeId?.let { subjectId ->
+    val subjectId = entry.nodeId
+    if (subjectId != null) GithubReadingFooter {
       GithubReactionBar(
           subjectKey = subjectId,
           sourceReactions = entry.reactions,
@@ -88,7 +89,6 @@ internal fun WorkDescriptionCard(
         if (navigationEnabled) viewModel.toggleBodyReaction(content, reacted)
       }
     }
-  }
 }
 
 @Composable
@@ -132,7 +132,8 @@ internal fun CommentDiscussionEntry(
           onHide = { reason -> viewModel.hideComment(shownComment, reason) },
           onDelete = { viewModel.requestDeleteComment(shownComment) },
       )
-  GithubReadingGroup {
+  val revision = if (shownComment.isMinimized) null else shownComment.bodyHtml?.takeIf(String::isNotBlank) ?: shownComment.body?.takeIf(String::isNotBlank)
+  GithubReadingGroup(documentKey = revision) {
     val common = LocalGithubStrings.current.Common
     val editMarker = write?.editOperationId
     when {
@@ -167,7 +168,7 @@ internal fun CommentDiscussionEntry(
       )
     }
     val subjectId = shownComment.nodeId
-    if (!shownComment.isMinimized && subjectId != null) {
+    if (!shownComment.isMinimized && subjectId != null) GithubReadingFooter {
       GithubReactionBar(
           subjectKey = subjectId,
           sourceReactions = shownComment.reactions,

@@ -102,6 +102,15 @@ internal class ResponseCacheStore(
         commit(session)
     }
 
+    internal suspend fun remove(session: String, key: String, valid: () -> Boolean) = mutex.withLock {
+        if (!valid()) return@withLock
+        prepare(session)
+        val old = entries.remove(key) ?: return@withLock
+        totalBytes -= old.bytes
+        storage.removeValueForKey(old.body)
+        commit(session)
+    }
+
     suspend fun clearOtherSessions(session: String, valid: () -> Boolean) = mutex.withLock {
         if (valid()) prepare(session)
     }

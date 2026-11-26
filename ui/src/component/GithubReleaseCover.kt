@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.github.panpf.sketch.AsyncImage
 import com.kyant.capsule.ContinuousRoundedRectangle
 import moe.yumeyuka.yumehub.data.repository.ReleasePreviewImages
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import org.koin.compose.koinInject
 
 internal val RepositoryCoverShape = ContinuousRoundedRectangle(12.dp)
@@ -21,13 +22,14 @@ fun GithubRepositoryCover(
     description: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    if (imageUrl.isNullOrBlank()) return
     val images: ReleasePreviewImages = koinInject()
-    val url = remember(images, imageUrl) { images.trustedUrl(imageUrl) } ?: return
-    AsyncImage(
-        uri = url,
-        contentDescription = description,
-        modifier = modifier.fillMaxWidth().aspectRatio(1.91f).clip(RepositoryCoverShape),
-        contentScale = ContentScale.Crop,
-    )
+    val url = remember(images, imageUrl) { images.trustedUrl(imageUrl) }
+    GithubCardField(url) { trustedUrl ->
+        AsyncImage(
+            uri = trustedUrl,
+            contentDescription = description,
+            modifier = modifier.fillMaxWidth().aspectRatio(1.91f).clip(RepositoryCoverShape),
+            contentScale = ContentScale.Crop,
+        )
+    }
 }

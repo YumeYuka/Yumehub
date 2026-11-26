@@ -20,6 +20,10 @@ class TokenStore internal constructor(private val externalStorage: KeyValueStora
     private val current
         get() = records.value.firstOrNull() ?: SavedAccount()
 
+    /** Opaque scope for restoring navigation after process recreation. Rotated on reauthorization. */
+    val navigationSessionId: String?
+        get() = current.takeIf { it.login.isNotBlank() && it.accessToken.isNotBlank() }?.cacheSessionId
+
     private val mutableAccounts = MutableStateFlow(avatars(records.value))
     val accounts = mutableAccounts.asStateFlow()
     private val mutableAuthSession = MutableStateFlow(currentAuthSession())

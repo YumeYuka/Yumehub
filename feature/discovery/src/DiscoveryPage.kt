@@ -7,10 +7,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.LoadState
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
@@ -26,10 +23,12 @@ enum class DiscoveryRoute : GithubRoute { Trending, Featured }
 
 @Composable
 fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (RepositoryDto) -> Unit) {
-    val vm: DiscoveryViewModel = koinViewModel(parameters = { parametersOf(account, route) })
+    val vm: DiscoveryViewModel = koinViewModel(key = "discovery:$account:$route", parameters = { parametersOf(account, route) })
     val filters by vm.filters.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     val languages by vm.languages.collectAsStateWithLifecycle()
+    val pages = remember(vm, filters, query) { vm.repositoriesFor(filters, query) }
+    val sourceKey = remember(vm, filters, query) { vm.sourceKey(filters, query) }
     val strings = LocalGithubStrings.current
     val trending = route == DiscoveryRoute.Trending
     val title = if (trending) strings.Explore.Trending else strings.Explore.Featured
@@ -55,17 +54,16 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
         searching, input, { input = it }, vm::search, closeSearch, strings.MyRepositories.Search,
     ) {
         GithubPagingContent(
-            vm.repositories,
-            contentKey = Triple(route, filters, query),
-            revalidation = vm.revalidation,
-            onRetryRevalidation = vm::retryRevalidation,
+            pages,
+            contentKey = Triple(account, sourceKey, query),
+            revalidation = remember(vm, sourceKey) { vm.revalidation(sourceKey) },
+            onRetryRevalidation = { vm.retryRevalidation(sourceKey) },
         ) { paging ->
             val items = paging.items
             val slots = rememberGithubPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
             GithubPage(
                 title = title,
                 listState = paging.listState,
-                listTransition = paging.transition,
                 itemSpacing = 12.dp,
                 actions = {
                     GlasmioIconButton(onClick = { searching = true }) {
@@ -88,13 +86,11 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
                         showCoverPlaceholder = true,
                     )
                 }
-                if (!paging.initialLoading) {
-                    collaborationPagingStatus(
-                        items, title, loadingPlaceholder = {},
-                        emptyMessage = strings.MyRepositories.EmptyFiltered,
-                        emptyIcon = if (trending) Lucide.Flame else Lucide.LayoutGrid,
-                    )
-                }
+                collaborationPagingStatus(
+                    slots, title,
+                    emptyMessage = strings.MyRepositories.EmptyFiltered,
+                    emptyIcon = if (trending) Lucide.Flame else Lucide.LayoutGrid,
+                )
                 pageSearchClearance(searching)
             }
         }

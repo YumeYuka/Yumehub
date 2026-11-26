@@ -65,13 +65,13 @@ fun GithubActivityListPage(
             },
             titleSubtitle = subtitle,
             listState = paging.listState,
-            listTransition = paging.transition,
             contentHeader = header,
             itemSpacing = 12.dp,
         ) {
             githubPagingItems(slots, contentType = "activity-row") { entry ->
                 GithubLoadingCard(
                     loading = entry == null,
+                    deferUntilEntry = false,
                     placeholder = { OrganizationRowPlaceholder() },
                 ) {
                     if (entry != null) {
@@ -103,6 +103,7 @@ fun GithubActivityListPage(
                     }
                 }
             }
+            collaborationPagingStatus(slots, title, emptyIcon = icon)
         }
     }
 }

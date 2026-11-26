@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,10 +20,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
 import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.placeholders.*
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
@@ -34,6 +36,8 @@ import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 internal fun LazyListScope.ProfileAccountContent(
     state: ProfileUiState,
     strings: GithubStrings_Profile,
+    onRetryProfile: () -> Unit,
+    onRetryReadme: () -> Unit,
     onEditStatus: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenFollowing: () -> Unit,
@@ -41,36 +45,21 @@ internal fun LazyListScope.ProfileAccountContent(
     onOpenStarred: (String) -> Unit,
     onOpenOrganizations: (String) -> Unit,
 ) {
+    val content = state as? ProfileUiState.Content
+    val profile = content?.profile
     if (state != ProfileUiState.Error) {
-        val profile = (state as? ProfileUiState.Content)?.profile
-        item(key = "profile-header") {
-            ProfileHeader(profile, strings, onEditStatus, onOpenFollowing)
+        item(key = "profile-header") { ProfileHeader(profile, strings, onEditStatus, onOpenFollowing) }
+    }
+    item(key = "profile-actions") { ProfileActionCards(strings, onOpenSettings) }
+    if (state == ProfileUiState.Error || content?.refreshFailed == true) {
+        item(key = "profile-error") { ProfileRetryRow(strings.LoadFailed, onRetryProfile) }
+    }
+    if (state != ProfileUiState.Error) {
+        item(key = "profile-details") { ProfileDetailsSection(profile, strings) }
+        item(key = "profile-collections") {
+            ProfileCollectionsCard(profile, strings, onOpenRepositories, onOpenStarred, onOpenOrganizations)
         }
-        item(key = "profile-actions") {
-            ProfileActionCards(strings, onOpenSettings, loading = profile == null)
-        }
-        readingItem(key = "profile-details-and-readme") {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                DisableSelection {
-                    ProfileDetailsSection(profile, strings)
-                    ProfileCollectionsCard(
-                        profile,
-                        strings,
-                        onOpenRepositories,
-                        onOpenStarred,
-                        onOpenOrganizations,
-                    )
-                }
-                GithubContentVisibility(
-                    visible = profile == null || profile.readmeHtml != null,
-                    animateEnter = false,
-                ) {
-                    ProfileReadmeContent(profile)
-                }
-            }
-        }
+        readingItem(key = "profile-readme") { ProfileReadmeContent(profile, onRetryReadme) }
     }
 }
 
@@ -79,7 +68,6 @@ internal fun LazyListScope.ProfileAccountContent(
 private fun ProfileActionCards(
     strings: GithubStrings_Profile,
     onOpenSettings: () -> Unit,
-    loading: Boolean,
 ) {
     val openExternal = rememberExternalUriHandler()
     val profileEditUrl = "https://github.com/settings/profile"
@@ -88,21 +76,18 @@ private fun ProfileActionCards(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         ProfileActionButton(
-            loading = loading,
             label = strings.SetAvatar,
             icon = Lucide.Camera,
             modifier = Modifier.weight(1f),
             onClick = { openExternal(profileEditUrl) },
         )
         ProfileActionButton(
-            loading = loading,
             label = strings.EditProfile,
             icon = Lucide.Pencil,
             modifier = Modifier.weight(1f),
             onClick = { openExternal(profileEditUrl) },
         )
         ProfileActionButton(
-            loading = loading,
             label = strings.Settings,
             icon = Lucide.Settings,
             modifier = Modifier.weight(1f),
@@ -113,7 +98,6 @@ private fun ProfileActionCards(
 
 @Composable
 private fun ProfileActionButton(
-    loading: Boolean,
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
@@ -121,10 +105,8 @@ private fun ProfileActionButton(
 ) {
     GlasmioButton(
         onClick = onClick,
-        enabled = !loading,
         modifier = modifier.heightIn(min = 58.dp),
     ) {
-        GithubLoadingContent(loading, placeholder = { ProfileActionPlaceholder() }) {
             Column(
                 Modifier.padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -136,7 +118,6 @@ private fun ProfileActionButton(
                     style = GlasmioTheme.textStyles.footnote.copy(fontSize = 12.sp),
                     maxLines = 1,
                 )
-            }
         }
     }
 }
@@ -150,6 +131,7 @@ internal fun ProfileDetailsSection(
     // 外壳保留；已知资料按实际行数测量，未知时的估算仅用于加载阶段。
     GithubLoadingCard(
         loading = profile == null,
+        deferUntilEntry = false,
         placeholder = { ProfileDetailsPlaceholder() },
     ) {
         if (profile != null) ProfileDetailsRows(profile, strings)
@@ -184,8 +166,8 @@ private fun ProfileDetailsRows(profile: ProfileDto, strings: GithubStrings_Profi
 
 /** README 正文：官方 HTML 渲染，走共享阅读分组。 */
 @Composable
-internal fun ProfileReadmeContent(profile: ProfileDto?) {
-    val readme = profile?.readmeHtml
+internal fun ProfileReadmeContent(profile: ProfileDto?, onRetry: () -> Unit) {
+    val readme = profile?.readmeHtml?.takeIf(String::isNotBlank)
     val repositoryUrl = profile?.let {
         "https://github.com/${it.login}/${if (it.isOrganization) ".github" else it.login}"
     }
@@ -193,11 +175,11 @@ internal fun ProfileReadmeContent(profile: ProfileDto?) {
         val path = it.readmePath ?: if (it.isOrganization) "profile/README.md" else "README.md"
         "$repositoryUrl/blob/HEAD/${Uri.encode(path, "/")}"
     }
-    GithubReadingGroup {
-        if (readme == null) {
-            ReadmePlaceholder()
-        } else {
-            GithubMarkdown(
+    val strings = LocalGithubStrings.current.Profile
+    GithubReadingGroup(documentKey = readme) {
+        when {
+            profile == null -> ReadmePlaceholder()
+            readme != null -> GithubMarkdown(
                 text = "",
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 pageUrl = pageUrl,
@@ -206,7 +188,17 @@ internal fun ProfileReadmeContent(profile: ProfileDto?) {
                 readme = true,
                 transparentBackground = true,
             )
+            !profile.readmeResolved -> Unit
+            else -> GlasmioListRow(title = strings.CollectionEmpty(strings.Readme), systemName = null)
         }
+        if (profile?.readmeResolved == false) ProfileRetryRow(strings.ReadmeLoadFailed, onRetry)
+    }
+}
+
+@Composable
+internal fun ProfileRetryRow(message: String, retry: () -> Unit) {
+    GlasmioGroupedList {
+        GlasmioListRow(title = message, detail = LocalGithubStrings.current.Common.Retry, systemName = null, onClick = retry)
     }
 }
 

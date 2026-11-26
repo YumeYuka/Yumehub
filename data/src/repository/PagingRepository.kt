@@ -147,6 +147,11 @@ internal class PagingKeyState {
         return ++sequence
     }
 
+    @Synchronized fun forget(): Long {
+        first = null
+        return ++sequence
+    }
+
     fun updateRevalidation(state: RevalidationState) {
         mutableRevalidation.value = state
     }

@@ -84,7 +84,6 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
         }
     val available = session.fileReadStatus == null && !session.submitting && !session.closeRequested
     val editable = session.editable && available
-    val ready = session.fileReadStatus == null
     // 级联菜单内部也会发出空 anchor 节点，不能让它成为顶栏 Row 的第三个子项。
     Box(
         Modifier.onGloballyPositioned { coordinates ->
@@ -93,7 +92,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
         },
     ) {
         GithubToolbarActions(
-            if (ready && (showMenu || session.onRequestEdit != null))
+            if (showMenu || session.onRequestEdit != null)
                 toolbarIcon(
                     if (session.editable) Lucide.Check else Lucide.Pencil,
                     if (session.editable)
@@ -107,7 +106,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                     onClick = if (session.editable) session::submit else session::requestEdit,
                 )
             else null,
-            if (ready && showMenu)
+            if (showMenu)
                 toolbarIcon(
                     Lucide.EllipsisVertical,
                     menu.More,

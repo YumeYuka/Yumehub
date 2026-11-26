@@ -20,7 +20,4 @@ The UI regressions are only part of the problem. Performance is even harder to a
 open a repository or pull request, a loading spinner appears before the content does. Rather than
 wait for the official app to be fixed and optimized, we decided to rewrite it from the ground up.
 
-## Notifications
 
-Unread notifications have a dot below the event icon. GitHub Actions notifications show the
-check result and open the workflow run when GitHub provides a run link.

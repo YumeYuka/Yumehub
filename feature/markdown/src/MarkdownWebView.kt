@@ -183,6 +183,11 @@ internal class MarkdownWebView(
         if (released || broken) return
         if (mediaActive == active) return
         mediaActive = active
+        isFocusable = active
+        isFocusableInTouchMode = active
+        importantForAccessibility = if (active) IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            else IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        if (!active) clearFocus()
         updateOffscreenPreRaster()
         applyActive()
     }
@@ -402,6 +407,7 @@ internal class MarkdownWebView(
     }
 
     private fun openLink(raw: String) {
+        if (!mediaActive) return
         if (raw.startsWith("#")) {
             evaluateJavascript("window.androidMarkdown.anchor(${JSONObject.quote(raw)});", null)
             return
@@ -577,6 +583,7 @@ internal class MarkdownWebView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!mediaActive) return false
         if (yieldedVerticalDrag && event.actionMasked != MotionEvent.ACTION_DOWN) return true
         var keepGesture: Boolean? = null
         when (event.actionMasked) {
@@ -708,7 +715,7 @@ internal class MarkdownWebView(
     }
 
     override fun requestRectangleOnScreen(rectangle: Rect, immediate: Boolean): Boolean {
-        if (active()) {
+        if (active() && mediaActive) {
             revealDocumentPosition(rectangle.top / resources.displayMetrics.density.toDouble())
         }
         return true

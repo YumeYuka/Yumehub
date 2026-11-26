@@ -118,6 +118,7 @@ internal fun RepositoryForkSheet(
                     ) {
                         GithubLoadingContent(
                             loading = checking,
+                            deferUntilEntry = false,
                             modifier = Modifier.size(23.dp),
                             placeholder = { IconTilePlaceholder(23.dp) },
                         ) {

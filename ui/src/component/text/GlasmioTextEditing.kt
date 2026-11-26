@@ -112,7 +112,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
-import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -351,13 +350,6 @@ fun GlasmioEditableText(
     val editor =
         remember(host, scroll, toolbar, modern, clipboard) {
             GlasmioTextEditor(host, scope, scroll, toolbar, modern, clipboard, value)
-        }
-    val hiddenNativeChrome =
-        remember(realWindow) {
-            object : WindowInfo by realWindow {
-                override val isWindowFocused: Boolean
-                    get() = false
-            }
         }
     val colors = LocalGlassColors.current
     SideEffect {
@@ -651,10 +643,10 @@ fun GlasmioEditableText(
                 }
             }
     CompositionLocalProvider(
-        LocalWindowInfo provides hiddenNativeChrome,
         LocalTextToolbar provides editor.legacyAdapter,
         LocalTextContextMenuToolbarProvider provides editor.modernAdapter,
-        LocalTextSelectionColors provides TextSelectionColors(colors.accent, Color.Transparent),
+        // Hide the native selection drawing without hiding real window focus from the IME.
+        LocalTextSelectionColors provides TextSelectionColors(Color.Transparent, Color.Transparent),
     ) {
         NativeEditorField(
             value = value,
@@ -1248,8 +1240,7 @@ internal class GlasmioTextEditor(
                 if (chromeVisible) nativeLegacy?.invoke()
             }
 
-            // The deliberately unfocused native chrome hides itself after layout. Real dismissal is
-            // handled by this field's focus, touch, editing and disposal lifecycle instead.
+            // The editor owns menu dismissal through its focus, touch and disposal lifecycle.
             override fun hide() = Unit
         }
     val modernAdapter =
@@ -1276,8 +1267,7 @@ internal class GlasmioTextEditor(
                             )
                     }
                 if (chromeVisible) showNativeMenu()
-                // The native request can be cancelled by false WindowInfo without cancelling the
-                // independently owned menu coroutine or its live data provider.
+                // Keep the data provider alive while Foundation owns the request.
                 awaitCancellation()
             }
         }

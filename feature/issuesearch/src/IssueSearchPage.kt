@@ -11,7 +11,6 @@ import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.workListTabOrder
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import org.koin.androidx.compose.koinViewModel
@@ -36,10 +35,9 @@ fun IssueSearchPage(
   WorkListControls(kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter) { actions, searching ->
     GithubPagingContent(
         pages,
-        contentKey = filter,
-        revalidation = viewModel.revalidation,
-        onRetryRevalidation = viewModel::retryRevalidation,
-        order = workListTabOrder(kind, filter),
+        contentKey = Triple(login, kind, filter),
+        revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
+        onRetryRevalidation = { viewModel.retryRevalidation(filter) },
     ) { paging ->
       val items = paging.items
       val slots =
@@ -54,11 +52,10 @@ fun IssueSearchPage(
       GithubPage(
           title = kind.title,
           listState = paging.listState,
-          listTransition = paging.transition,
           itemSpacing = 12.dp,
           actions = actions,
       ) {
-        IssueSearchScreen(kind, items, slots, onOpenWork, viewModel::card)
+        IssueSearchScreen(kind, slots, onOpenWork, viewModel::card)
         pageSearchClearance(searching)
       }
     }

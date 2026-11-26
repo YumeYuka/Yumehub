@@ -17,10 +17,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.paging.LoadState
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
-import moe.yumeyuka.yumehub.data.cache.WritePhase
+import io.github.yumeyucca.lucide.Bell
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
@@ -30,9 +29,14 @@ import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
+import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import org.koin.androidx.compose.koinViewModel
 
@@ -48,33 +52,33 @@ fun ExplorePage(
 ) {
     val feed: FeedViewModel = koinViewModel()
     val cards = feed.cards
-    val restoredOptions by feed.options.collectAsStateWithLifecycle()
-    val options = restoredOptions
+    val session by feed.session.collectAsStateWithLifecycle()
+    val options = feed.options.collectAsStateWithLifecycle().value
+    val login = session?.login
     val filters = options?.filters.orEmpty()
-    val remote by feed.remoteFilters.collectAsStateWithLifecycle()
-    val phase by feed.filterPhase.collectAsStateWithLifecycle()
     val settingsFailed by feed.settingsFailed.collectAsStateWithLifecycle()
-    val slotKey = remember(options) {
-        "feed-${options?.sort?.name}:${filters.map { it.name }.sorted()}"
-    }
+    val feedKey = remember(options) { options?.let { feedPagingKey(it.filters, it.sort) } }
     val strings = LocalGithubStrings.current
     var filtersVisible by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val eventsWhileVisible =
-        remember(feed, lifecycle) {
-            feed.events.flowWithLifecycle(lifecycle, Lifecycle.State.RESUMED)
+        remember(feed, session, options, lifecycle) {
+            feed.eventsFor(login, options).flowWithLifecycle(lifecycle, Lifecycle.State.RESUMED)
         }
     GithubPagingContent(
         source = eventsWhileVisible,
-        contentKey = options ?: "feed-options-loading",
-        revalidation = feed.revalidation,
-        onRetryRevalidation = feed::retryRevalidation,
+        contentKey = session to feedKey,
+        revalidation = remember(feed, session, feedKey) {
+            if (login != null && feedKey != null) feed.revalidation(login, feedKey) else IdleGithubPagingRevalidation
+        },
+        onRetryRevalidation = if (login != null && feedKey != null) ({ feed.retryRevalidation(login, feedKey) }) else null,
+        showLoadErrors = false,
     ) { paging ->
         val events = paging.items
         val slots =
             rememberGithubPagingSlots(
                 events,
-                slotKey,
+                "dashboard-feed",
                 paging.initialLoading,
             ) {
                 it.id
@@ -95,8 +99,6 @@ fun ExplorePage(
             title = strings.Explore.Title,
             back = false,
             listState = paging.listState,
-            listTransition = paging.transition,
-            // Keep the fixed entry outside feed transitions so filter/sort changes cannot replay it.
             contentHeader = {
                 ExploreDiscoverSection(onOpenTrending, onOpenFeatured)
             },
@@ -114,31 +116,37 @@ fun ExplorePage(
             },
         ) {
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
-            if (settingsFailed) item { GlasmioListRow(title = strings.Common.Retry, onClick = feed::restoreOptions) }
-            if (phase != WritePhase.IDLE || (options != null && remote != null && remote != filters)) item {
-                GlasmioGroupedList {
-                    if (remote != null && remote != filters) GlasmioListRow(title = strings.Explore.UseRemoteFilters, onClick = feed::adoptFilters)
-                    GlasmioListRow(title = when (phase) {
-                        WritePhase.UNCERTAIN -> strings.Common.MutationUncertain
-                        WritePhase.PENDING -> strings.Common.MutationPending
-                        WritePhase.REJECTED -> strings.Common.MutationNotSubmitted
-                        WritePhase.IDLE -> strings.Explore.ApplyFilters
-                    }, enabled = options != null && phase != WritePhase.UNCERTAIN && phase != WritePhase.PENDING,
-                    onClick = { options?.let(feed::applyOptions) })
+            // The feed explicitly uses “No activity yet” for an unavailable first page.
+            val coldFailure = slots.snapshot.isEmpty() && events.loadState.refresh is LoadState.Error
+            val showEmpty = settingsFailed || (options != null &&
+                (filters.isEmpty() || slots.isEmptyResult || coldFailure))
+            if (showEmpty) {
+                item(key = "explore-feed-empty") {
+                    GithubEmptyState(
+                        icon = Lucide.Bell,
+                        title = strings.Explore.EmptyFeed,
+                        modifier = Modifier.fillParentMaxHeight(),
+                        verticalBias = -0.1f,
+                    )
                 }
             }
-            if (options == null) return@GithubPage
+            if (settingsFailed) {
+                item(key = "feed-options-retry") {
+                    GlasmioGroupedList { GlasmioListRow(title = strings.Common.Retry, onClick = feed::restoreOptions) }
+                }
+            }
+            if (options == null || filters.isEmpty()) return@GithubPage
             FeedScreen(
-                events = events,
                 slots = slots,
                 cards = cards,
-                filters = filters,
+                initialCard = feed::initialDisplayCard,
                 onRetry = feed::retry,
                 onToggle = feed::toggle,
                 onOpenRepository = onOpenRepository,
                 onOpenWork = onOpenWork,
                 onOpenUser = onOpenUser,
             )
+            collaborationPagingStatus(slots, strings.Explore.Title, emptyPlaceholder = false)
         }
     }
     if (options != null) {

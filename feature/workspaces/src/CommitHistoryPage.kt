@@ -1,10 +1,7 @@
 package moe.yumeyuka.yumehub.feature.workspaces
 
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,8 +18,8 @@ import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
+import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -52,8 +49,7 @@ fun CommitHistoryPage(owner: String, name: String, ref: String) {
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler()
     val branchName = state.ref.removePrefix("refs/heads/")
-    val listState = LocalGithubPageState.current?.listState("commit-history")
-    var scrolledRef by rememberSaveable { mutableStateOf(state.ref) }
+    val listState = LocalGithubPageState.current?.listState("commit-history:${state.ref}")
     var branchPickerVisible by rememberSaveable { mutableStateOf(false) }
     val slotAllocator = remember(state.ref) { GithubPagingSlotKeys("commit-history:${state.ref}") }
     val commitIds =
@@ -66,7 +62,7 @@ fun CommitHistoryPage(owner: String, name: String, ref: String) {
                 "$id:$occurrence"
             }
         }
-    val initialLoading = state.loading && state.commits.isEmpty()
+    val initialLoading = state.loading && !state.hasSnapshot
     val commitKeys =
         remember(slotAllocator, commitIds, initialLoading, state.loadingMore) {
             slotAllocator.update(
@@ -75,14 +71,6 @@ fun CommitHistoryPage(owner: String, name: String, ref: String) {
                 initialLoading = initialLoading,
             )
         }
-    LaunchedEffect(state.ref, listState) {
-        if (state.ref != scrolledRef) {
-            scrolledRef = state.ref
-            listState?.scrollToItem(0)
-        }
-    }
-    val failure = state.error ?: state.loadMoreError
-    GithubLoadFailureToast(failure, failure.orEmpty())
     GithubPage(
         title = branchName,
         smallTitle = branchName,
@@ -132,8 +120,8 @@ private fun LazyListScope.commitHistoryItems(
     onOpenCommit: (String) -> Unit,
 ) {
     when {
-        state.error != null && state.commits.isEmpty() -> Unit
-        !state.loading && state.commits.isEmpty() ->
+        state.error != null && !state.hasSnapshot -> Unit
+        state.hasSnapshot && state.commits.isEmpty() ->
             item(key = "commit-history-empty") {
                 GlasmioGroupedList {
                     GlasmioListRow(
@@ -149,12 +137,7 @@ private fun LazyListScope.commitHistoryItems(
                     val commit = state.commits.getOrNull(index)
                     GithubLoadingCard(
                         loading = commit == null,
-                        modifier =
-                            Modifier.animateItem(
-                                fadeInSpec = tween(260),
-                                fadeOutSpec = tween(180),
-                                placementSpec = spring(dampingRatio = 1f, stiffness = 400f),
-                            ),
+                        modifier = githubCardItemMotion(),
                         placeholder = { WorkspaceCommitPlaceholder() },
                     ) {
                         if (commit != null)
@@ -167,7 +150,12 @@ private fun LazyListScope.commitHistoryItems(
                 }
             }
     }
-    if (state.commits.isNotEmpty() && state.hasMore && !state.loadingMore) {
+    val failure = state.error ?: state.loadMoreError
+    if (failure != null) {
+        item(key = "commit-history-retry") {
+            GlasmioGroupedList { WorkspaceRetryRow(failure, onRetry) }
+        }
+    } else if (state.commits.isNotEmpty() && state.hasMore && !state.loadingMore) {
         item(key = "commit-history-load-more") {
             GlasmioGroupedList {
                 GlasmioListRow(

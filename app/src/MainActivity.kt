@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
+import moe.yumeyuka.yumehub.navigation.restoreNavigation
+import moe.yumeyuka.yumehub.navigation.saveNavigation
 import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
@@ -35,6 +37,7 @@ class MainActivity : ComponentActivity() {
     private val tokens: TokenStore by inject()
     private var loginOpen by mutableStateOf(false)
     private var startupLink: String? = null
+    private var savedNavigation: Bundle? = null
     private val loginLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             loginOpen = false
@@ -54,6 +57,7 @@ class MainActivity : ComponentActivity() {
         var firstCompositionReady = false
         splash.setKeepOnScreenCondition { !firstCompositionReady }
         loginOpen = savedInstanceState?.getBoolean(LoginOpenKey) == true
+        savedNavigation = savedInstanceState?.getBundle(NavigationKey)
         // Configure the window before composition; Compose updates insets after view dispatch.
         WindowCompat.enableEdgeToEdge(window)
         startupLink =
@@ -81,8 +85,10 @@ class MainActivity : ComponentActivity() {
                 componentContext = componentContext,
                 predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
                 predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,
+                restored = tokens.navigationSessionId?.let { savedNavigation?.restoreNavigation(it) },
             )
         }
+        savedNavigation = null
         navigationComponent.initializeLink(startupLink)
         startupLink = null
         setContent {
@@ -132,6 +138,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(LoginOpenKey, loginOpen)
+        if (::navigationComponent.isInitialized) {
+            tokens.navigationSessionId?.let { outState.putBundle(NavigationKey, navigationComponent.saveNavigation(it)) }
+        } else savedNavigation?.let { outState.putBundle(NavigationKey, it) }
         outState.putBoolean(LinkHandledKey, true)
         outState.putString(
             PendingLinkKey,
@@ -158,6 +167,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val LoginOpenKey = "github-login-open"
+        const val NavigationKey = "github-navigation-v1"
         const val LinkHandledKey = "github-link-handled"
         const val PendingLinkKey = "github-pending-link"
     }

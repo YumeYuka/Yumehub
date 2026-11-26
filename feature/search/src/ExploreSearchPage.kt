@@ -1,7 +1,7 @@
 package moe.yumeyuka.yumehub.feature.search
 
-import androidx.paging.LoadState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,8 +16,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.ExploreCategory
 import moe.yumeyuka.yumehub.core.model.WorkTarget
@@ -29,6 +27,7 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -58,6 +57,11 @@ fun ExploreSearchPage(
         rememberSaveable(stateSaver = TextFieldValue.Saver) {
             mutableStateOf(TextFieldValue(query, TextRange(query.length)))
         }
+    var category by rememberSaveable { mutableStateOf(search.category) }
+    LaunchedEffect(viewModel) {
+        viewModel.selectCategory(category)
+        viewModel.onQueryChange(input.text)
+    }
     val closeSearch: () -> Unit = {
         if (host.backEnabled) {
             focus.clearFocus(force = true)
@@ -82,10 +86,9 @@ fun ExploreSearchPage(
     ) {
         GithubPagingContent(
             search.items,
-            contentKey = search.category to search.query,
+            contentKey = Triple(search.session, search.category, search.query),
             revalidation = search.revalidation,
-            onRetryRevalidation = viewModel::retryRevalidation,
-            order = search.category.ordinal,
+            onRetryRevalidation = { viewModel.retryRevalidation(search) },
         ) { paging ->
             val results = paging.items
             val slots =
@@ -108,7 +111,6 @@ fun ExploreSearchPage(
                 back = true,
                 onBack = closeSearch,
                 listState = paging.listState,
-                listTransition = paging.transition,
                 itemSpacing = 12.dp,
                 actions = {
                     var expanded by remember { mutableStateOf(false) }
@@ -125,18 +127,19 @@ fun ExploreSearchPage(
                             }
                         },
                     ) { backdrop, close ->
-                        ExploreCategory.entries.forEach { category ->
+                        ExploreCategory.entries.forEach { choice ->
                             GlasmioMenuItem(
-                                title = category.label(strings),
+                                title = choice.label(strings),
                                 backdrop = backdrop,
                                 trailing = {
-                                    if (category == search.category) {
+                                    if (choice == search.category) {
                                         GithubIcon(Lucide.Check, contentDescription = null)
                                     }
                                 },
                                 onClick = {
                                     close()
-                                    viewModel.selectCategory(category)
+                                    category = choice
+                                    viewModel.selectCategory(choice)
                                 },
                             )
                         }
@@ -152,17 +155,11 @@ fun ExploreSearchPage(
                     onOpenUser,
                     onOpenFile,
                 )
-                if (results.loadState.refresh is LoadState.Error ||
-                    results.loadState.append is LoadState.Error) {
-                    item(key = "explore-search-retry") {
-                        GlasmioGroupedList {
-                            GlasmioListRow(
-                                title = strings.Common.Retry,
-                                onClick = results::retry,
-                            )
-                        }
-                    }
-                }
+                collaborationPagingStatus(
+                    slots, strings.Common.Search,
+                    emptyMessage = strings.EditorSearch.NoMatches,
+                    emptyIcon = Lucide.Search,
+                )
                 pageSearchClearance(visible = true)
             }
         }

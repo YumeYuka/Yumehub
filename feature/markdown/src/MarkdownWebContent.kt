@@ -20,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -35,7 +34,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
@@ -43,11 +41,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.yumeyuka.markdown.compose.HtmlStyles
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 
 @Composable
 internal fun MarkdownWebContent(
@@ -65,9 +60,8 @@ internal fun MarkdownWebContent(
     visible: Boolean = true,
     resourceRevision: Any? = null,
     viewerLogin: String? = null,
-    onRenderFailure: (() -> Unit)? = null,
+    onRenderFailure: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
     val layoutDirection = LocalLayoutDirection.current
     val latestReady = rememberUpdatedState(onReady)
     val latestFailure = rememberUpdatedState(onRenderFailure)
@@ -82,22 +76,9 @@ internal fun MarkdownWebContent(
     val latestRequested = rememberUpdatedState(requested)
     val latestInteraction = rememberUpdatedState(allowInteraction)
     val latestAccount = rememberUpdatedState(isCurrentAccount)
-    val measuredDocumentIdentity = content.copy(scrollToAnchor = null, selectionHosted = false)
-    val documentCache: NativeMarkdownDocumentCacheViewModel =
-        viewModel(key = "github-markdown-document-cache")
-    // 会话在最后一个 Markdown 离开组合时失效；返回要从路由缓存恢复高度，不能只依赖会话内 saveable。
-    val retainedHeightDp =
-        remember(measuredDocumentIdentity, html, viewerLogin, documentCache) {
-            documentCache
-                .get(measuredDocumentIdentity, viewerLogin)
-                ?.takeIf { it.html == html }
-                ?.webHeightDp ?: 1f
-        }
-    val measuredHeightState =
-        key(measuredDocumentIdentity, html, viewportScrolling, viewerLogin) {
-            rememberSaveable { mutableStateOf(retainedHeightDp) }
-        }
-    var measuredHeightDp by measuredHeightState
+    // The outer slot restores only a previously drawn, layout-matched height. The mounted
+    // WebView always measures this revision itself before delivering its visual receipt.
+    var measuredHeightDp by remember(resourceRevision) { mutableStateOf(1f) }
     var webView by remember { mutableStateOf<MarkdownWebView?>(null) }
     var codeBlocks by
         remember(resourceRevision) { mutableStateOf(emptyList<MarkdownWebCodeBlock>()) }
@@ -125,7 +106,7 @@ internal fun MarkdownWebContent(
         }
     }
     LaunchedEffect(webFailed, resourceRevision) {
-        if (webFailed && latestAccount.value()) latestFailure.value?.invoke()
+        if (webFailed && latestAccount.value()) latestFailure.value.invoke()
     }
     val codeMeasured =
         codeLayoutReady &&
@@ -176,6 +157,7 @@ internal fun MarkdownWebContent(
                                     latestAccount.value() &&
                                     view.isCurrentContent(version) &&
                                     !readyNotified &&
+                                    view.width > 0 && view.height > 0 &&
                                     currentHeightApplied &&
                                     !view.isLayoutRequested
                             ) {
@@ -202,13 +184,7 @@ internal fun MarkdownWebContent(
     }
     val taskEnabled = actions.onTaskChanged != null
     val suggestionEnabled = actions.onCommitSuggestion != null
-    if (webFailed) {
-        if (onRenderFailure == null) {
-            GithubLoadFailureToast(Unit, strings.Markdown.RenderingFailed)
-        }
-    } else if (assets == null) {
-        GithubMarkdownPlaceholder(modifier)
-    } else {
+    if (!webFailed && assets != null) {
         val mount: (MarkdownWebViewHost) -> Unit = { host ->
             readyNotified = false
             layoutVersion = null
@@ -304,12 +280,6 @@ internal fun MarkdownWebContent(
                                                     MarkdownMaxHeightPx.toDouble() / density,
                                                 )
                                                 .toFloat()
-                                    documentCache.updateWebHeight(
-                                        measuredDocumentIdentity,
-                                        viewerLogin,
-                                        html,
-                                        measuredHeightDp,
-                                    )
                                 }
                             },
                             onAnchor = { cssY, version ->

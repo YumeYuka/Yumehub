@@ -2,23 +2,21 @@ package moe.yumeyuka.yumehub.feature.commitdetail
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
-import androidx.paging.PagingData
-import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.map
+import androidx.paging.compose.LazyPagingItems
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.AtSign
@@ -28,22 +26,14 @@ import io.github.yumeyucca.lucide.GitPullRequest
 import io.github.yumeyucca.lucide.GitPullRequestClosed
 import io.github.yumeyucca.lucide.GitPullRequestDraft
 import io.github.yumeyucca.lucide.Lucide
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.*
 import moe.yumeyuka.yumehub.locale.GithubStrings
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.placeholders.CommitAuthorPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.ReadingTextPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.*
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
@@ -75,267 +65,138 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
     val host = requireNotNull(LocalGithubPageHost.current)
     val open = rememberGithubUriHandler()
     val copy = rememberCopyText()
-    val parentsRevalidation by
-        viewModel.revalidation(CommitSection.Parents).collectAsStateWithLifecycle()
-    val pullRequestsRevalidation by
-        viewModel.revalidation(CommitSection.PullRequests).collectAsStateWithLifecycle()
-    val parents = viewModel.entries(CommitSection.Parents).collectAsLazyPagingItems()
-    val pullRequests = viewModel.entries(CommitSection.PullRequests).collectAsLazyPagingItems()
-    GithubPagingContent(
-        viewModel.entries(state.section),
-        contentKey = state.section,
-        revalidation = viewModel.revalidation(state.section),
-        onRetryRevalidation = { viewModel.retryRevalidation(state.section) },
-        order = state.section.ordinal,
-    ) { paging ->
-        val pages = paging.items
-        val information = state.section == CommitSection.Details
-        // 已经展示过的页面返回组合后不再看加载位，刷新不能让占位重新盖住正文。
-        // key 只取路由内稳定的分节标识，ViewModel 实例与重试次数都不参与。
-        val presentationKey = "commit-section-${state.section.name}"
-        val settled = LocalGithubPageState.current?.detailPresented(presentationKey) == true
-        val firstPagesReady =
-            if (information) {
-                githubDetailPageSettled(parents, state.detail != null, settled) &&
-                    githubDetailPageSettled(pullRequests, state.detail != null, settled)
-            } else githubDetailPageSettled(pages, state.detail != null, settled)
-        val firstPageFailed =
-            !settled &&
-                when {
-                    information ->
-                        parents.loadState.refresh is LoadState.Error ||
-                            pullRequests.loadState.refresh is LoadState.Error
-                    else -> pages.loadState.refresh is LoadState.Error
-                }
-        var chromePresentation by
-            remember(viewModel) { mutableStateOf<GithubDetailPresentation?>(null) }
-        val presentation =
-            rememberGithubDetailPresentation(
-                key = presentationKey,
-                kind =
-                    if (information) GithubDetailKind.CommitInformation
-                    else GithubDetailKind.CommitFiles,
-                dataReady = state.detail != null && (settled || !state.loading) && firstPagesReady,
-                failed = state.failed || firstPageFailed,
-                chrome = chromePresentation,
-            )
-        SideEffect {
-            if (chromePresentation == null && presentation.interactive)
-                chromePresentation = presentation
-        }
-        var displayedDetail by remember(viewModel) { mutableStateOf(state.detail) }
-        val contentReady =
-            state.detail != null &&
-                (settled || !state.loading) &&
-                firstPagesReady &&
-                !(state.failed || firstPageFailed)
-        SideEffect { if (contentReady) displayedDetail = state.detail }
-        val shownDetail = if (contentReady) state.detail else displayedDetail ?: state.detail
-        val slots =
-            rememberGithubPagingSlots(
-                pages,
-                "commit:${state.section}",
-                paging.initialLoading,
-                contentReady = contentReady,
-            ) {
-                it.id
-            }
-        val parentSlots =
-            rememberGithubPagingSlots(parents, "commit-parents", contentReady = contentReady) {
-                it.id
-            }
-        val pullRequestSlots =
-            rememberGithubPagingSlots(
-                pullRequests,
-                "commit-pull-requests",
-                contentReady = contentReady,
-            ) {
-                it.id
-            }
-        if (state.failed) GithubLoadFailureToast(Unit, strings.Activity.LoadFailed)
-        if (information) {
-            val failure =
-                listOf(parents.loadState, pullRequests.loadState).firstNotNullOfOrNull {
-                    (it.refresh as? LoadState.Error) ?: (it.append as? LoadState.Error)
-                }
-            GithubLoadFailureToast(failure, strings.Activity.LoadFailed)
-        }
-        GithubPage(
-            title = shownDetail?.title.orEmpty(),
-            titleMaxLines = 2,
-            titleStyle =
-                GlasmioTheme.typography.headlineLarge.copy(
-                    fontSize = 22.sp,
-                    lineHeight = 32.sp,
-                    fontWeight = FontWeight.Bold,
+    var section by rememberSaveable(account, route) { mutableStateOf(CommitSection.Files) }
+    val revision = state.revision
+    val expansions = rememberGithubDiffExpansions(revision?.oid)
+    val sectionKey = "commit:$account:$route:${section.name}"
+    val listState = LocalGithubPageState.current?.listState(sectionKey) ?: key(sectionKey) { rememberLazyListState() }
+    val information = section == CommitSection.Details
+    val files = if (!information) revision?.files?.collectRows { it.filename } else null
+    val parents = if (information) revision?.parents?.collectRows { it.id } else null
+    val pullRequests = if (information) revision?.pullRequests?.collectRows { it.id } else null
+    val readyDetail = state.detail
+    GithubPage(
+        title = readyDetail?.title ?: route.oid.take(7),
+        titleMaxLines = 2,
+        titleStyle = GlasmioTheme.typography.headlineLarge.copy(
+            fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold,
+        ),
+        smallTitle = (readyDetail?.oid ?: route.oid).take(7),
+        listState = listState,
+        itemSpacing = if (information) 12.dp else 8.dp,
+        contentHeader = {
+            GlasmioSegmentedControl(
+                items = listOf(
+                    CommitSection.Files to strings.WorkDetail.Changes,
+                    CommitSection.Details to strings.Activity.Details,
                 ),
-            smallTitle = state.detail?.oid?.take(7) ?: route.oid.take(7),
-            listState = paging.listState,
-            detailPresentation = presentation,
-            onRetryDetail = {
-                viewModel.load()
-                pages.retry()
-                parents.retry()
-                pullRequests.retry()
-            },
-            detailHeaderPlaceholder = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GlasmioSegmentedControl(
-                        items =
-                            listOf(
-                                CommitSection.Files to strings.WorkDetail.Changes,
-                                CommitSection.Details to strings.Activity.Details,
-                            ),
-                        selected = state.section,
-                        onSelected = {},
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (!information) CommitAuthorPlaceholder()
-                }
-            },
-            itemSpacing = if (information) 12.dp else 8.dp,
-            contentHeader = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GlasmioSegmentedControl(
-                        items =
-                            listOf(
-                                CommitSection.Files to strings.WorkDetail.Changes,
-                                CommitSection.Details to strings.Activity.Details,
-                            ),
-                        selected = state.section,
-                        onSelected = { if (host.navigationEnabled) viewModel.select(it) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (state.section == CommitSection.Files && state.detail == null) {
+                selected = section,
+                onSelected = { if (host.navigationEnabled) section = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+    ) {
+        if (state.failed) {
+            item(key = "commit-detail-error") {
+                CommitStatusRow(strings.Activity.LoadFailed, viewModel::load)
+            }
+        }
+        if (!information) {
+            if (readyDetail != null || !state.failed) {
+                readingItem(key = "commit-author") {
+                    if (readyDetail == null) {
                         CommitAuthorPlaceholder()
-                    }
-                    shownDetail
-                        ?.takeIf { state.section == CommitSection.Files }
-                        ?.let { detail ->
-                            GlasmioGroupedList {
-                                GlasmioListRow(
-                                    title = detail.author ?: strings.Workspaces.UnknownAuthor,
-                                    subtitle = githubActivityTime(detail.committedDate),
-                                    leading = {
-                                        GithubAvatar(detail.avatarUrl, detail.author, size = 32.dp)
-                                    },
-                                    systemName = null,
-                                    showTopSeparator = false,
-                                )
-                                SelectionContainer {
-                                    Text(
-                                        text = detail.message,
-                                        modifier =
-                                            Modifier.fillMaxWidth()
-                                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                                        style = GlasmioTheme.textStyles.body,
-                                        color = GlasmioTheme.colors.content,
-                                    )
-                                }
-                            }
-                        }
-                }
-            },
-        ) {
-            if (state.detail == null && !state.failed) {
-                readingItem(key = "commit-detail-loading") {
-                    GithubReadingGroup { ReadingTextPlaceholder() }
-                }
-            } else if (state.section == CommitSection.Details) {
-                if (parentsRevalidation is RevalidationState.Failed) {
-                    item(key = "commit-parents-sync-failed") {
+                    } else {
+                        val detail = readyDetail
                         GlasmioGroupedList {
                             GlasmioListRow(
-                                title = strings.Common.CacheSyncFailed,
-                                detail = strings.Common.Retry,
-                                showDisclosure = false,
-                                onClick = { viewModel.retryRevalidation(CommitSection.Parents) },
-                            )
-                        }
-                    }
-                }
-                if (pullRequestsRevalidation is RevalidationState.Failed) {
-                    item(key = "commit-prs-sync-failed") {
-                        GlasmioGroupedList {
-                            GlasmioListRow(
-                                title = strings.Common.CacheSyncFailed,
-                                detail = strings.Common.Retry,
-                                showDisclosure = false,
-                                onClick = { viewModel.retryRevalidation(CommitSection.PullRequests) },
-                            )
-                        }
-                    }
-                }
-                shownDetail?.let { detail ->
-                    item(key = "commit-information") {
-                        GithubSection(strings.Activity.Details) {
-                            GlasmioListRow(
-                                title = strings.WorkDetail.Author,
+                                title = detail.author ?: strings.Workspaces.UnknownAuthor,
+                                subtitle = githubActivityTime(detail.committedDate),
                                 leading = {
-                                    GithubIcon(
-                                        Lucide.AtSign,
-                                        contentDescription = null,
-                                        tint = GlasmioTheme.colors.secondaryContent,
-                                    )
-                                },
-                                trailing = {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        GithubAvatar(detail.avatarUrl, detail.author, size = 24.dp)
-                                        Text(
-                                            text =
-                                                detail.author ?: strings.Workspaces.UnknownAuthor,
-                                            style = GlasmioTheme.textStyles.body,
-                                            color = GlasmioTheme.colors.secondaryContent,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
+                                    GithubAvatar(detail.avatarUrl, detail.author, size = 32.dp)
                                 },
                                 systemName = null,
                                 showTopSeparator = false,
                             )
-                            GlasmioListRow(
-                                title = strings.Activity.CommitHash,
-                                detail = detail.oid.take(7),
-                                leading = {
-                                    GithubIcon(
-                                        Lucide.Copy,
-                                        contentDescription = strings.Activity.CopyHash,
-                                        tint = GlasmioTheme.colors.secondaryContent,
-                                    )
-                                },
-                                showDisclosure = false,
-                                systemName = null,
-                                enabled = host.navigationEnabled,
-                                onClick = { copy(strings.Activity.CommitHash, detail.oid) },
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = detail.message,
+                                    modifier =
+                                        Modifier.fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    style = GlasmioTheme.textStyles.body,
+                                    color = GlasmioTheme.colors.content,
+                                )
+                            }
                         }
                     }
-                    commitLinks(
-                        "parents",
-                        strings.Activity.Parents,
-                        parentSlots,
-                        strings,
-                        host.navigationEnabled,
-                        open = { open(it) },
-                    )
-                    commitLinks(
-                        "pull-requests",
-                        strings.Activity.Related,
-                        pullRequestSlots,
-                        strings,
-                        host.navigationEnabled,
-                        open = { open(it) },
-                    )
-                }
-            } else {
-                githubPagingItems(slots, reading = true, contentType = "commit-file") { entry ->
-                    GithubDiffFileCard((entry as? CommitEntry.File)?.value, Modifier.fillMaxWidth())
                 }
             }
+            if (files != null) {
+                githubPagingItems(files.slots, reading = true, contentType = "commit-file") { file ->
+                    GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
+                }
+                commitPageStatus(files, strings)
+            } else if (!state.failed) {
+                readingItem(key = "commit-files-pending") { GithubDiffFileCard(null, expansions) }
+            }
+        } else {
+            if (readyDetail != null) {
+                val detail = readyDetail
+                item(key = "commit-information") {
+                    GithubSection(strings.Activity.Details) {
+                        GlasmioListRow(
+                            title = strings.WorkDetail.Author,
+                            leading = {
+                                GithubIcon(
+                                    Lucide.AtSign,
+                                    contentDescription = null,
+                                    tint = GlasmioTheme.colors.secondaryContent,
+                                )
+                            },
+                            trailing = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    GithubAvatar(detail.avatarUrl, detail.author, size = 24.dp)
+                                    Text(
+                                        text =
+                                            detail.author ?: strings.Workspaces.UnknownAuthor,
+                                        style = GlasmioTheme.textStyles.body,
+                                        color = GlasmioTheme.colors.secondaryContent,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            systemName = null,
+                            showTopSeparator = false,
+                        )
+                        GlasmioListRow(
+                            title = strings.Activity.CommitHash,
+                            detail = detail.oid.take(7),
+                            leading = {
+                                GithubIcon(
+                                    Lucide.Copy,
+                                    contentDescription = strings.Activity.CopyHash,
+                                    tint = GlasmioTheme.colors.secondaryContent,
+                                )
+                            },
+                            showDisclosure = false,
+                            systemName = null,
+                            enabled = host.navigationEnabled,
+                            onClick = { copy(strings.Activity.CommitHash, detail.oid) },
+                        )
+                    }
+                }
+            } else if (!state.failed) {
+                item(key = "commit-information") {
+                    GithubSection(strings.Activity.Details) { OrganizationRowPlaceholder() }
+                }
+            }
+            commitLinks("parents", strings.Activity.Parents, parents, !state.failed, strings, host.navigationEnabled, open = { open(it) })
+            commitLinks("pull-requests", strings.Activity.Related, pullRequests, !state.failed, strings, host.navigationEnabled, open = { open(it) })
         }
     }
 }
@@ -343,22 +204,31 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
 private fun LazyListScope.commitLinks(
     key: String,
     title: String,
-    slots: GithubPagingSlots<CommitEntry>,
+    rows: CommitRows<RepositoryActivityEntry>?,
+    waitingForRevision: Boolean,
     strings: GithubStrings,
     enabled: Boolean,
     open: (String) -> Unit,
 ) {
     item(key = "$key-heading") { GithubSectionHeader(title) }
-    githubPagingItems(slots, contentType = "commit-$key") { item ->
-        val entry = item as? CommitEntry.Link
+    if (rows == null) {
+        if (waitingForRevision) item(key = "$key-pending") {
+            GithubLoadingCard(loading = true, placeholder = {
+                if (key == "parents") WorkspaceCommitPlaceholder() else OrganizationRowPlaceholder()
+            }) {}
+        }
+        return
+    }
+    githubPagingItems(rows.slots, contentType = "commit-$key") { entry ->
         GithubLoadingCard(
             loading = entry == null,
+            deferUntilEntry = false,
             placeholder = {
                 if (key == "parents") WorkspaceCommitPlaceholder() else OrganizationRowPlaceholder()
             },
         ) {
             if (entry != null) {
-                val value = entry.value
+                val value = entry
                 if (key == "parents") {
                     GithubCommitSummary(
                         message = value.title,
@@ -432,137 +302,59 @@ private fun LazyListScope.commitLinks(
             }
         }
     }
+    commitPageStatus(rows, strings)
 }
 
-internal enum class CommitSection {
-    Files,
-    Details,
-    Parents,
-    PullRequests,
-}
+private enum class CommitSection { Files, Details }
 
-internal sealed interface CommitEntry {
-    val id: String
-
-    data class File(val value: PullRequestFileDto) : CommitEntry {
-        override val id = value.filename
-    }
-
-    data class Link(val value: RepositoryActivityEntry) : CommitEntry {
-        override val id = value.id
-    }
-}
-
-internal data class CommitDetailState(
-    val detail: GithubCommitDetail? = null,
-    val failed: Boolean = false,
-    val section: CommitSection = CommitSection.Files,
-    val loading: Boolean = true,
+private class CommitRows<T : Any>(
+    val source: CommitSource<T>,
+    val pages: LazyPagingItems<T>,
+    val slots: GithubPagingSlots<T>,
+    val sync: RevalidationState,
 )
 
-@OptIn(ExperimentalCoroutinesApi::class)
-internal class CommitDetailViewModel(
-    private val source: CommitRepository,
-    private val route: CommitDetailRoute,
-    private val account: String,
-) : ViewModel() {
-    private val mutableState = MutableStateFlow(CommitDetailState())
-    val state = mutableState.asStateFlow()
-    private var job: Job? = null
-    private val empty = flowOf(PagingData.empty<CommitEntry>())
-    private val entries =
-        CommitSection.entries.associateWith { section ->
-            if (section == CommitSection.Details) empty
-            else
-                state
-                    .filter {
-                        section == CommitSection.Files || it.section == CommitSection.Details
-                    }
-                    .map { it.detail?.oid }
-                    .filterNotNull()
-                    .distinctUntilChanged()
-                    .flatMapLatest { oid ->
-                        when {
-                            section == CommitSection.Files ->
-                                source.files(account, route.owner, route.name, oid).map { page ->
-                                    page.map<PullRequestFileDto, CommitEntry> {
-                                        CommitEntry.File(it)
-                                    }
-                                }
-                            else ->
-                                source
-                                    .links(
-                                        account,
-                                        route.owner,
-                                        route.name,
-                                        oid,
-                                        section == CommitSection.Parents,
-                                    )
-                                    .map { page ->
-                                        page.map<RepositoryActivityEntry, CommitEntry> {
-                                            CommitEntry.Link(it)
-                                        }
-                                    }
-                        }
-                    }
-                    .cachedIn(viewModelScope)
+@Composable
+private fun <T : Any> CommitSource<T>.collectRows(id: (T) -> String): CommitRows<T> {
+    val items = pages.collectAsLazyPagingItems()
+    val sync by revalidation.collectAsStateWithLifecycle()
+    val slots = rememberGithubPagingSlots(
+        items,
+        key,
+        autoRefresh = false,
+        accessDenied = (sync as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
+        itemKey = id,
+    )
+    return CommitRows(this, items, slots, sync)
+}
+
+private fun LazyListScope.commitPageStatus(rows: CommitRows<*>, strings: GithubStrings) {
+    val loads = rows.pages.loadState
+    if (loads.refresh is LoadState.Error || loads.append is LoadState.Error || loads.prepend is LoadState.Error) {
+        item(key = "${rows.source.key}:error") {
+            CommitStatusRow(strings.Activity.LoadFailed, rows.pages::retry)
         }
-
-    init {
-        load()
+    } else if (rows.slots.isEmptyResult) {
+        item(key = "${rows.source.key}:empty") { CommitStatusRow(strings.Activity.Empty) }
     }
-
-    fun entries(section: CommitSection) = entries.getValue(section)
-
-    fun revalidation(section: CommitSection): StateFlow<RevalidationState> =
-        if (section == CommitSection.Details) MutableStateFlow(RevalidationState.Idle)
-        else
-            state
-                .map { it.detail?.oid }
-                .filterNotNull()
-                .distinctUntilChanged()
-                .flatMapLatest { oid ->
-                    val key =
-                        if (section == CommitSection.Files) {
-                            source.filesKey(route.owner, route.name, oid)
-                        } else {
-                            source.linksKey(route.owner, route.name, oid, section == CommitSection.Parents)
-                        }
-                    source.revalidation(account, key)
-                }
-                .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
-
-    fun retryRevalidation(section: CommitSection) {
-        val oid = state.value.detail?.oid ?: return
-        if (section == CommitSection.Details) return
-        val key =
-            if (section == CommitSection.Files) {
-                source.filesKey(route.owner, route.name, oid)
-            } else {
-                source.linksKey(route.owner, route.name, oid, section == CommitSection.Parents)
-            }
-        source.retryRevalidation(account, key)
-    }
-
-    fun select(section: CommitSection) {
-        mutableState.update { it.copy(section = section) }
-    }
-
-    fun load() {
-        if (job?.isActive == true) return
-        job = viewModelScope.launch {
-            mutableState.update { it.copy(failed = false, loading = true) }
-            try {
-                val detail = source.load(account, route.owner, route.name, route.oid)
-                mutableState.update { it.copy(detail = detail) }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                mutableState.update { it.copy(failed = true) }
-            } finally {
-                mutableState.update { it.copy(loading = false) }
-            }
+    if (rows.sync is RevalidationState.Failed) {
+        item(key = "${rows.source.key}:sync-error") {
+            CommitStatusRow(strings.Common.CacheSyncFailed, rows.source.retryRevalidation)
         }
+    }
+}
+
+@Composable
+private fun CommitStatusRow(message: String, retry: (() -> Unit)? = null) {
+    val host = requireNotNull(LocalGithubPageHost.current)
+    GlasmioGroupedList {
+        GlasmioListRow(
+            title = message,
+            detail = if (retry != null) LocalGithubStrings.current.Common.Retry else null,
+            showDisclosure = false,
+            showTopSeparator = false,
+            onClick = retry?.let { { if (host.navigationEnabled) it() } },
+        )
     }
 }
 

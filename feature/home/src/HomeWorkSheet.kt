@@ -1,18 +1,11 @@
 package moe.yumeyuka.yumehub.feature.home
 
-import androidx.compose.animation.AnimatedContent
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +52,8 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 
 private enum class HomeEditTab {
@@ -89,6 +84,7 @@ internal fun HomeWorkSheet(
     val screen = if (showSearch) HomeEditTab.Search else tab
     val stateHolder = rememberSaveableStateHolder()
     val myCandidates = remember(favorites, visible) { FavoriteCandidates() }
+    val searches = remember(favorites, visible) { LinkedHashMap<String, FavoriteCandidates>(8, 0.75f, true) }
     val dismiss = {
         favorites.dismissEditor()
         onDismiss()
@@ -195,36 +191,27 @@ internal fun HomeWorkSheet(
             favorites.finishSearch(apply = false)
         }
         GithubBackHandler(enabled = visible && showSearch, onBack = cancelSearch)
-        AnimatedContent(
-            targetState = screen,
-            modifier = Modifier.fillMaxSize().padding(LocalGlasmioSheetContentPadding.current),
-            transitionSpec = {
-                if (initialState == HomeEditTab.Search || targetState == HomeEditTab.Search) {
-                    fadeIn(tween(150)) togetherWith fadeOut(tween(120))
-                } else {
-                    val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                    (slideInHorizontally(tween(250)) { direction * it / 4 } + fadeIn()) togetherWith
-                        (slideOutHorizontally(tween(220)) { -direction * it / 4 } + fadeOut())
-                }
-            },
-            label = "home-editor",
-        ) { page ->
-            stateHolder.SaveableStateProvider(page) {
-                if (page == HomeEditTab.Work) {
-                    HomeWorkEditor(draft, strings, enabled && page == screen, onChange)
+        Box(Modifier.fillMaxSize().padding(LocalGlasmioSheetContentPadding.current)) {
+            stateHolder.SaveableStateProvider(screen) {
+                if (screen == HomeEditTab.Work) {
+                    HomeWorkEditor(draft, strings, enabled, onChange)
                 } else Column(Modifier.fillMaxSize()) {
-                    val searchPage = page == HomeEditTab.Search
+                    val searchPage = screen == HomeEditTab.Search
                     val term = if (searchPage) query.text.trim() else ""
                     val candidates =
-                        if (searchPage) remember(favorites, term) { FavoriteCandidates() }
+                        if (searchPage) remember(searches, term) {
+                            searches.getOrPut(term) { FavoriteCandidates() }.also {
+                                if (searches.size > 8) searches.remove(searches.keys.first())
+                            }
+                        }
                         else myCandidates
                     HomeFavoritesEditor(
                         edit = edit,
                         query = term,
                         searching = searchPage,
                         pane = candidates,
-                        active = visible && screen == page,
-                        enabled = enabled && screen == page,
+                        active = visible,
+                        enabled = enabled,
                         favorites = favorites,
                         modifier = Modifier.weight(1f),
                     )
@@ -295,14 +282,21 @@ internal fun <T> HomeReorderGroup(
     leading: @Composable (T) -> Unit,
     onToggle: (T) -> Unit,
     onReorder: (List<T>) -> Unit,
+    loading: Boolean = false,
+    onEmptyClick: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GithubSectionHeader(title)
-        Box(Modifier.fillMaxWidth().animateContentSize(tween(420))) {
+        GithubLoadingContent(
+            loading = loading,
+            deferUntilEntry = false,
+            placeholder = { GlasmioGroupedList { TitleRowPlaceholder(showTopSeparator = false) } },
+        ) {
             if (items.isEmpty()) {
-                GlasmioGroupedList { GlasmioListRow(title = emptyTitle, systemName = null) }
+                GlasmioGroupedList { GlasmioListRow(title = emptyTitle, systemName = null, onClick = onEmptyClick) }
             } else {
                 GlasmioReorderableGroup(
+                    modifier = Modifier.fillMaxWidth(),
                     items = items,
                     onReorder = onReorder,
                     dragHandleContentDescription = strings.DragToReorder,

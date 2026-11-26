@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,8 +40,6 @@ import io.github.neoruaa.glasmio.glass.GlassEmphasis
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
@@ -148,23 +145,12 @@ private fun LoginAction(state: LoginState, onClick: () -> Unit) {
         navigationSurfaceColor = GlasmioTheme.colors.content,
         size = GlasmioButtonSize.Large,
     ) {
-        GithubLoadingContent(
-            loading = state != LoginState.Ready && state != LoginState.Failed,
-            placeholder = {
-                TextLinePlaceholder(
-                    GlasmioTheme.textStyles.body,
-                    Modifier.width(112.dp),
-                    fraction = 1f,
-                )
-            },
-        ) {
-            Text(
-                text = strings.SignIn,
-                style = GlasmioTheme.textStyles.body,
-                fontWeight = FontWeight.Normal,
-                textAlign = TextAlign.Center,
-            )
-        }
+        Text(
+            text = strings.SignIn,
+            style = GlasmioTheme.textStyles.body,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

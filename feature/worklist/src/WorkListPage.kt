@@ -13,7 +13,6 @@ import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.workListTabOrder
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
@@ -59,10 +58,9 @@ fun WorkListPage(
   ) { actions, searching ->
   GithubPagingContent(
       pages,
-      contentKey = filter,
-      revalidation = viewModel.revalidation,
-      onRetryRevalidation = viewModel::retryRevalidation,
-      order = workListTabOrder(kind, filter),
+      contentKey = Triple(login, WorkListRoute(owner, name, kind), filter),
+      revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
+      onRetryRevalidation = { viewModel.retryRevalidation(filter) },
   ) { paging ->
     val items = paging.items
     val host = requireNotNull(LocalGithubPageHost.current)
@@ -78,13 +76,11 @@ fun WorkListPage(
     GithubPage(
         title = kind.title,
         listState = paging.listState,
-        listTransition = paging.transition,
         itemSpacing = 12.dp,
         actions = actions,
     ) {
       CollaborationListScreen(
           kind,
-          items,
           slots,
           onOpenDetail,
           viewModel::card,

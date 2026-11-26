@@ -173,6 +173,7 @@ internal fun AppRoot(
                                             GithubNavigationSession(
                                                 component = navigationComponent,
                                                 login = currentAuthState.login,
+                                                navigationSessionId = tokens.navigationSessionId,
                                             )
                                         }
                                         CompositionLocalProvider(

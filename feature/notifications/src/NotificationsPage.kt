@@ -38,7 +38,6 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubListTransition
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
@@ -83,12 +82,12 @@ fun NotificationsPage(
     var acknowledgeUncertainConfirm by remember(viewModel) { mutableStateOf(false) }
     var threadActions by remember(viewModel) { mutableStateOf<NotificationDto?>(null) }
     val completeSelection = { completionThreads = state.selectedThreadIds.toSet() }
-    val source = Triple(state.filter, state.repository, state.reasonFilter)
+    val query = searchInput.text.trim()
+    val source = "${state.filter}:${state.repository}:${state.reasonFilter}:$query"
     val listState =
         LocalGithubPageState.current?.listState("notifications:$source")
             ?: remember(source) { LazyListState() }
     val allocator = remember(source) { GithubPagingSlotKeys("notifications:$source") }
-    val query = searchInput.text.trim()
     val visibleNotifications =
         remember(state.notifications, state.reasonFilter) { state.visibleNotifications }
     val notifications =
@@ -121,7 +120,6 @@ fun NotificationsPage(
     GithubPage(
         title = strings.Title,
         listState = listState,
-        listTransition = GithubListTransition(source, initialLoading, state.filter.ordinal),
         itemSpacing = 12.dp,
         back = false,
         contentHeader = {
@@ -214,6 +212,7 @@ fun NotificationsPage(
             onThreadActions = { threadActions = it },
             onRetryAction = viewModel::retryAction,
             onRetryLoad = viewModel::revalidate,
+            onRetryWindow = viewModel::retryWindow,
             retryLabel = common.Retry,
             onToggleSelection = viewModel::toggleSelection,
             rowKeys = rowKeys,

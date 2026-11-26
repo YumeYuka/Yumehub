@@ -1,7 +1,5 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,7 +48,6 @@ internal fun WorkChecksSheet(
     val scroll = rememberScrollState()
     val contentPadding = 12.dp
     val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    LaunchedEffect(visible) { if (visible) scroll.scrollTo(0) }
     GlasmioBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
@@ -278,7 +275,6 @@ internal fun WorkMergeSheet(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
                 .padding(LocalGlasmioSheetContentPadding.current)
-                .animateContentSize(tween(420))
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

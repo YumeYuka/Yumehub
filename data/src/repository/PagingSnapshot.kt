@@ -72,4 +72,15 @@ class PagingSnapshot<T : Any>(
     }
 
     fun save(page: PagingSnapshotPage<T>) = saveInBackground(page)
+
+    internal suspend fun discardDenied(error: Throwable) {
+        if (!error.invalidatesCachedContent()) return
+        val bound = context ?: return
+        val sequence = bound.commit { bound.state.forget() }
+        val id = session ?: return
+        val key = diskKey ?: return
+        bound.cache.writeQueue.run {
+            store.disk.remove(id, key) { bound.validFrame(sequence) }
+        }
+    }
 }

@@ -1,7 +1,6 @@
 package moe.yumeyuka.yumehub.feature.repositoryactivity
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +42,7 @@ import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
 
 @Composable
 internal fun DiscussionCreationSheet(
@@ -110,7 +110,7 @@ internal fun DiscussionCreationSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GlasmioGroupedList(Modifier.animateContentSize(tween(420))) {
+            GlasmioGroupedList(Modifier.animateContentSize(GithubCardSizeSpec)) {
                 GlasmioListRow(
                     title = work.Category,
                     detail = if (optionsFailed) strings.Common.Retry else category?.name,

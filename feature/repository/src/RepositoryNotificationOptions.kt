@@ -1,7 +1,6 @@
 package moe.yumeyuka.yumehub.feature.repository
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +21,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
 
 @Composable
 internal fun RepositoryNotificationOptions(
@@ -71,7 +71,7 @@ internal fun RepositoryNotificationOptions(
                 )
             }
     }
-    GlasmioGroupedList(modifier = Modifier.animateContentSize(tween(420))) {
+    GlasmioGroupedList(modifier = Modifier.animateContentSize(GithubCardSizeSpec)) {
         GlasmioListRow(
             title = strings.WatchCustom,
             subtitle = strings.WatchCustomDescription,

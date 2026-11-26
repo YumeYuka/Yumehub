@@ -74,6 +74,9 @@ internal class ActionsDetailModel(
 
     var artifactsFailed by mutableStateOf(false)
         private set
+    var artifactAppendFailed by mutableStateOf(false)
+        private set
+    private var artifactFirstPage: WorkflowArtifacts? = null
 
     val commands = WorkflowCommands(repo.mutations(account), MutationKind.CHECK_RERUN, viewModelScope)
 
@@ -83,11 +86,22 @@ internal class ActionsDetailModel(
     private val runId
         get() = route.run ?: detail?.url?.substringAfterLast('/')?.toLongOrNull()
 
+    val canRetryArtifacts get() = runId != null
+
+    val waitingForArtifacts: Boolean
+        get() =
+            artifacts == null && !artifactsFailed && (runId != null || (detail == null && loading))
+
     init {
+        runId?.let(::observeArtifacts)
         load()
     }
 
     fun retry() = load(lastAppend)
+
+    fun retryArtifacts() {
+        runId?.let(::observeArtifacts)
+    }
 
     fun loadMoreArtifacts() {
         val run = runId ?: return
@@ -97,13 +111,29 @@ internal class ActionsDetailModel(
 
     private fun observeArtifacts(run: Long) {
         artifactObserver?.cancel()
+        artifactsFailed = false
         artifactObserver =
             viewModelScope.launch {
                 repo
                     .observeFirstArtifactPage(account, route.owner, route.name, run)
                     .collect { state ->
-                        state.data?.let { artifacts = it }
-                        artifactPageLoading = if (state.loading && state.data == null) 1 else null
+                        if (state.error?.invalidatesCachedContent() == true) {
+                            artifactRequest?.cancel()
+                            artifacts = null
+                            artifactFirstPage = null
+                            artifactPageLoading = null
+                            artifactsFailed = true
+                            return@collect
+                        }
+                        state.data?.let { first ->
+                            if (first != artifactFirstPage) {
+                                artifactRequest?.cancel()
+                                artifactPageLoading = null
+                                artifactAppendFailed = false
+                                artifactFirstPage = first
+                                artifacts = first
+                            }
+                        }
                         artifactsFailed = state.error != null
                     }
             }
@@ -112,7 +142,7 @@ internal class ActionsDetailModel(
     private fun loadArtifacts(run: Long, page: Int) {
         artifactRequest?.cancel()
         artifactPageLoading = page
-        artifactsFailed = false
+        artifactAppendFailed = false
         artifactRequest = viewModelScope.launch {
             try {
                 val result = repo.artifacts(account, route.owner, route.name, run, page)
@@ -122,8 +152,12 @@ internal class ActionsDetailModel(
                     )
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                artifactsFailed = true
+            } catch (error: Exception) {
+                if (error.invalidatesCachedContent()) {
+                    artifacts = null
+                    artifactFirstPage = null
+                    artifactsFailed = true
+                } else artifactAppendFailed = true
             }
             artifactPageLoading = null
         }
@@ -134,7 +168,6 @@ internal class ActionsDetailModel(
         request?.cancel()
         val previous = detail
         val knownRun = runId
-        if (!append && knownRun != null) observeArtifacts(knownRun)
         lastAppend = append
         loading = true
         failed = false
@@ -156,7 +189,17 @@ internal class ActionsDetailModel(
                 if (knownRun == null) runId?.let { observeArtifacts(it) }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error.invalidatesCachedContent()) {
+                    detail = null
+                    lastAppend = false
+                    artifactObserver?.cancel()
+                    artifactRequest?.cancel()
+                    artifacts = null
+                    artifactFirstPage = null
+                    artifactPageLoading = null
+                    artifactsFailed = true
+                }
                 failed = true
             }
             loading = false
@@ -221,18 +264,14 @@ fun ActionsPage(
     val url =
         detail?.url
             ?: route.run?.let { "https://github.com/${route.owner}/${route.name}/actions/runs/$it" }
-    val files = vm.artifacts?.files.orEmpty()
-    val waitingForRun = route.run == null && detail == null && vm.loading
-    val artifactPage = vm.artifactPageLoading
-    val showArtifactPlaceholder =
-        waitingForRun || (artifactPage != null && (vm.artifacts == null || artifactPage > 1))
+    val artifacts = vm.artifacts
+    val files = artifacts?.files.orEmpty()
     val workflowName = detail?.workflowName ?: route.workflowName
     val runNumber = detail?.runNumber ?: route.runNumber
     val smallTitle =
         if (workflowName != null && runNumber != null) {
             strings.Activity.WorkflowRunTitle(workflowName, runNumber)
         } else null
-    GithubLoadFailureToast(vm.failed.takeIf { it }, strings.Activity.LoadFailed)
     GithubPage(
         title = workflowName ?: strings.Repository.ActionsTitle,
         smallTitle = smallTitle,
@@ -247,7 +286,10 @@ fun ActionsPage(
         itemSpacing = 12.dp,
         actions = {
             GithubToolbarActions(
-                toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh, onClick = vm::load),
+                toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh) {
+                    vm.load()
+                    vm.retryArtifacts()
+                },
                 if (detail?.canRerunFailed == true || command?.phase == WritePhase.UNCERTAIN) toolbarIcon(Lucide.RotateCcw,
                     strings.Activity.RerunFailed, enabled = command?.phase != WritePhase.PENDING) { confirm = true } else null,
                 url?.let {
@@ -264,51 +306,52 @@ fun ActionsPage(
                 }
             }
         }
-        if (showArtifactPlaceholder || files.isNotEmpty())
-            item(key = "artifacts") {
-                GithubSection(strings.Release.Artifacts) {
-                    files.forEachIndexed { index, file ->
-                        key(file.id) {
-                            ArtifactRow(file, index > 0, true) {
-                                if (host.navigationEnabled && !file.expired) {
-                                    try {
-                                        downloads.enqueueArtifact(
-                                            account,
-                                            route.owner,
-                                            route.name,
-                                            file,
-                                        )
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (_: Exception) {
-                                        Toast.makeText(
-                                                context,
-                                                strings.Activity.DownloadFailed,
-                                                Toast.LENGTH_LONG,
-                                            )
-                                            .show()
-                                        return@ArtifactRow
+        // Keep the first section anchored while an external run link resolves its data.
+        item(key = "artifacts") {
+            GithubSection(strings.Release.Artifacts) {
+                GithubLoadingContent(
+                    loading = vm.waitingForArtifacts,
+                    placeholder = { ReleaseAssetPlaceholder(showTopSeparator = false) },
+                ) {
+                    Column {
+                        files.forEachIndexed { index, file ->
+                            key(file.id) {
+                                ArtifactRow(file, index > 0, true) {
+                                    if (host.navigationEnabled && !file.expired) {
+                                        try {
+                                            downloads.enqueueArtifact(account, route.owner, route.name, file)
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, strings.Activity.DownloadFailed, Toast.LENGTH_LONG)
+                                                .show()
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    GithubLoadingContent(
-                        loading = showArtifactPlaceholder,
-                        placeholder = {
-                            ReleaseAssetPlaceholder(showTopSeparator = files.isNotEmpty())
-                        },
-                    ) {
-                        if (vm.artifacts?.next != null) {
-                            GlasmioListRow(
-                                title = strings.Activity.LoadMoreItems,
-                                enabled = artifactPage == null,
-                                onClick = vm::loadMoreArtifacts,
-                            )
+                        GithubLoadingContent(
+                            loading = vm.artifactPageLoading != null,
+                            placeholder = { ReleaseAssetPlaceholder(showTopSeparator = files.isNotEmpty()) },
+                        ) {
+                            when {
+                                vm.artifactsFailed && vm.canRetryArtifacts ->
+                                    GlasmioListRow(title = strings.Activity.LoadFailed, detail = strings.Common.Retry, onClick = vm::retryArtifacts)
+                                vm.artifactAppendFailed ->
+                                    GlasmioListRow(title = strings.Activity.LoadFailed, detail = strings.Common.Retry, onClick = vm::loadMoreArtifacts)
+                                artifacts?.next != null ->
+                                    GlasmioListRow(
+                                        title = strings.Activity.LoadMoreItems,
+                                        enabled = vm.artifactPageLoading == null,
+                                        onClick = vm::loadMoreArtifacts,
+                                    )
+                                files.isEmpty() && (artifacts != null || detail != null) -> GlasmioListRow(title = strings.Activity.NoArtifacts)
+                            }
                         }
                     }
                 }
             }
+        }
         item(key = "jobs") {
             GlasmioGroupedList {
                 GithubLoadingContent(
@@ -326,7 +369,8 @@ fun ActionsPage(
                             when {
                                 vm.failed ->
                                     GlasmioListRow(
-                                        title = strings.Common.Retry,
+                                        title = strings.Activity.LoadFailed,
+                                        detail = strings.Common.Retry,
                                         onClick = vm::retry,
                                     )
                                 detail?.next != null ->

@@ -11,9 +11,8 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.GithubPagingRetryAction
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.GithubUserCard
-import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -38,10 +37,7 @@ fun FollowingPage(
     var following by rememberSaveable(login, initialFollowing) { mutableStateOf(initialFollowing) }
     GithubPagingContent(
         source = if (following) viewModel.following else viewModel.followers,
-        contentKey = following,
-        revalidation = IdleGithubPagingRevalidation,
-        onRetryRevalidation = {},
-        order = if (following) 0 else 1,
+        contentKey = "$login:$following",
     ) { paging ->
         val pages = paging.items
         val slots =
@@ -52,12 +48,11 @@ fun FollowingPage(
             ) {
                 it.id?.let { id -> "id:$id" } ?: it.login?.let { login -> "login:$login" }
             }
+        val sectionTitle = if (following) strings.Profile.FollowingTab else strings.Profile.FollowersTab
         GithubPage(
             title = strings.Profile.FollowingTitle,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 12.dp,
-            actions = { GithubPagingRetryAction(pages) },
             contentHeader = {
                 GlasmioSegmentedControl(
                     items =
@@ -85,6 +80,7 @@ fun FollowingPage(
                         } else null,
                 )
             }
+            collaborationPagingStatus(slots, sectionTitle, emptyMessage = strings.Profile.CollectionEmpty(sectionTitle))
         }
     }
 }

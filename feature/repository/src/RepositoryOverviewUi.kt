@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
@@ -37,22 +39,48 @@ import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.theme.GithubHomeColors
 
 @Composable
-internal fun RepositoryHeaderDescription(description: String) {
-    Text(
-        text = description,
-        style = GlasmioTheme.textStyles.body.copy(
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-        ),
-        color = GlasmioTheme.colors.secondaryContent,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
+internal fun RepositoryHeaderDescription(description: String?, loading: Boolean) {
+    if (!loading && description == null) return
+    val lineCount = 2
+    val style = GlasmioTheme.textStyles.body.copy(
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
+        fontWeight = FontWeight.SemiBold,
     )
+    val textMeasurer = rememberTextMeasurer()
+    val height = with(LocalDensity.current) {
+        textMeasurer.measure("Ag\nAg", style = style, maxLines = lineCount).size.height.toDp()
+    }
+    GithubLoadingContent(
+        loading = loading,
+        deferUntilEntry = false,
+        modifier = Modifier.fillMaxWidth().height(height),
+        placeholder = {
+            val barHeight = with(LocalDensity.current) { style.fontSize.toDp() * 0.9f }
+            Column(Modifier.fillMaxWidth().height(height), verticalArrangement = Arrangement.SpaceAround) {
+                TextPlaceholder(height = barHeight, fraction = 0.96f)
+                TextPlaceholder(height = barHeight, fraction = 0.82f)
+            }
+        },
+    ) {
+        if (description != null) {
+            Text(
+                text = description,
+                modifier = Modifier.wrapContentHeight(Alignment.Top, unbounded = true),
+                style = style,
+                color = GlasmioTheme.colors.secondaryContent,
+                maxLines = lineCount,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 @Composable
@@ -194,15 +222,7 @@ private fun RepositoryMetadataBar(
                         tint = GithubHomeColors.starred,
                         filled = starred,
                     )
-                    if (starDisplay == null) {
-                        TextPlaceholder(
-                            modifier = Modifier.width(starPlaceholderWidth),
-                            height = 12.dp,
-                            fraction = 1f,
-                        )
-                    } else {
-                        Text(starDisplay, style = labelStyle, maxLines = 1)
-                    }
+                    RepositoryCountLabel(starDisplay, starPlaceholderWidth, labelStyle)
                 }
                 GlasmioButton(
                     onClick = onFork,
@@ -214,18 +234,21 @@ private fun RepositoryMetadataBar(
                         contentDescription = strings.Forks,
                         size = iconSize,
                     )
-                    if (forkDisplay == null) {
-                        TextPlaceholder(
-                            modifier = Modifier.width(forkPlaceholderWidth),
-                            height = 12.dp,
-                            fraction = 1f,
-                        )
-                    } else {
-                        Text(forkDisplay, style = labelStyle, maxLines = 1)
-                    }
+                    RepositoryCountLabel(forkDisplay, forkPlaceholderWidth, labelStyle)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RepositoryCountLabel(label: String?, placeholderWidth: Dp, style: TextStyle) {
+    GithubLoadingContent(
+        loading = label == null,
+        deferUntilEntry = false,
+        placeholder = { TextPlaceholder(Modifier.width(placeholderWidth), height = 8.dp, fraction = 1f) },
+    ) {
+        if (label != null) Text(label, style = style, maxLines = 1)
     }
 }
 
@@ -256,108 +279,107 @@ internal fun RepositoryEntryCard(
         repository.fullName?.let { open("https://github.com/$it/$path") }
     }
     var expanded by rememberSaveable(repository.fullName) { mutableStateOf(false) }
-    GlasmioGroupedList {
-        Column(Modifier.animateContentSize()) {
+    val animate = LocalGithubCardMotionEnabled.current
+    Column(if (animate) Modifier.animateContentSize(GithubCardSizeSpec) else Modifier) {
+        RepositoryEntry(
+            strings.Code,
+            Lucide.CodeXml,
+            GithubHomeColors.repositories,
+            detail = repository.defaultBranch,
+            separator = false,
+            enabled = enabled,
+            onClick = onBrowseFiles,
+        )
+        if (overview != null && overview.issuesEnabled && onOpenIssues != null)
             RepositoryEntry(
-                strings.Code,
-                Lucide.CodeXml,
-                GithubHomeColors.repositories,
-                detail = repository.defaultBranch,
-                separator = false,
+                strings.Issues,
+                Lucide.CircleDot,
+                GithubHomeColors.issues,
+                detail = overview.issues.toString(),
                 enabled = enabled,
-                onClick = onBrowseFiles,
+                onClick = onOpenIssues,
             )
-            if (overview != null && overview.issuesEnabled && onOpenIssues != null)
+        if (overview != null && onOpenPullRequests != null)
+            RepositoryEntry(
+                strings.PullRequests,
+                Lucide.GitPullRequest,
+                GithubHomeColors.pullRequests,
+                detail = overview.pullRequests.toString(),
+                enabled = enabled,
+                onClick = onOpenPullRequests,
+            )
+        if (overview != null && overview.releases > 0)
+            RepositoryEntry(
+                strings.Releases,
+                Lucide.Tag,
+                GithubHomeColors.repositories,
+                detail = overview.releases.toString(),
+                enabled = enabled,
+                onClick = { onExternal("releases") },
+            )
+        if (overview != null && expanded) {
+            if (overview.hasProjects)
                 RepositoryEntry(
-                    strings.Issues,
-                    Lucide.CircleDot,
-                    GithubHomeColors.issues,
-                    detail = overview.issues.toString(),
+                    strings.Projects,
+                    Lucide.Columns3,
+                    GithubHomeColors.projects,
                     enabled = enabled,
-                    onClick = onOpenIssues,
+                    onClick = { openActivity("projects") },
                 )
-            if (overview != null && onOpenPullRequests != null)
+            if (overview.hasWorkflows)
                 RepositoryEntry(
-                    strings.PullRequests,
-                    Lucide.GitPullRequest,
-                    GithubHomeColors.pullRequests,
-                    detail = overview.pullRequests.toString(),
+                    strings.ActionsTitle,
+                    Lucide.CirclePlay,
+                    GithubHomeColors.starred,
                     enabled = enabled,
-                    onClick = onOpenPullRequests,
+                    onClick = { openActivity("actions") },
                 )
-            if (overview != null && overview.releases > 0)
+            if (hasDiscussions)
                 RepositoryEntry(
-                    strings.Releases,
-                    Lucide.Tag,
-                    GithubHomeColors.repositories,
-                    detail = overview.releases.toString(),
+                    strings.Discussions,
+                    Lucide.MessagesSquare,
+                    GithubHomeColors.discussions,
+                    detail = overview.discussions.toString(),
                     enabled = enabled,
-                    onClick = { onExternal("releases") },
+                    onClick = { openActivity("discussions") },
                 )
-            if (overview != null && expanded) {
-                if (overview.hasProjects)
-                    RepositoryEntry(
-                        strings.Projects,
-                        Lucide.Columns3,
-                        GithubHomeColors.projects,
-                        enabled = enabled,
-                        onClick = { openActivity("projects") },
-                    )
-                if (overview.hasWorkflows)
-                    RepositoryEntry(
-                        strings.ActionsTitle,
-                        Lucide.CirclePlay,
-                        GithubHomeColors.starred,
-                        enabled = enabled,
-                        onClick = { openActivity("actions") },
-                    )
-                if (hasDiscussions)
-                    RepositoryEntry(
-                        strings.Discussions,
-                        Lucide.MessagesSquare,
-                        GithubHomeColors.discussions,
-                        detail = overview.discussions.toString(),
-                        enabled = enabled,
-                        onClick = { openActivity("discussions") },
-                    )
-                if (overview.hasContributors)
-                    RepositoryEntry(
-                        strings.Contributors,
-                        Lucide.UsersRound,
-                        GithubHomeColors.contributors,
-                        enabled = enabled,
-                        onClick = { openActivity("graphs/contributors") },
-                    )
-                if (overview.watchers > 0)
-                    RepositoryEntry(
-                        strings.Watchers,
-                        Lucide.Eye,
-                        GithubHomeColors.watchers,
-                        detail = overview.watchers.toString(),
-                        enabled = enabled,
-                        onClick = { openActivity("watchers") },
-                    )
-                // 没有声明许可证时不显示该行。
-                overview.license?.let { license ->
-                    RepositoryEntry(
-                        strings.License,
-                        Lucide.Scale,
-                        GithubHomeColors.license,
-                        detail = license,
-                        enabled = enabled,
-                        onClick = onOpenLicense,
-                    )
-                }
-            } else if (hasMoreEntries) {
-                // 展开后不再显示入口行，因此不需要「收起」。
-                GlasmioListRow(
-                    title = strings.More,
-                    systemName = null,
-                    leading = { GithubEntryIcon(Lucide.Ellipsis, GithubHomeColors.projects) },
+            if (overview.hasContributors)
+                RepositoryEntry(
+                    strings.Contributors,
+                    Lucide.UsersRound,
+                    GithubHomeColors.contributors,
                     enabled = enabled,
-                    onClick = { expanded = true },
+                    onClick = { openActivity("graphs/contributors") },
+                )
+            if (overview.watchers > 0)
+                RepositoryEntry(
+                    strings.Watchers,
+                    Lucide.Eye,
+                    GithubHomeColors.watchers,
+                    detail = overview.watchers.toString(),
+                    enabled = enabled,
+                    onClick = { openActivity("watchers") },
+                )
+            // 没有声明许可证时不显示该行。
+            overview.license?.let { license ->
+                RepositoryEntry(
+                    strings.License,
+                    Lucide.Scale,
+                    GithubHomeColors.license,
+                    detail = license,
+                    enabled = enabled,
+                    onClick = onOpenLicense,
                 )
             }
+        } else if (hasMoreEntries) {
+            // 展开后不再显示入口行，因此不需要「收起」。
+            GlasmioListRow(
+                title = strings.More,
+                systemName = null,
+                leading = { GithubEntryIcon(Lucide.Ellipsis, GithubHomeColors.projects) },
+                enabled = enabled,
+                onClick = { expanded = true },
+            )
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -14,6 +15,9 @@ import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubDiffFileCard
+import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
+import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
@@ -46,20 +50,26 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
     )
     val strings = LocalGithubStrings.current
     val host = requireNotNull(LocalGithubPageHost.current)
-    val head = state.data?.head?.sha?.takeIf(String::isNotBlank)
+    val denied = state.error?.invalidatesCachedContent() == true
+    val head = state.data?.head?.sha?.takeIf { it.isNotBlank() && !denied }
+    val missingHead = head == null && state.data != null && !denied
     val contentKey = "pr-diff:$account:$route:$head"
+    val expansions = rememberGithubDiffExpansions(contentKey)
+    val source = remember(viewModel, head) { viewModel.files(head) }
+    val sync = remember(viewModel, head) { head?.let(viewModel::revalidation) ?: IdleGithubPagingRevalidation }
     GithubPagingContent(
-        viewModel.files,
+        source,
         contentKey = contentKey,
-        revalidation = viewModel.revalidation,
-        onRetryRevalidation = viewModel::retryRevalidation,
+        revalidation = sync,
+        onRetryRevalidation = head?.let { { viewModel.retryRevalidation(it) } },
     ) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(
                 pages,
                 contentKey,
-                paging.initialLoading || (head == null && state.error == null),
+                if (head == null) state.data == null && state.error == null else paging.initialLoading,
+                contentReady = head != null,
                 autoRefresh = false,
             ) {
                 it.filename
@@ -80,21 +90,28 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
             smallTitle = strings.WorkDetail.Files,
             showTitle = false,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 8.dp,
         ) {
-            githubPagingItems(slots, contentType = "pr-diff-file", reading = true) { file ->
-                GithubDiffFileCard(file, Modifier.fillMaxWidth())
+            if (head != null || (state.data == null && state.error == null)) {
+                githubPagingItems(slots, contentType = "pr-diff-file", reading = true) { file ->
+                    GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
+                }
             }
-            if (!state.loading && (state.error != null || pageError != null)) {
+            if (head != null && slots.isEmptyResult && pageError == null) {
+                item(key = "pr-diff-empty") {
+                    GlasmioGroupedList { GlasmioListRow(title = strings.Activity.Empty, systemName = null) }
+                }
+            }
+            if (!state.loading && (missingHead || state.error != null || pageError != null)) {
                 item(key = "pr-diff-retry") {
                     GlasmioGroupedList {
                         GlasmioListRow(
-                            title = strings.Common.Retry,
+                            title = strings.WorkDetail.LoadFailed,
+                            detail = strings.Common.Retry,
                             enabled = host.navigationEnabled,
                             onClick = {
-                                if (state.error != null || revisionChanged) viewModel.refresh()
-                                else pages.retry()
+                                if (missingHead || state.error != null || revisionChanged) viewModel.refresh()
+                                if (pageError != null) pages.retry()
                             },
                         )
                     }

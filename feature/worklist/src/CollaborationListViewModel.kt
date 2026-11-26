@@ -8,11 +8,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
@@ -29,7 +25,6 @@ import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.cache.workListCacheTag
-import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.WorkListRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
@@ -142,17 +137,11 @@ internal class CollaborationListViewModel(
 
     fun card(item: moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto) = source.card(login, item)
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val revalidation: StateFlow<RevalidationState> =
-        mutableFilter
-            .flatMapLatest { f ->
-                source.revalidation(login, source.repositoryItemsKey(owner, repo, kind, f))
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    fun revalidationFor(filter: CollaborationListFilter) =
+        source.revalidation(login, source.repositoryItemsKey(owner, repo, kind, filter))
 
-    fun retryRevalidation() {
-        source.retryRevalidation(login, source.repositoryItemsKey(owner, repo, kind, mutableFilter.value))
-    }
+    fun retryRevalidation(filter: CollaborationListFilter) =
+        source.retryRevalidation(login, source.repositoryItemsKey(owner, repo, kind, filter))
 
     fun setCreationVisible(visible: Boolean) {
         if (!visible) navigateOnSuccess = false

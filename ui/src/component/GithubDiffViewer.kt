@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -50,9 +51,8 @@ import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffDto
 import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffLineDto
 import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffLineType
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDiffCodePlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 @Composable
 fun githubAnnotatedCode(
@@ -94,13 +94,8 @@ fun githubAnnotatedCode(
     }
 
 private data class HighlightedDiffHunk(
-    val lines: List<StructuredDiffLineDto>,
     val tokens: List<List<GithubTextMateSpan>>,
     val inlineChanges: List<DiffInlineRange?>,
-)
-
-private data class HighlightedDiffDocument(
-    val hunks: List<HighlightedDiffHunk>,
 )
 
 private data class DiffInlineRange(val start: Int, val end: Int)
@@ -212,42 +207,48 @@ private suspend fun highlightDiffHunk(
             offset += length + 1
         }
     }
-    return HighlightedDiffHunk(lines, mapped, diffInlineChanges(lines))
+    return HighlightedDiffHunk(mapped, diffInlineChanges(lines))
 }
 
 @Composable
 fun GithubDiffViewer(diff: StructuredDiffDto, modifier: Modifier, language: String?) {
+    if (!LocalGithubRouteEntryReady.current) return
     val context = LocalContext.current.applicationContext
     val strings = LocalGithubStrings.current.Repository
     val isDark = GlasmioTheme.colors.isDark
     val horizontalScrollState =
         key(diff.id, diff.baseCommitOid, diff.headCommitOid) { rememberScrollState() }
-    var document by
-        remember(diff, language, isDark) { mutableStateOf<HighlightedDiffDocument?>(null) }
-    LaunchedEffect(diff, language, isDark) {
-        val result =
-            withContext(Dispatchers.Default) {
-                val hunks = mutableListOf<List<StructuredDiffLineDto>>()
-                var lines = mutableListOf<StructuredDiffLineDto>()
-                for (line in diff.lines) {
-                    ensureActive()
-                    if (line.type == StructuredDiffLineType.Hunk) {
-                        if (lines.isNotEmpty()) hunks.add(lines.toList())
+    // Draw actual lines immediately on expansion and restoration. Highlighting changes only spans.
+    val hunks = remember(diff.id, diff.baseCommitOid, diff.headCommitOid) {
+        buildList<List<StructuredDiffLineDto>> {
+            var lines = mutableListOf<StructuredDiffLineDto>()
+            for (line in diff.lines) {
+                if (line.type == StructuredDiffLineType.Hunk) {
+                    if (lines.isNotEmpty()) {
+                        add(lines)
                         lines = mutableListOf()
-                    } else {
-                        lines.add(line.copy(text = githubStructuredDiffCodeText(line.text)))
                     }
+                } else {
+                    lines.add(line.copy(text = githubStructuredDiffCodeText(line.text)))
                 }
-                if (lines.isNotEmpty()) hunks.add(lines.toList())
-                HighlightedDiffDocument(
-                    hunks.map {
-                        ensureActive()
-                        highlightDiffHunk(context, it, language, isDark)
-                    },
-                )
             }
-        ensureActive()
-        document = result
+            if (lines.isNotEmpty()) add(lines)
+        }
+    }
+    var highlights by remember(hunks, language, isDark) { mutableStateOf<List<HighlightedDiffHunk>>(emptyList()) }
+    LaunchedEffect(hunks, language, isDark) {
+        try {
+            highlights = withContext(Dispatchers.Default) {
+                hunks.map { lines ->
+                    ensureActive()
+                    highlightDiffHunk(context, lines, language, isDark)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Syntax highlighting is optional. The original patch remains readable.
+        }
     }
     val colors = remember(isDark) { githubDiffColors(isDark) }
     val style =
@@ -261,10 +262,7 @@ fun GithubDiffViewer(diff: StructuredDiffDto, modifier: Modifier, language: Stri
     // 行号沿用文件头图标的起始缩进；两侧按实际位数共用列宽，至少预留两位。
     val gutterInset = GlasmioListRowDefaults.horizontalPadding
     val digits =
-        maxOf(
-            2,
-            diff.lines.maxOfOrNull { maxOf(it.left ?: 0, it.right ?: 0) }?.toString()?.length ?: 1,
-        )
+        remember(hunks) { maxOf(2, diff.lines.maxOfOrNull { maxOf(it.left ?: 0, it.right ?: 0) }?.toString()?.length ?: 1) }
     val numberWidth =
         with(LocalDensity.current) {
             measurer.measure("9".repeat(digits), style).size.width.toDp() + 8.dp
@@ -274,53 +272,40 @@ fun GithubDiffViewer(diff: StructuredDiffDto, modifier: Modifier, language: Stri
     val codeSpaceWidth =
         with(LocalDensity.current) { measurer.measure("M", style).size.width.toDp() }
     Column(modifier.fillMaxWidth().background(colors.background)) {
-        if (diff.lines.none { it.type != StructuredDiffLineType.Hunk }) {
+        if (hunks.isEmpty()) {
             BasicText(strings.DiffNoTextChanges, style = style)
         } else {
-            GithubLoadingContent(
-                loading = document == null,
-                placeholder = {
-                    GithubDiffCodePlaceholder(
-                        style,
-                        modifier = Modifier.padding(start = gutterInset),
-                        gutterWidth = numberWidth * 2 + markerWidth,
-                    )
-                },
-            ) {
-                val current = document
-                if (current != null) {
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val minimumWidth = maxWidth
-                        // 同一文件只使用一个横向滚动容器，纵向手势继续交给页面列表。
-                        Column(
-                            Modifier.horizontalScroll(horizontalScrollState)
-                                .widthIn(min = minimumWidth)
-                                .width(IntrinsicSize.Max),
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val minimumWidth = maxWidth
+                // 同一文件只使用一个横向滚动容器，纵向手势继续交给页面列表。
+                Column(
+                    Modifier.horizontalScroll(horizontalScrollState)
+                        .widthIn(min = minimumWidth)
+                        .width(IntrinsicSize.Max),
+                ) {
+                    hunks.forEachIndexed { index, lines ->
+                        val highlighted = highlights.getOrNull(index)
+                        key(
+                            diff.id,
+                            diff.baseCommitOid,
+                            diff.headCommitOid,
+                            language,
+                            index,
                         ) {
-                            current.hunks.forEachIndexed { index, highlighted ->
-                                key(
-                                    diff.id,
-                                    diff.baseCommitOid,
-                                    diff.headCommitOid,
-                                    language,
-                                    index,
-                                ) {
-                                    SelectionContainer {
-                                        Column {
-                                            highlighted.lines.forEachIndexed { row, line ->
-                                                GithubDiffCodeRow(
-                                                    line = line,
-                                                    tokens = highlighted.tokens[row],
-                                                    inlineChange = highlighted.inlineChanges[row],
-                                                    colors = colors,
-                                                    style = style,
-                                                    numberWidth = numberWidth,
-                                                    markerWidth = markerWidth,
-                                                    gutterInset = gutterInset,
-                                                    codeSpaceWidth = codeSpaceWidth,
-                                                )
-                                            }
-                                        }
+                            SelectionContainer {
+                                Column {
+                                    lines.forEachIndexed { row, line ->
+                                        GithubDiffCodeRow(
+                                            line = line,
+                                            tokens = highlighted?.tokens?.get(row).orEmpty(),
+                                            inlineChange = highlighted?.inlineChanges?.get(row),
+                                            colors = colors,
+                                            style = style,
+                                            numberWidth = numberWidth,
+                                            markerWidth = markerWidth,
+                                            gutterInset = gutterInset,
+                                            codeSpaceWidth = codeSpaceWidth,
+                                        )
                                     }
                                 }
                             }

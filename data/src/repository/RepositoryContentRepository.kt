@@ -63,9 +63,6 @@ class RepositoryContentRepository(
             RepositoryTextContent.serializer(),
         )
 
-    fun license(account: String, owner: String, name: String) =
-        resource(account, owner, name, "license-graphql", null, "", String.serializer())
-
     fun directory(
         account: String,
         owner: String,
@@ -169,10 +166,11 @@ class RepositoryContentRepository(
         }
     }
 
-    suspend fun loadLicense(account: String, owner: String, name: String): String = request {
-        queryRepository(account, owner, name, RepositoryLicenseQuery)
-            .graphRequiredText("licenseContents")
-            .takeIf { it.length <= MaxRawContentBytes } ?: throw GithubPageException()
+    suspend fun loadLicensePath(owner: String, name: String): String = request {
+        api.getRepositoryLicense(owner, name)
+            .path
+            ?.takeIf { it.isNotEmpty() && isRepositoryContentPath(it) }
+            ?: throw SerializationException("Missing license file path")
     }
 
     private suspend fun queryRepository(
@@ -237,7 +235,6 @@ class RepositoryContentRepository(
             parent = parent.substringBeforeLast('/', "")
         }
         readme(account, owner, name, ref).invalidate()
-        license(account, owner, name).invalidate()
         details(account, owner, name).invalidate()
     }
 
@@ -364,14 +361,6 @@ private val RepositoryReadmeQuery =
             url name owner { login }
             readme(refName: ${'$'}branchName) { contentHTML path }
         }
-    }
-    """
-        .trimIndent()
-
-private val RepositoryLicenseQuery =
-    """
-    query RepositoryLicenseContents(${'$'}owner: String!, ${'$'}name: String!) {
-        repository(owner: ${'$'}owner, name: ${'$'}name) { licenseContents }
     }
     """
         .trimIndent()

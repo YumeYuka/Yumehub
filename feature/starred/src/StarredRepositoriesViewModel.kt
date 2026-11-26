@@ -2,20 +2,14 @@ package moe.yumeyuka.yumehub.feature.starred
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.cachedIn
 import androidx.paging.filter
 import kotlinx.coroutines.flow.flowOf
 import moe.yumeyuka.yumehub.data.repository.StarredRowChange
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.DataDomain
@@ -23,7 +17,6 @@ import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.ProfileCollectionsRepository
-import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.UserRepositoryList
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 
@@ -35,7 +28,7 @@ class StarredRepositoriesViewModel(
     login: String,
     private val drafts: CommentDraftStore,
 ) : ViewModel() {
-    private val account = collections.account
+    internal val account = collections.account
     private val login = login
     private val query = MutableStateFlow("")
     val searchQuery = query.asStateFlow()
@@ -64,30 +57,20 @@ class StarredRepositoriesViewModel(
     private var submittingHere = false
     private var closeOnSuccess = false
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val repositories =
-        combine(query, mutableSelectedList) { search, list -> search to list }
-            .flatMapLatest { (search, list) ->
-                kotlinx.coroutines.flow.channelFlow {
-                    val source = if (list == null) collections.starred(account, login, search) else collections.listItems(account, login, list.slug, search)
-                    combine(source.cachedIn(this), membershipFor(list)) { page, changes ->
-                        if (changes.isEmpty()) page else page.filter { changes[it.fullName?.lowercase(Locale.ROOT)]?.member != false }
-                    }.collect { send(it) }
+    internal fun repositoriesFor(search: String, list: UserRepositoryList?) =
+        (if (list == null) collections.starred(account, login, search)
+         else collections.listItems(account, login, list.slug, search))
+            .combine(membershipFor(list)) { page, changes ->
+                if (changes.isEmpty()) page else page.filter {
+                    changes[it.fullName?.lowercase(Locale.ROOT)]?.member != false
                 }
             }
-            .cachedIn(viewModelScope)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val revalidation: StateFlow<RevalidationState> =
-        combine(query, mutableSelectedList) { search, list -> search to list }
-            .flatMapLatest { (search, list) ->
-                collections.revalidation(account, activeKey(search, list))
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    internal fun revalidationFor(search: String, list: UserRepositoryList?) =
+        collections.revalidation(account, activeKey(search, list))
 
-    fun retryRevalidation() {
-        collections.retryRevalidation(account, activeKey(query.value, mutableSelectedList.value))
-    }
+    internal fun retryRevalidation(search: String, list: UserRepositoryList?) =
+        collections.retryRevalidation(account, activeKey(search, list))
 
     private fun activeKey(search: String, list: UserRepositoryList?): String =
         if (list == null) collections.starredKey(account, login, search)
@@ -111,7 +94,7 @@ class StarredRepositoriesViewModel(
     }
 
     fun search(value: String) {
-        query.value = value
+        query.value = value.trim()
     }
 
     fun selectList(list: UserRepositoryList?) {

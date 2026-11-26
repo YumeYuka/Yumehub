@@ -25,6 +25,7 @@ import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import moe.yumeyuka.yumehub.feature.profile.ProfileRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 
@@ -93,8 +94,6 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
             key = { mainNavigationTabs[it].name },
             userScrollEnabled = !component.state.locked,
             overscrollEffect = null,
-            // 与 InstallerX-Revived 首页一致：相邻标签预先组合，滑动时内容已经就绪。
-            beyondViewportPageCount = 1,
             modifier =
                 Modifier.fillMaxSize().nestedScroll(navigationScrollState.nestedScrollConnection),
         ) { index ->
@@ -127,8 +126,10 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
 private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
     val component = LocalGithubShellArgs.current.component
     val isActive = component.mainTab == tab
-    // 预组合的标签页保持 RESUMED，只有返回 dispatcher 与刷新归属跟随当前标签。
-    val lifecycleOwner = rememberLifecycleOwner(maxLifecycle = Lifecycle.State.RESUMED)
+    val lifecycleOwner = rememberLifecycleOwner(
+        maxLifecycle = if (isActive && LocalGithubRouteChild.current.isTop) Lifecycle.State.RESUMED
+            else Lifecycle.State.CREATED,
+    )
     val dispatcherOwner =
         rememberChildDispatcherOwner(
             parent = checkNotNull(LocalNavigationEventDispatcherOwner.current),
@@ -142,6 +143,7 @@ private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
     CompositionLocalProvider(
         LocalLifecycleOwner provides lifecycleOwner,
         LocalNavigationEventDispatcherOwner provides dispatcherOwner,
+        LocalGithubCardMotionEnabled provides (isActive && LocalGithubCardMotionEnabled.current),
         LocalGithubPageState provides state.pageState,
         LocalGithubPageBackdrop provides pageBackdrop,
         LocalBlurBackdrop provides pageBackdrop,

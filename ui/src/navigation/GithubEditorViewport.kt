@@ -55,7 +55,7 @@ internal fun GithubEditorViewport(
     content: @Composable () -> Unit,
     titleContent: (@Composable () -> Unit)?,
 ) {
-    val backdrop = rememberLayerBackdrop()
+    val backdrop = LocalGithubPageBackdrop.current ?: rememberLayerBackdrop()
     val barState =
         rememberTopAppBarState(
             initialHeightOffsetLimit = -Float.MAX_VALUE,

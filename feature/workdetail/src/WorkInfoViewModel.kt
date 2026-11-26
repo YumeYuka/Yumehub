@@ -32,7 +32,9 @@ internal class WorkInfoViewModel(
 
     fun load() = controller.load()
 
-    fun refresh() = controller.refresh()
+    fun retryReferences() = controller.loadReferences()
+
+    fun retryFields() = controller.loadFields()
 
     fun retry() = controller.refresh()
 

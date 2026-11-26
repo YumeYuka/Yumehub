@@ -199,7 +199,7 @@ internal fun GithubBottomBar(
     }
     val label = LocalGithubStrings.current.Profile.Title
     val profile =
-        remember(label, accounts) {
+        remember(label, accounts, compactProgress) {
             GlasmioTabItem<GithubRoute>(
                 ProfileRoute,
                 label = label,
@@ -208,7 +208,8 @@ internal fun GithubBottomBar(
                     GithubAccountAvatars(
                         avatars,
                         activeAvatarUrl = null,
-                        size = size,
+                        size = size + 2.dp,
+                        compactProgress = compactProgress,
                         modifier = iconModifier,
                     )
                 },

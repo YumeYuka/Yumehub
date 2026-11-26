@@ -133,15 +133,15 @@ internal fun WorkBaseBranchSheet(
     val common = LocalGithubStrings.current.Common
     val current = state.item?.baseRefName
     var selected by remember(viewModel, current) { mutableStateOf(current) }
-    val branchChoices = if (state.branchLoading) emptyList() else state.branchChoices
+    val branchChoices = state.branchChoices
     val branchSlots =
         remember(state.branchQuery) { GithubPagingSlotKeys("base-branch") }
     val branchKeys =
-        remember(branchSlots, branchChoices, state.branchLoading, state.branchCursor) {
+        remember(branchSlots, branchChoices, state.branchLoading, state.branchCursor, state.branchError) {
             branchSlots.update(
                 branchChoices,
-                loading = state.branchCursor != null,
-                initialLoading = state.branchLoading,
+                loading = state.branchCursor != null && !state.branchError,
+                initialLoading = state.branchLoading && branchChoices.isEmpty(),
             )
         }
     if (state.branchError)
@@ -161,17 +161,22 @@ internal fun WorkBaseBranchSheet(
         },
         confirmEnabled = canChangeBase && selected != null && selected != current,
     ) { _ ->
-        when {
-            state.branchError ->
+        if (state.branchError) {
                 item(key = "base-branch-retry") {
                     GlasmioGroupedList {
                         GlasmioListRow(
                             title = common.Retry,
-                            onClick = { viewModel.searchBaseBranches(state.branchQuery) },
+                            onClick = {
+                                if (state.branchCursor != null) viewModel.loadMoreBaseBranches()
+                                else viewModel.searchBaseBranches(state.branchQuery)
+                            },
                         )
                     }
                 }
-            else -> {
+        }
+        if (!state.branchLoading && !state.branchError && branchChoices.isEmpty() && state.branchCursor == null) {
+            item(key = "base-branch-empty") { GlasmioListRow(title = LocalGithubStrings.current.Workspaces.NoMatchingBranches) }
+        }
                 itemsIndexed(
                     branchKeys,
                     key = { _, key -> key },
@@ -185,7 +190,7 @@ internal fun WorkBaseBranchSheet(
                     GlasmioGroupedList(
                         framed = false,
                         modifier =
-                            Modifier.animateItem()
+                            Modifier
                                 .glasmioGroupedListBackground(
                                     ContinuousRoundedRectangle(
                                         topStart = if (index == 0) 26.dp else 0.dp,
@@ -224,7 +229,5 @@ internal fun WorkBaseBranchSheet(
                         }
                     }
                 }
-            }
-        }
     }
 }

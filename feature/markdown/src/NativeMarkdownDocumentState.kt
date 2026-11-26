@@ -26,6 +26,7 @@ import moe.yumeyuka.yumehub.core.model.GithubLinkTarget
 import moe.yumeyuka.yumehub.core.model.parseGithubLink
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDocumentGeometry
 
 /** 引用身份区分 A → B → A 的内容更新，不把相同原文误认为同一轮请求。 */
 internal class NativeMarkdownRevision
@@ -36,6 +37,7 @@ internal data class NativeMarkdownDocument(
     val html: String,
     val content: HtmlDocument,
     val viewerLogin: String? = null,
+    val geometry: GithubDocumentGeometry,
 )
 
 internal enum class NativeMarkdownFailure {
@@ -71,7 +73,7 @@ internal data class CachedNativeMarkdownDocument(
     val html: String,
     val content: HtmlDocument,
     val viewerLogin: String?,
-    val webHeightDp: Float = 1f,
+    val geometry: GithubDocumentGeometry = GithubDocumentGeometry(),
 )
 
 /** 路由仍存活时保留已解析正文，避免 LazyColumn 回收阅读 item 后再次请求和解析。 */
@@ -79,7 +81,7 @@ internal class NativeMarkdownDocumentCacheViewModel : ViewModel() {
     private val documents =
         LinkedHashMap<NativeMarkdownDocumentCacheKey, CachedNativeMarkdownDocument>(
             MaxRetainedMarkdownDocuments,
-            0.75f,
+            0.75f, true,
         )
     private var cachedLogin: String? = null
     private var cachedSession: Long? = null
@@ -105,36 +107,19 @@ internal class NativeMarkdownDocumentCacheViewModel : ViewModel() {
         viewerLogin: String?,
         html: String,
         content: HtmlDocument,
-    ) {
+    ): CachedNativeMarkdownDocument {
         clearForAccount(viewerLogin)
         val key = NativeMarkdownDocumentCacheKey(request, viewerLogin)
         val previous = documents.remove(key)
         previous?.let { cachedHtmlCharacters -= it.html.length }
+        val cached = CachedNativeMarkdownDocument(html, content, viewerLogin,
+            previous?.takeIf { it.html == html }?.geometry ?: GithubDocumentGeometry())
         if (html.length <= MaxRetainedMarkdownHtmlCharacters) {
-            documents[key] =
-                CachedNativeMarkdownDocument(
-                    html,
-                    content,
-                    viewerLogin,
-                    previous?.takeIf { it.html == html }?.webHeightDp ?: 1f,
-                )
+            documents[key] = cached
             cachedHtmlCharacters += html.length
         }
         evictOldDocuments()
-    }
-
-    /** 高度随路由正文保留，不依赖临时渲染会话的 saveable key。旧账号与旧 HTML 不得写回。 */
-    @Synchronized
-    fun updateWebHeight(
-        request: GithubMarkdownContent,
-        viewerLogin: String?,
-        html: String,
-        heightDp: Float,
-    ) {
-        if (cachedLogin != viewerLogin || !heightDp.isFinite() || heightDp <= 0f) return
-        val key = NativeMarkdownDocumentCacheKey(request, viewerLogin)
-        val cached = documents[key]?.takeIf { it.html == html } ?: return
-        documents[key] = cached.copy(webHeightDp = heightDp)
+        return cached
     }
 
     private fun clearForAccount(viewerLogin: String?) {
@@ -180,39 +165,20 @@ internal fun rememberNativeMarkdownDocument(
     val latestRevision = rememberUpdatedState(revision)
     val latestAccount = rememberUpdatedState(isCurrentAccount)
     var document by
-        remember(viewerLogin) {
+        remember(revision) {
             mutableStateOf(
                 cachedDocument?.let {
-                    NativeMarkdownDocument(request, revision, it.html, it.content, it.viewerLogin)
+                    NativeMarkdownDocument(request, revision, it.html, it.content, it.viewerLogin, it.geometry)
                 },
             )
         }
     var loading by remember(request, retry, viewerLogin) { mutableStateOf(cachedDocument == null) }
-    var failure by remember { mutableStateOf<NativeMarkdownFailure?>(null) }
-    var finishedRevision by remember { mutableStateOf<NativeMarkdownRevision?>(null) }
+    var failure by remember(revision) { mutableStateOf<NativeMarkdownFailure?>(null) }
+    var finished by remember(revision) { mutableStateOf(cachedDocument != null) }
 
     LaunchedEffect(revision, requestEnabled) {
         if (!requestEnabled) return@LaunchedEffect
-        if (document?.revision !== revision && cachedDocument != null) {
-            document =
-                NativeMarkdownDocument(
-                    request = request,
-                    revision = revision,
-                    html = cachedDocument.html,
-                    content = cachedDocument.content,
-                    viewerLogin = cachedDocument.viewerLogin,
-                )
-        }
-        if (document?.revision === revision) {
-            loading = false
-            failure = null
-            finishedRevision = revision
-            return@LaunchedEffect
-        }
-        if (finishedRevision === revision) {
-            loading = false
-            return@LaunchedEffect
-        }
+        if (finished) return@LaunchedEffect
         loading = true
         failure = null
         var stage = NativeMarkdownFailure.FETCH
@@ -262,8 +228,8 @@ internal fun rememberNativeMarkdownDocument(
             }
             ensureActive()
             if (latestAccount.value() && latestRevision.value === revision) {
-                document = NativeMarkdownDocument(request, revision, html, parsed, viewerLogin)
-                documentCache.put(request, viewerLogin, html, parsed)
+                val cached = documentCache.put(request, viewerLogin, html, parsed)
+                document = NativeMarkdownDocument(request, revision, html, parsed, viewerLogin, cached.geometry)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -276,7 +242,7 @@ internal fun rememberNativeMarkdownDocument(
                     latestRevision.value === revision
             ) {
                 loading = false
-                finishedRevision = revision
+                finished = true
             }
         }
     }
@@ -284,7 +250,7 @@ internal fun rememberNativeMarkdownDocument(
         request = request,
         revision = revision,
         document = document,
-        loading = loading || document?.revision !== revision,
+        loading = loading,
         failure = failure,
         requestEnabled = requestEnabled,
         retry = { retry++ },

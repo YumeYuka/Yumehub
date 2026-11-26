@@ -24,9 +24,10 @@ fun GithubActivityCard(
     action: (@Composable () -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
+    modifier: Modifier = Modifier,
     cover: (@Composable () -> Unit)? = null,
 ) {
-    GlasmioGroupedList {
+    GlasmioGroupedList(modifier = modifier) {
         GithubActivityCardContent(
             header,
             summary,
@@ -69,7 +70,6 @@ internal fun GithubActivityCardContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            cover?.invoke()
             Box(
                 Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.CenterStart,
@@ -77,6 +77,7 @@ internal fun GithubActivityCardContent(
                 header()
             }
             summary?.let { it() }
+            cover?.invoke()
             metadata?.let { it() }
         }
         action?.let {

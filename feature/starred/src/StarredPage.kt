@@ -76,20 +76,20 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         dismissSearch, strings.Profile.SearchStarred,
     ) {
         GithubPagingContent(
-            viewModel.repositories,
-            contentKey = Triple(login, selectedList?.id, search),
-            revalidation = viewModel.revalidation,
-            onRetryRevalidation = viewModel::retryRevalidation,
+            source = remember(viewModel, selectedList, search) { viewModel.repositoriesFor(search, selectedList) },
+            contentKey = Triple(viewModel.account to login, selectedList?.id to selectedList?.slug, search),
+            revalidation = remember(viewModel, selectedList, search) { viewModel.revalidationFor(search, selectedList) },
+            onRetryRevalidation = { viewModel.retryRevalidation(search, selectedList) },
         ) { paging ->
             val repositories = paging.items
             val slots =
                 rememberGithubPagingSlots(repositories, "starred", paging.initialLoading) {
                     it.id?.toString() ?: it.fullName
                 }
-            val loaded = repositories.itemSnapshotList.items
+            val loaded = slots.snapshot
             val additions = remember(changes, loaded, search, selectedList) {
                 if (selectedList == null && search.isNotBlank() || changes.isEmpty()) emptyList() else {
-                    val present = loaded.mapNotNullTo(hashSetOf()) { it.fullName?.lowercase() }
+                    val present = loaded.mapNotNullTo(hashSetOf()) { it?.fullName?.lowercase() }
                     changes.mapNotNull { (slug, change) -> change.repository?.takeIf { repo ->
                         change.member == true && slug !in present && change.phase != moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED &&
                             (search.isBlank() || repo.fullName.orEmpty().contains(search.trim(), true) || repo.description.orEmpty().contains(search.trim(), true))
@@ -99,7 +99,6 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         GithubPage(
             title = selectedList?.name ?: strings.Profile.Starred,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 12.dp,
             actions = {
                 GlasmioIconButton(
@@ -126,9 +125,7 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                 moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard(repo, onClick = { onOpenRepository(repo) }, showCover = false)
             } }
             StarredRepositoriesScreen(
-                repositories,
                 slots,
-                paging.initialLoading,
                 onOpenRepository,
                 hasAdditions = additions.isNotEmpty(),
                 emptyText =

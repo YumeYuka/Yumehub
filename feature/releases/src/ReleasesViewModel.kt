@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.cachedIn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import moe.yumeyuka.yumehub.data.repository.GithubReactionContent
 import moe.yumeyuka.yumehub.data.repository.GithubReactionGroup
 import moe.yumeyuka.yumehub.data.repository.GithubReactionUpdate
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseResult
+import moe.yumeyuka.yumehub.data.repository.GithubReleaseVersion
 import moe.yumeyuka.yumehub.data.repository.ReleaseRepository
 import moe.yumeyuka.yumehub.data.repository.convergeGithubReactions
 import moe.yumeyuka.yumehub.data.repository.withToggledReaction
@@ -31,7 +33,7 @@ internal data class ReleaseState(
     val result: GithubReleaseResult? = null,
     val loading: Boolean = true,
     val failure: Throwable? = null,
-    val selectedVersionId: String? = null,
+    val selectedVersion: GithubReleaseVersion? = null,
 )
 
 internal class ReleasesViewModel(
@@ -85,15 +87,16 @@ internal class ReleasesViewModel(
     private fun reactionKey(id: String) =
         MutationKey(MutationKind.REACTION, id, ListSerializer(GithubReactionGroup.serializer()))
 
-    fun select(id: String) {
-        if (id == state.value.selectedVersionId && state.value.failure == null) return
-        load(id = id)
+    fun select(version: GithubReleaseVersion) {
+        val current = state.value
+        if (current.failure == null && version.id == (current.selectedVersion?.id ?: current.result?.detail?.version?.id)) return
+        load(version)
     }
 
     fun retry() {
         val current = state.value
         if (current.failure != null) {
-            load(id = current.selectedVersionId)
+            load(current.selectedVersion)
         }
     }
 
@@ -235,20 +238,23 @@ internal class ReleasesViewModel(
             }
     }
 
-    private fun load(id: String? = null) {
+    private fun load(version: GithubReleaseVersion? = null) {
         request?.cancel()
         mutableReactionFailure.value = null
-        val cached = state.value.result?.takeIf { state.value.selectedVersionId == id || it.detail?.version?.id == id }
-        mutableState.value = ReleaseState(result = cached, selectedVersionId = id, loading = cached == null)
-        request = viewModelScope.launch {
+        val id = version?.id
+        val previous = state.value
+        val cached = previous.result?.takeIf { previous.selectedVersion?.id == id || it.detail?.version?.id == id }
+        mutableState.value = ReleaseState(result = cached, selectedVersion = version, loading = cached == null)
+        request = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 repository.observe(account, route.owner, route.name, route.tag, id).collect { frame ->
-                    val content = frame.data ?: cached
+                    ensureActive()
+                    val content = frame.data
                     mutableState.value = ReleaseState(
                         result = content,
                         loading = content == null && frame.error == null,
                         failure = frame.error,
-                        selectedVersionId = id,
+                        selectedVersion = version,
                     )
                 }
             } catch (error: CancellationException) {

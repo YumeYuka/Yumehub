@@ -42,7 +42,7 @@ internal fun WorkDetailHeader(
     val enabled = !state.submitting || state.sendingInBackground
     val isPullRequest = kind == CollaborationKind.PullRequest
     val strings = LocalGithubStrings.current.WorkDetail
-    val projectTitle = state.projectTitles.firstOrNull()
+    val projectTitle = state.projectTitles?.let { it.firstOrNull() ?: strings.NoProjects } ?: strings.Projects
     GlasmioGroupedList {
         if (entry == null) {
             Box(Modifier.fillMaxWidth().height(58.dp).padding(16.dp)) {
@@ -137,12 +137,11 @@ private fun WorkHeaderLabels(labels: List<CollaborationLabelDto>, enabled: Boole
 
 @Composable
 private fun WorkHeaderProject(
-    title: String?,
+    title: String,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
     WorkHeaderButton(enabled, onClick, modifier) {
         GithubIcon(
             Lucide.Package,
@@ -150,7 +149,7 @@ private fun WorkHeaderProject(
             size = 16.dp,
             tint = GithubWorkColors.muted,
         )
-        WorkHeaderText(title ?: strings.NoProjects, Modifier.weight(1f, fill = false))
+        WorkHeaderText(title, Modifier.weight(1f, fill = false))
     }
 }
 

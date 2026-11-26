@@ -11,7 +11,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,6 +43,7 @@ import moe.yumeyuka.yumehub.data.repository.WorkspacesGraphQlException
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesTimeoutException
 import moe.yumeyuka.yumehub.data.repository.isRepositoryContentPath
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
@@ -113,12 +113,13 @@ internal class WorkspacesViewModel(
     private var saveJob: Job? = null
     private val prefetchJobs = mutableMapOf<String, Job>()
     private val directoryCache =
-        LinkedHashMap<String, DirectorySnapshot>(MaxCachedDirectories, 0.75f, true)
+        LinkedHashMap<Pair<String, String>, DirectorySnapshot>(MaxCachedDirectories, 0.75f, true)
 
     private data class DirectorySnapshot(
         val entries: List<WorkspaceEntry>,
         val commit: WorkspacesLoad<WorkspaceCommit?> = WorkspacesLoad.Loading,
         val updatedAt: Map<String, String> = emptyMap(),
+        val timestampsLoaded: Boolean = false,
     )
 
     private var activeSession: GithubEditorSession? = null
@@ -149,7 +150,7 @@ internal class WorkspacesViewModel(
                 .distinctUntilChanged()
                 .collect { account -> if (account != activeAccount) bindAccount(account) }
         }
-        loadRepository(force = true)
+        loadRepository(force = !route.license)
     }
 
     fun openDirectory(path: String) {
@@ -198,7 +199,7 @@ internal class WorkspacesViewModel(
     fun retry() {
         val state = mutableUiState.value
         if (state.repository is WorkspacesLoad.Error) loadRepository(force = true)
-        else openPath(state.path, force = true)
+        else state.ref?.let { loadDirectory(state.path, it, force = true, refreshCommit = false) }
     }
 
     fun retryCommit() {
@@ -216,7 +217,6 @@ internal class WorkspacesViewModel(
         commitJob?.cancel()
         prefetchJobs.values.toList().forEach { it.cancel() }
         prefetchJobs.clear()
-        directoryCache.clear()
         cancelFileOpening()
         mutableUiState.value =
             mutableUiState.value.copy(
@@ -226,7 +226,7 @@ internal class WorkspacesViewModel(
                 commit = WorkspacesLoad.Loading,
                 updatedAt = emptyMap(),
             )
-        loadDirectory(currentPath, branchRef, force = true)
+        openPath(currentPath, force = false)
     }
 
     private fun bindAccount(account: String) {
@@ -282,8 +282,12 @@ internal class WorkspacesViewModel(
                             ) {
                                 contentRepository.loadDetails(account, route.owner, route.name)
                             }
-                        route.target(details.defaultBranch?.let { "refs/heads/$it" }) to
-                            details.htmlUrl
+                        val defaultRef = details.defaultBranch?.let { "refs/heads/$it" }
+                        val target = if (route.license && defaultRef != null) {
+                            val path = contentRepository.loadLicensePath(route.owner, route.name)
+                            WorkspaceTarget(defaultRef, path, file = true, anchor = null)
+                        } else if (route.license) null else route.target(defaultRef)
+                        target to details.htmlUrl
                     }
                 ensureActive()
                 if (generation != accountGeneration || !isCurrentAccount(account)) return@launch
@@ -330,7 +334,7 @@ internal class WorkspacesViewModel(
         cancelFileOpening()
         commitJob?.cancel()
         prefetchJobs.remove(path)?.cancel()
-        val cached = directoryCache[path]
+        val cached = directoryCache[ref to path]
         if (cached != null && !force) {
             directoryGeneration++
             directoryJob?.cancel()
@@ -341,18 +345,24 @@ internal class WorkspacesViewModel(
                     commit = cached.commit,
                     updatedAt = cached.updatedAt,
                 )
-            loadDirectory(path, ref, force = true)
+            if (cached.commit == WorkspacesLoad.Loading) loadCommit(path)
+            if (!cached.timestampsLoaded && cached.entries.any { !it.directory }) {
+                val generation = directoryGeneration
+                directoryJob = viewModelScope.launch {
+                    applyUpdatedAt(path, cached.entries, ref, activeAccount, accountGeneration, generation)
+                }
+            }
             return
         }
         loadDirectory(path, ref, force)
     }
 
-    private fun loadDirectory(path: String, ref: String, force: Boolean) {
+    private fun loadDirectory(path: String, ref: String, force: Boolean, refreshCommit: Boolean = true) {
         val account = activeAccount
         val generation = accountGeneration
         val directory = ++directoryGeneration
         directoryJob?.cancel()
-        commitJob?.cancel()
+        if (refreshCommit) commitJob?.cancel()
         cancelFileOpening()
         prefetchJobs.remove(path)?.cancel()
         mutableUiState.value =
@@ -362,15 +372,14 @@ internal class WorkspacesViewModel(
                     (mutableUiState.value.entries as? WorkspacesLoad.Ready)
                         ?.takeIf { mutableUiState.value.path == path }
                         ?.copy(refreshing = true, refreshError = null) ?: WorkspacesLoad.Loading,
-                commit =
-                    (mutableUiState.value.commit as? WorkspacesLoad.Ready)
-                        ?.takeIf { mutableUiState.value.path == path }
-                        ?.copy(refreshing = true, refreshError = null) ?: WorkspacesLoad.Loading,
+                commit = mutableUiState.value.commit.takeIf { mutableUiState.value.path == path }
+                    ?: WorkspacesLoad.Loading,
                 updatedAt =
                     mutableUiState.value.updatedAt
                         .takeIf { mutableUiState.value.path == path }
                         .orEmpty(),
             )
+        if (refreshCommit) loadCommit(path)
         directoryJob = viewModelScope.launch {
             try {
                 val entries =
@@ -385,56 +394,24 @@ internal class WorkspacesViewModel(
                 ensureActive()
                 if (!isCurrentAccount(account) || accountGeneration != generation) return@launch
                 if (directory != directoryGeneration) return@launch
-                if (force) directoryCache.remove(path)
+                if (force) directoryCache.remove(ref to path)
                 // 目录先落地，提交卡与行内更新时间并发补齐，互不阻塞。
                 mutableUiState.value =
                     mutableUiState.value.copy(
                         entries = WorkspacesLoad.Ready(entries),
-                        commit =
-                            (mutableUiState.value.commit as? WorkspacesLoad.Ready)?.copy(
-                                refreshing = true,
-                            ) ?: WorkspacesLoad.Loading,
                     )
                 prefetchDirectories(entries, ref)
-                coroutineScope {
-                    launch {
-                        applyCommit(
-                            path = path,
-                            ref = ref,
-                            account = account,
-                            generation = generation,
-                            directory = directory,
-                        )
-                    }
-                    launch {
-                        applyUpdatedAt(
-                            path = path,
-                            entries = entries,
-                            ref = ref,
-                            account = account,
-                            generation = generation,
-                            directory = directory,
-                        )
-                    }
-                }
-                ensureActive()
-                if (!isCurrentAccount(account) || accountGeneration != generation) return@launch
-                if (directory != directoryGeneration) return@launch
-                val snapshot = mutableUiState.value
-                val commit = snapshot.commit as? WorkspacesLoad.Ready ?: return@launch
-                cacheDirectory(
-                    path,
-                    DirectorySnapshot(
-                        entries = entries,
-                        commit = commit,
-                        updatedAt = snapshot.updatedAt,
-                    ),
-                )
+                retainDirectory(ref, path)
+                applyUpdatedAt(path, entries, ref, account, generation, directory)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 if (directory != directoryGeneration) return@launch
                 if (!isCurrentAccount(account) || accountGeneration != generation) return@launch
+                if (error.invalidatesCachedContent()) {
+                    forgetWorkspace(error)
+                    return@launch
+                }
                 mutableUiState.value =
                     mutableUiState.value.copy(
                         entries =
@@ -442,43 +419,9 @@ internal class WorkspacesViewModel(
                                 refreshing = false,
                                 refreshError = error.readErrorMessage(),
                             ) ?: WorkspacesLoad.Error(error.readErrorMessage()),
-                        commit =
-                            (mutableUiState.value.commit as? WorkspacesLoad.Ready)?.copy(
-                                refreshing = false,
-                                refreshError = strings.CommitLoadFailed,
-                            ) ?: WorkspacesLoad.Error(strings.CommitLoadFailed),
                     )
             }
         }
-    }
-
-    private suspend fun applyCommit(
-        path: String,
-        ref: String,
-        account: String,
-        generation: Long,
-        directory: Long,
-    ) {
-        val result =
-            try {
-                WorkspacesLoad.Ready(
-                    workspacesRepository.loadCommit(
-                        account,
-                        route.owner,
-                        route.name,
-                        ref,
-                        path.ifEmpty { null },
-                    ),
-                )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                WorkspacesLoad.Error(error.readErrorMessage())
-            }
-        currentCoroutineContext().ensureActive()
-        if (!isCurrentAccount(account) || accountGeneration != generation) return
-        if (directory != directoryGeneration || mutableUiState.value.path != path) return
-        mutableUiState.value = mutableUiState.value.copy(commit = result)
     }
 
     private suspend fun applyUpdatedAt(
@@ -508,13 +451,17 @@ internal class WorkspacesViewModel(
         if (!isCurrentAccount(account) || accountGeneration != generation) return
         if (directory != directoryGeneration || mutableUiState.value.path != path) return
         mutableUiState.value = mutableUiState.value.copy(updatedAt = updatedAt)
+        retainDirectory(ref, path, timestampsLoaded = true)
     }
 
     private fun loadCommit(path: String) {
         val ref = mutableUiState.value.ref ?: return
         val account = activeAccount
         val generation = accountGeneration
-        mutableUiState.value = mutableUiState.value.copy(commit = WorkspacesLoad.Loading)
+        val previous = mutableUiState.value.commit as? WorkspacesLoad.Ready
+        mutableUiState.value = mutableUiState.value.copy(
+            commit = previous?.copy(refreshing = true, refreshError = null) ?: WorkspacesLoad.Loading,
+        )
         commitJob?.cancel()
         commitJob = viewModelScope.launch {
             val result =
@@ -531,18 +478,24 @@ internal class WorkspacesViewModel(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
-                    WorkspacesLoad.Error(error.readErrorMessage())
+                    if (error.invalidatesCachedContent() && isCurrentAccount(account) && accountGeneration == generation && mutableUiState.value.ref == ref && mutableUiState.value.path == path) {
+                        forgetWorkspace(error)
+                        return@launch
+                    }
+                    previous?.copy(refreshing = false, refreshError = error.readErrorMessage())
+                        ?: WorkspacesLoad.Error(error.readErrorMessage())
                 }
             ensureActive()
             if (!isCurrentAccount(account) || accountGeneration != generation) return@launch
-            if (mutableUiState.value.path != path) return@launch
+            if (mutableUiState.value.path != path || mutableUiState.value.ref != ref) return@launch
             mutableUiState.value = mutableUiState.value.copy(commit = result)
+            retainDirectory(ref, path)
         }
     }
 
     private fun prefetchDirectories(entries: List<WorkspaceEntry>, ref: String) {
         entries.asSequence().filter(WorkspaceEntry::directory).take(2).forEach { entry ->
-            if (directoryCache.containsKey(entry.path) || prefetchJobs.containsKey(entry.path))
+            if (directoryCache.containsKey(ref to entry.path) || prefetchJobs.containsKey(entry.path))
                 return@forEach
             if (prefetchJobs.size >= 2) return@forEach
             val account = activeAccount
@@ -562,7 +515,7 @@ internal class WorkspacesViewModel(
                         if (!isCurrentAccount(account) || accountGeneration != generation)
                             return@launch
                         // 未打开的子目录只预取条目，提交与逐文件历史留到目录可见时再读。
-                        cacheDirectory(entry.path, DirectorySnapshot(children))
+                        cacheDirectory(ref, entry.path, DirectorySnapshot(children))
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
@@ -971,7 +924,7 @@ internal class WorkspacesViewModel(
                 }
                 mutableEvents.tryEmit(WorkspacesEvent.Saved)
                 if (mutableUiState.value.ref == ref) {
-                    directoryCache.remove(mutableUiState.value.path)
+                    directoryCache.remove(ref to mutableUiState.value.path)
                     loadDirectory(mutableUiState.value.path, ref, force = true)
                 }
             } else if (activeSession === session) {
@@ -1002,8 +955,34 @@ internal class WorkspacesViewModel(
         job?.cancel()
     }
 
-    private fun cacheDirectory(path: String, snapshot: DirectorySnapshot) {
-        directoryCache[path] = snapshot
+    private fun forgetWorkspace(error: Throwable) {
+        directoryGeneration++
+        directoryJob?.cancel()
+        commitJob?.cancel()
+        prefetchJobs.values.toList().forEach { it.cancel() }
+        prefetchJobs.clear()
+        directoryCache.clear()
+        branches.reset()
+        cancelFileOpening()
+        activeSession?.complete()
+        activeSession = null
+        activePath = null
+        activeSha = null
+        originalSource = ""
+        draft = ""
+        mutableUiState.value = WorkspacesUiState(repository = WorkspacesLoad.Error(error.readErrorMessage()))
+    }
+
+    private fun retainDirectory(ref: String, path: String, timestampsLoaded: Boolean = false) {
+        val state = mutableUiState.value
+        if (state.ref != ref || state.path != path) return
+        val entries = state.entries as? WorkspacesLoad.Ready ?: return
+        val complete = timestampsLoaded || directoryCache[ref to path]?.timestampsLoaded == true
+        cacheDirectory(ref, path, DirectorySnapshot(entries.value, state.commit, state.updatedAt, complete))
+    }
+
+    private fun cacheDirectory(ref: String, path: String, snapshot: DirectorySnapshot) {
+        directoryCache[ref to path] = snapshot
         while (directoryCache.size > MaxCachedDirectories) {
             val oldest = directoryCache.entries.iterator()
             if (!oldest.hasNext()) break

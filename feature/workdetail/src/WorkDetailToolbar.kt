@@ -1,12 +1,5 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,10 +46,6 @@ internal fun WorkDetailToolbar(
     onSubscription: () -> Unit,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
-    val motionEasing = Easing { fraction ->
-        val remaining = 1f - fraction
-        1f - remaining * remaining * remaining * remaining * remaining
-    }
     val enabled = !state.submitting || state.sendingInBackground
     val canCompose =
         !state.sendingInBackground &&
@@ -95,16 +84,8 @@ internal fun WorkDetailToolbar(
                     },
             )
         }
-        AnimatedContent(
-            targetState = showMerge,
-            modifier = Modifier.weight(1f),
-            transitionSpec = {
-                (fadeIn(tween(320, easing = motionEasing)) togetherWith
-                        fadeOut(tween(320, easing = motionEasing)))
-                    .using(SizeTransform(clip = false))
-            },
-            label = "work-bottom-action",
-        ) { merging ->
+        Box(Modifier.weight(1f)) {
+            val merging = showMerge
             val colors = LocalGlassColors.current
             CompositionLocalProvider(
                 LocalGlassColors provides

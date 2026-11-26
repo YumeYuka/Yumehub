@@ -18,6 +18,7 @@ import moe.yumeyuka.yumehub.data.repository.WorkspaceCommit
 import moe.yumeyuka.yumehub.data.repository.WorkspacesGraphQlException
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesTimeoutException
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
 import retrofit2.HttpException
@@ -25,6 +26,7 @@ import retrofit2.HttpException
 internal data class CommitHistoryUiState(
     val ref: String,
     val commits: List<WorkspaceCommit> = emptyList(),
+    val hasSnapshot: Boolean = false,
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
     val hasMore: Boolean = false,
@@ -41,6 +43,7 @@ internal class CommitHistoryViewModel(
     private var activeAccount = currentAccount()
     private var accountGeneration = 0L
     private var loadJob: Job? = null
+    private val branchesSeen = LinkedHashMap<String, CommitHistoryUiState>(16, 0.75f, true)
     private val mutableUiState = MutableStateFlow(CommitHistoryUiState(ref = route.ref))
     val uiState = mutableUiState.asStateFlow()
     val branches =
@@ -86,11 +89,17 @@ internal class CommitHistoryViewModel(
         val state = mutableUiState.value
         if (!branches.contains(branchRef) || branchRef == state.ref) return
         loadJob?.cancel()
-        mutableUiState.value = CommitHistoryUiState(ref = branchRef)
-        loadFirstPage()
+        if (state.hasSnapshot) {
+            branchesSeen[state.ref] = state.copy(loading = false, loadingMore = false)
+            if (branchesSeen.size > 16) branchesSeen.remove(branchesSeen.keys.first())
+        }
+        val previous = branchesSeen.remove(branchRef)
+        mutableUiState.value = previous ?: CommitHistoryUiState(ref = branchRef)
+        if (previous == null) loadFirstPage()
     }
 
     fun refresh() {
+        branchesSeen.clear()
         if (loadJob?.isActive != true) loadFirstPage()
     }
 
@@ -125,6 +134,7 @@ internal class CommitHistoryViewModel(
                 mutableUiState.value =
                     current.copy(
                         commits = if (append) current.commits + page.commits else page.commits,
+                        hasSnapshot = true,
                         loading = false,
                         loadingMore = false,
                         hasMore = page.hasNextPage && page.endCursor != null,
@@ -138,6 +148,12 @@ internal class CommitHistoryViewModel(
                 if (!isCurrentAccount(account) || generation != accountGeneration) return@launch
                 if (ref != mutableUiState.value.ref) return@launch
                 val message = error.readErrorMessage()
+                if (error.invalidatesCachedContent()) {
+                    branchesSeen.clear()
+                    branches.reset()
+                    mutableUiState.value = CommitHistoryUiState(ref = ref, loading = false, error = message)
+                    return@launch
+                }
                 mutableUiState.value =
                     if (append) {
                         mutableUiState.value.copy(loadingMore = false, loadMoreError = message)
@@ -153,6 +169,7 @@ internal class CommitHistoryViewModel(
         accountGeneration++
         loadJob?.cancel()
         branches.reset()
+        branchesSeen.clear()
         mutableUiState.value = CommitHistoryUiState(ref = route.ref)
         loadFirstPage()
     }

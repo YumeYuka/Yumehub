@@ -64,7 +64,7 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
                 choices != null && selected.toSet() != choices.selected.toSet(),
     ) {
         if (panel == null) return@GithubSearchSelectionSheet
-        if (state.loading) {
+        if (state.loading && choices == null && fields == null) {
             item("loading") {
                 GlasmioGroupedList {
                     TextLinePlaceholder(GlasmioTheme.textStyles.body, Modifier.padding(16.dp), fraction = 0.55f)
@@ -138,7 +138,7 @@ internal fun IssueMetadataSheet(visible: Boolean, state: IssueMetadataState, edi
             )
         }
     }
-    if (acknowledgeVisible && state.uncertain) {
+    if (visible && acknowledgeVisible && state.uncertain) {
         GlasmioAlertDialog(
             visible = true,
             title = all.Common.MutationUncertain,

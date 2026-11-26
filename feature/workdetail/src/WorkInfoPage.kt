@@ -23,7 +23,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -83,25 +82,12 @@ internal fun WorkInfoSheet(
     val title =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
         else strings.IssueInformation
-    var viewModelReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        viewModelReady = true
-    }
-    val viewModel: WorkInfoViewModel? =
-        if (viewModelReady) {
-            koinViewModel(
-                key = "work-info-$login-$owner-$name-${kind.name}-$number",
-                parameters = { parametersOf(owner, name, kind, number, login) },
-            )
-        } else null
-    val state by
-        viewModel?.uiState?.collectAsStateWithLifecycle()
-            ?: remember { mutableStateOf(WorkPropertiesState()) }
-    LaunchedEffect(visible, viewModel) { if (visible) viewModel?.load() }
-    LaunchedEffect(state.saved, viewModel) {
-        if (state.saved) {
-            viewModel?.consumeSaved()
+    val viewModel = workInfoViewModel(owner, name, kind, number, login)
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(visible, viewModel) { if (visible) viewModel.load() }
+    LaunchedEffect(visible, state.saved, viewModel) {
+        if (visible && state.saved) {
+            viewModel.consumeSaved()
             onDismiss()
         }
     }
@@ -123,7 +109,7 @@ internal fun WorkInfoSheet(
                     }
                 },
                 actions = {
-                    if (state.value != null && viewModel != null) {
+                    if (state.value != null) {
                         GlasmioIconButton(onClick = { viewModel.saveAll() }, enabled = !state.submitting) {
                             GithubIcon(Lucide.Check, contentDescription = strings.SaveChanges)
                         }
@@ -139,31 +125,19 @@ internal fun WorkInfoSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (viewModel != null) {
-                WorkInfoSections(
-                    state,
-                    viewModel,
-                    kind,
-                    item,
-                    "$owner/$name",
-                    onOpenWork,
-                    onOpenBaseBranch,
-                    onOpenIssueFields,
-                )
-            } else {
-                item?.let { entry ->
-                    WorkInfoDetailsSection(entry)
-                    if (kind == CollaborationKind.PullRequest) {
-                        WorkInfoStatusSection(entry, kind, onOpenBaseBranch)
-                    }
-                }
-                workInfoPlaceholders(kind, strings)
-            }
+            WorkInfoSections(state, viewModel, kind, item, "$owner/$name", onOpenWork, onOpenBaseBranch, onOpenIssueFields)
         }
     }
-    if (visible && viewModel != null) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
+    if (visible) WorkPropertySelectionSheet(state, viewModel, onDismiss = {})
 }
 
+
+@Composable
+private fun workInfoViewModel(owner: String, name: String, kind: CollaborationKind, number: Int, login: String): WorkInfoViewModel =
+    koinViewModel(
+        key = "work-info-$login-$owner-$name-${kind.name}-$number",
+        parameters = { parametersOf(owner, name, kind, number, login) },
+    )
 
 /** 头部 chip 直接打开单个属性的选择面板，不再先展开信息 sheet。 */
 @Composable
@@ -179,32 +153,18 @@ internal fun WorkPropertySheet(
 ) {
     if (!visible || property == null) return
     val strings = LocalGithubStrings.current.WorkDetail
-    var viewModelReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        viewModelReady = true
-    }
-    val viewModel: WorkInfoViewModel? =
-        if (viewModelReady) {
-            koinViewModel(
-                key = "work-info-$login-$owner-$name-${kind.name}-$number",
-                parameters = { parametersOf(owner, name, kind, number, login) },
-            )
-        } else null
-    val state by
-        viewModel?.uiState?.collectAsStateWithLifecycle()
-            ?: remember { mutableStateOf(WorkPropertiesState()) }
+    val viewModel = workInfoViewModel(owner, name, kind, number, login)
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     if (property == WorkProperty.Reviewers) {
         WorkReviewRequestsSheet(state, viewModel, onDismiss)
         return
     }
-    LaunchedEffect(viewModel) { viewModel?.load() }
+    LaunchedEffect(viewModel) { viewModel.load() }
     var requested by remember { mutableStateOf<WorkProperty?>(null) }
     LaunchedEffect(property, state.value, viewModel) {
-        val activeViewModel = viewModel ?: return@LaunchedEffect
         if (state.value != null && requested != property) {
             requested = property
-            activeViewModel.edit(property)
+            viewModel.edit(property)
         }
     }
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
@@ -241,8 +201,11 @@ private fun WorkInfoSections(
             editable = state.issueFields?.editable == true && !state.submitting,
             onEdit = onOpenIssueFields,
         ) {
-            val fields = state.issueFields?.fields.orEmpty()
-            if (fields.isEmpty()) {
+            val fields = state.issueFields?.fields
+            if (state.fieldsFailed) WorkSheetRetry(viewModel::retryFields)
+            if (fields == null) {
+                if (!state.fieldsFailed) WorkInfoRowPlaceholder()
+            } else if (fields.isEmpty()) {
                 GlasmioListRow(title = strings.NoIssueFieldValue, showDisclosure = false)
             } else {
                 fields.forEachIndexed { index, field ->
@@ -256,7 +219,14 @@ private fun WorkInfoSections(
             }
         }
     }
+    if (state.referencesFailed || !state.references.isNullOrEmpty()) {
+        GithubSection(strings.ReferencedItems) {
+            if (state.referencesFailed) WorkSheetRetry(viewModel::retryReferences)
+            state.references?.forEachIndexed { index, option -> WorkLinkedItemRow(option, repo, index > 0, onOpenWork) }
+        }
+    }
     val value = state.value
+    if (state.failed && value != null) GlasmioGroupedList { WorkSheetRetry(viewModel::retry) }
     if (value == null) {
         if (!state.failed) {
             workInfoPlaceholders(kind, strings)
@@ -311,13 +281,11 @@ private fun WorkInfoSections(
             onOpenWork = onOpenWork,
         )
     }
-    if (state.references.isNotEmpty()) {
-        GithubSection(strings.ReferencedItems) {
-            state.references.forEachIndexed { index, option ->
-                WorkLinkedItemRow(option, repo, index > 0, onOpenWork)
-            }
-        }
-    }
+}
+
+@Composable
+private fun WorkSheetRetry(onRetry: () -> Unit) {
+    GlasmioListRow(title = LocalGithubStrings.current.Common.Retry, subtitle = LocalGithubStrings.current.WorkDetail.PropertyLoadFailed, onClick = onRetry)
 }
 
 @Composable
@@ -587,7 +555,7 @@ private fun WorkInfoSectionPlaceholder(title: String, showArrow: Boolean = true)
 }
 
 @Composable
-private fun WorkInfoRowPlaceholder(
+internal fun WorkInfoRowPlaceholder(
     showTopSeparator: Boolean = false,
     showArrow: Boolean = false,
 ) {
@@ -619,10 +587,10 @@ private fun WorkPropertySelectionSheet(
     saveImmediately: Boolean = false,
     requestedProperty: WorkProperty? = null,
 ) {
-    val live = state.editor
+    val live = state.editor?.takeIf { requestedProperty == null || it.property == requestedProperty }
     // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
-    var retained by remember { mutableStateOf<WorkPropertyEditor?>(null) }
-    if (live != null) retained = live
+    var retained by remember(requestedProperty) { mutableStateOf<WorkPropertyEditor?>(null) }
+    SideEffect { if (live != null) retained = live }
     val editor = live ?: retained
     val strings = LocalGithubStrings.current.WorkDetail
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
@@ -806,7 +774,9 @@ private fun WorkPropertySelectionSheet(
                                 ),
                         ) {
                             if (option == null) {
-                                if (!editor.moreFailed) {
+                                if (editor.moreFailed) {
+                                    WorkSheetRetry { viewModel?.more() }
+                                } else {
                                     LaunchedEffect(editor.query, editor.nextCursor) {
                                         viewModel?.more()
                                     }

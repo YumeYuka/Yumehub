@@ -1,7 +1,6 @@
 package moe.yumeyuka.yumehub.feature.starred
 
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.paging.compose.LazyPagingItems
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Star
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
@@ -10,15 +9,12 @@ import moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 
-fun LazyListScope.StarredRepositoriesScreen(
-    repositories: LazyPagingItems<RepositoryDto>,
+internal fun LazyListScope.StarredRepositoriesScreen(
     slots: GithubPagingSlots<RepositoryDto>,
-    initialLoading: Boolean,
     onOpenRepository: (RepositoryDto) -> Unit,
     hasAdditions: Boolean,
     emptyText: String? = null,
 ) {
-    // 首屏四个骨架槽逐槽交给正文，追加只留一个尾槽。
     githubPagingItems(slots, contentType = "repository") { repository ->
         RepositoryLoadingCard(
             repository,
@@ -26,11 +22,9 @@ fun LazyListScope.StarredRepositoriesScreen(
             showCover = false,
         )
     }
-    if (initialLoading) return
     collaborationPagingStatus(
-        repositories,
+        slots,
         emptyText.orEmpty(),
-        loadingPlaceholder = {},
         emptyPlaceholder = !hasAdditions,
         emptyMessage = emptyText,
         emptyIcon = Lucide.Star,

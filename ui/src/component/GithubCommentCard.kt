@@ -28,6 +28,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import io.github.yumeyucca.lucide.EllipsisVertical
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 
 private val CommentAvatarSize = 34.dp
 
@@ -110,7 +111,7 @@ fun GithubCommentAuthorHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    role?.let {
+                    GithubCardField(role) {
                         Text(
                             it,
                             style = GlasmioTheme.textStyles.caption1,
@@ -118,7 +119,7 @@ fun GithubCommentAuthorHeader(
                         )
                     }
                 }
-                metadata?.takeIf(String::isNotBlank)?.let {
+                GithubCardField(metadata?.takeIf(String::isNotBlank)) {
                     Text(
                         it,
                         style = GlasmioTheme.textStyles.caption1,

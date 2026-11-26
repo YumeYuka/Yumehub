@@ -71,10 +71,9 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
   GithubPageSearchLayout(searching, query, { query = it }, viewModel::setQuery, dismissSearch, strings.Search) {
     GithubPagingContent(
         source = listing.pages,
-        contentKey = filters,
+        contentKey = login to filters,
         revalidation = listing.revalidation,
         onRetryRevalidation = viewModel::retryRevalidation,
-        order = listOf("updated", "stars", "full_name").indexOf(filters.sort),
     ) { paging ->
       val repositories = paging.items
       val slots =
@@ -89,7 +88,6 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
       GithubPage(
           title = strings.Title,
           listState = paging.listState,
-          listTransition = paging.transition,
           itemSpacing = 12.dp,
           actions = {
             GlasmioIconButton(onClick = { searching = true }) {
@@ -107,10 +105,8 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
           },
       ) {
         RepositoryScreen(
-            repositories,
             slots,
             onOpenRepository,
-            initialLoading = paging.initialLoading,
             emptyMessage =
                 if (filters.query.isNotEmpty() || filters.language != null || filters.type != "all")
                     strings.EmptyFiltered

@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,22 +29,18 @@ import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
+import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubPagingRetryAction
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.placeholders.DetailToolbarPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.WorkDetailHeaderPlaceholder
+import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubDetailKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubDetailPresentation
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
-import moe.yumeyuka.yumehub.ui.navigation.githubDetailPageSettled
-import moe.yumeyuka.yumehub.ui.navigation.rememberGithubDetailPresentation
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -65,7 +60,6 @@ fun WorkDetailPage(
     kind: CollaborationKind,
     number: Int,
     login: String,
-    onOpenInBrowser: (String) -> Unit,
     onOpenFiles: () -> Unit,
     onOpenCommits: () -> Unit,
     onOpenCommitGroup: (List<RepositoryActivityEntry>) -> Unit,
@@ -113,21 +107,30 @@ fun WorkDetailPage(
             viewModel.takeEditorSession()?.let(host.onOpenEditor)
         }
     }
-    LaunchedEffect(state.titleEditorOpen) {
-        if (state.titleEditorOpen) {
+    LaunchedEffect(state.titleEditorOpen, currentPage) {
+        if (currentPage && state.titleEditorOpen) {
             viewModel.takeTitleEditorSession()?.let(host.onOpenEditor)
         }
     }
-    LaunchedEffect(state.bodyEditorOpen) {
-        if (state.bodyEditorOpen) {
+    LaunchedEffect(state.bodyEditorOpen, currentPage) {
+        if (currentPage && state.bodyEditorOpen) {
             viewModel.takeBodyEditorSession()?.let(host.onOpenEditor)
         }
     }
-    val listStates = remember { mutableMapOf<CollaborationSection, LazyListState>() }
+    val head = state.item?.head?.sha.orEmpty()
+    val sectionKey = when (state.section) {
+        CollaborationSection.Files, CollaborationSection.Commits -> "work-${state.section}:$head"
+        else -> "work-${state.section}"
+    }
+    val expansions = rememberGithubDiffExpansions(head)
+    val listStates = remember { mutableMapOf<String, LazyListState>() }
     val listState =
-        LocalGithubPageState.current?.listState("work-section:${state.section.name}")
-            ?: listStates.getOrPut(state.section) { LazyListState() }
-    val entries = viewModel.entriesFor(state.section)?.collectAsLazyPagingItems()
+        LocalGithubPageState.current?.listState(sectionKey)
+            ?: listStates.getOrPut(sectionKey) { LazyListState() }
+    val entries = remember(viewModel, sectionKey) { viewModel.entriesFor(state.section, head) }?.collectAsLazyPagingItems()
+    val validation = remember(viewModel, sectionKey) {
+        viewModel.entriesRevalidation(state.section, state.item?.head?.sha)
+    }?.collectAsStateWithLifecycle()?.value as? RevalidationState.Failed
     val timeline =
         if (state.section == CollaborationSection.Discussion) {
             viewModel.timeline.state.collectAsStateWithLifecycle().value
@@ -136,75 +139,28 @@ fun WorkDetailPage(
         remember(timeline?.items) {
             timeline?.items?.let(::groupWorkActivities).orEmpty()
         }
-    // 已经展示过的页面返回组合后不再看加载位：刷新、重排分页都不允许占位重新盖住正文。
-    // key 只取路由内稳定的分节标识，ViewModel 实例与重试次数都不参与，返回时必须命中同一条记录。
-    val presentationKey = "work-section-${state.section.name}"
-    val settled = LocalGithubPageState.current?.detailPresented(presentationKey) == true
-    val initialFailure =
-        (!settled && state.error != null) ||
-            (!settled &&
-                (entries?.loadState?.refresh is LoadState.Error ||
-                    (timeline != null && !timeline.ready && timeline.error != null)))
-    // 订阅状态只在详情返回后串行拉取，属于底栏图标的次要信息；让它参与首屏会把详情页首帧
-    // 硬生生推后一个往返，这里只等详情与当前分节第一页。
-    val pageReady =
-        entries?.let { githubDetailPageSettled(it, state.item != null, settled) }
-            ?: (timeline?.ready == true || settled)
-    val initialReady =
-        state.item != null && (settled || !state.loading) && !initialFailure && pageReady
-    var chromePresentation by
-        remember(viewModel) { mutableStateOf<GithubDetailPresentation?>(null) }
-    val presentation =
-        rememberGithubDetailPresentation(
-            key = presentationKey,
-            kind =
-                when {
-                    state.section == CollaborationSection.Files -> GithubDetailKind.CommitFiles
-                    kind == CollaborationKind.PullRequest -> GithubDetailKind.PullRequest
-                    else -> GithubDetailKind.Issue
-                },
-            dataReady = initialReady,
-            failed = initialFailure,
-            chrome = chromePresentation,
-        )
-    SideEffect {
-        if (chromePresentation == null && presentation.interactive)
-            chromePresentation = presentation
-    }
     GithubLoadFailureToast(state.error, state.error.orEmpty())
     val pageFailure =
         timeline?.error
             ?: (entries?.loadState?.refresh as? LoadState.Error)
             ?: (entries?.loadState?.append as? LoadState.Error)
     GithubLoadFailureToast(pageFailure, LocalGithubStrings.current.Activity.LoadFailed)
-    var displayedItem by remember(viewModel) { mutableStateOf(state.item) }
-    SideEffect { if (initialReady && !initialFailure) displayedItem = state.item }
-    val shownState =
-        state.copy(
-            item = if (initialReady) state.item else displayedItem ?: state.item,
-            error = if (settled) null else state.error,
-        )
     val entrySlots = entries?.let { pages ->
         rememberGithubPagingSlots(
             pages,
-            "work-${state.section}",
-            contentReady = initialReady,
+            sectionKey,
             autoRefresh = false,
+            accessDenied = validation?.error?.invalidatesCachedContent() == true,
         ) { entry ->
             entry.key
         }
     }
-    val retryDetail: () -> Unit = {
-        viewModel.refresh()
-        entries?.retry()
-    }
+    val routeTitle = if (kind == CollaborationKind.PullRequest) strings.PullRequestTitle(number) else strings.IssueTitle(number)
     GithubPage(
-        title = shownState.item?.title.orEmpty(),
-        smallTitle =
-            if (kind == CollaborationKind.PullRequest) strings.PullRequestTitle(number)
-            else strings.IssueTitle(number),
+        title = state.item?.title ?: routeTitle,
+        smallTitle = routeTitle,
         titleMaxLines = 3,
-        titleSuffix = shownState.item?.let { "#$number" },
+        titleSuffix = state.item?.let { "#$number" },
         titleStyle =
             GlasmioTheme.typography.headlineLarge.copy(
                 fontSize = 22.sp,
@@ -214,62 +170,51 @@ fun WorkDetailPage(
         back = true,
         listState = listState,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
-        detailPresentation = presentation,
-        onRetryDetail = retryDetail,
-        detailHeaderPlaceholder = { WorkDetailHeaderPlaceholder() },
-        detailBottomPlaceholder = {
-            DetailToolbarPlaceholder(
-                showTrailingAction =
-                    kind == CollaborationKind.PullRequest &&
-                        (state.item == null || state.item?.state == "open"),
-            )
-        },
         contentHeader = {
-            WorkDetailHeader(
-                shownState,
+            if (state.item != null || state.error == null) WorkDetailHeader(
+                state,
                 kind,
                 onInformation = {
-                    if (host.navigationEnabled && presentation.interactive) infoVisible = true
+                    if (host.navigationEnabled) infoVisible = true
                 },
                 onLabels = {
-                    if (host.navigationEnabled && presentation.interactive) {
+                    if (host.navigationEnabled) {
                         propertySheet = WorkProperty.Labels
                     }
                 },
                 onProjects = {
-                    if (host.navigationEnabled && presentation.interactive) {
+                    if (host.navigationEnabled) {
                         propertySheet = WorkProperty.Projects
                     }
                 },
                 onReviewers = {
-                    if (host.navigationEnabled && presentation.interactive) {
+                    if (host.navigationEnabled) {
                         propertySheet = WorkProperty.Reviewers
                     }
                 },
                 onChecks = {
-                    if (host.navigationEnabled && presentation.interactive) {
+                    if (host.navigationEnabled) {
                         viewModel.showStatusPanel(WorkStatusPanel.Checks)
                     }
                 },
                 onIssueMetadata = { panel ->
-                    if (host.navigationEnabled && presentation.interactive) issueEditor.open(panel)
+                    if (host.navigationEnabled) issueEditor.open(panel)
                 },
             )
         },
         actions = {
-            if (entries != null) GithubPagingRetryAction(entries)
             GlasmioIconButton(
                 onClick = {
-                    if (host.navigationEnabled && presentation.interactive) infoVisible = true
+                    if (host.navigationEnabled) infoVisible = true
                 },
-                enabled = presentation.interactive && state.item != null,
+                enabled = host.navigationEnabled && state.item != null,
             ) {
                 GithubIcon(Lucide.Info, contentDescription = strings.Information)
             }
             WorkEditMenu(
                 state,
                 viewModel,
-                enabled = presentation.interactive && host.navigationEnabled,
+                enabled = state.item != null && host.navigationEnabled,
             )
         },
         bottomContent = {
@@ -283,13 +228,14 @@ fun WorkDetailPage(
         },
     ) {
         CollaborationDetailScreen(
-            shownState,
+            state,
             entries,
             entrySlots,
+            validation,
             timeline,
             activityGroups,
             viewModel,
-            onOpenInBrowser = onOpenInBrowser,
+            expansions = expansions,
             onOpenFiles = onOpenFiles,
             onOpenCommits = onOpenCommits,
             onOpenCommitGroup = onOpenCommitGroup,
@@ -301,7 +247,8 @@ fun WorkDetailPage(
         kind == CollaborationKind.PullRequest && state.item?.viewerCanChangeBase == true &&
             state.item?.state == "open" && !state.submitting && !state.unknownField("base") &&
             state.mergePhase != WritePhase.PENDING && state.mergePhase != WritePhase.UNCERTAIN &&
-            presentation.interactive && host.navigationEnabled
+            host.navigationEnabled
+    if (state.item == null) return
     WorkInfoSheet(
         visible = currentPage && infoVisible,
         owner = owner,
@@ -309,7 +256,7 @@ fun WorkDetailPage(
         kind = kind,
         number = number,
         login = login,
-        item = shownState.item,
+        item = state.item,
         onOpenWork = onOpenWork,
         onOpenBaseBranch =
             if (canChangeBase) {
@@ -319,7 +266,7 @@ fun WorkDetailPage(
                 }
             } else null,
         onOpenIssueFields = {
-            if (host.navigationEnabled && presentation.interactive) {
+            if (host.navigationEnabled) {
                 infoVisible = false
                 issueEditor.open(IssueMetadataPanel.Fields)
             }
@@ -381,5 +328,5 @@ fun WorkDetailPage(
             if (host.navigationEnabled && viewModel.mergePullRequest(item, method, message)) mergeVisible = false
         },
     )
-    CollaborationDeleteCommentDialog(state, viewModel)
+    if (currentPage) CollaborationDeleteCommentDialog(state, viewModel)
 }

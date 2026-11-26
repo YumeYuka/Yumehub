@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
 internal data class WorkspaceBranchesState(
@@ -34,6 +35,7 @@ internal class WorkspaceBranches(
     private val mutableUiState = MutableStateFlow(WorkspaceBranchesState())
     val uiState = mutableUiState.asStateFlow()
     private var requestJob: Job? = null
+    private val searches = LinkedHashMap<String, WorkspaceBranchesState>(8, 0.75f, true)
     private var requestGeneration = 0L
     private var sessionAccount = currentAccount()
     private var sessionToken = tokens.accessToken.value
@@ -60,8 +62,15 @@ internal class WorkspaceBranches(
             return
         }
         requestJob?.cancel()
-        mutableUiState.value = WorkspaceBranchesState(query = normalizedQuery)
-        loadPage(debounce = normalizedQuery.isNotEmpty())
+        requestGeneration++
+        val current = mutableUiState.value
+        if (current.branches is WorkspacesLoad.Ready) {
+            searches[current.query] = current.copy(loadingMore = false)
+            if (searches.size > 8) searches.remove(searches.keys.first())
+        }
+        val previous = searches.remove(normalizedQuery)
+        mutableUiState.value = previous ?: WorkspaceBranchesState(query = normalizedQuery)
+        if (previous == null) loadPage(debounce = normalizedQuery.isNotEmpty())
     }
 
     fun loadMore() {
@@ -86,6 +95,7 @@ internal class WorkspaceBranches(
     fun reset() {
         requestGeneration++
         requestJob?.cancel()
+        searches.clear()
         mutableUiState.value = WorkspaceBranchesState()
         sessionAccount = currentAccount()
         sessionToken = tokens.accessToken.value
@@ -148,8 +158,10 @@ internal class WorkspaceBranches(
                 throw error
             } catch (error: Exception) {
                 if (!isCurrentRequest()) return@launch
+                val discard = error.invalidatesCachedContent()
+                if (discard) searches.clear()
                 mutableUiState.value =
-                    if (after == null) {
+                    if (after == null || discard) {
                         WorkspaceBranchesState(
                             branches = WorkspacesLoad.Error(errorMessage(error)),
                             query = query,

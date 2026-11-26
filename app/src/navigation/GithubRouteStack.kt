@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub.navigation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -12,6 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
@@ -28,9 +34,13 @@ import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.feature.editor.EditorRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 
 /** 以条目引用区分每次入栈；路由参数相同的页面也拥有独立子组件和页面状态。 */
@@ -94,11 +104,24 @@ internal class RouteChild(
             LocalNavigationEventDispatcherOwner provides dispatcherOwner,
             LocalViewModelStoreOwner provides this,
             LocalGithubRouteChild provides this,
+            LocalGithubCardMotionEnabled provides (top && LocalGithubCardMotionEnabled.current),
             LocalGithubPageState provides pageState,
         ) {
-            Box(Modifier.fillMaxSize().background(GlasmioTheme.colors.groupedBackground)) {
+            val input = if (top) Modifier else Modifier.clearAndSetSemantics {}.pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                }
+            }
+            Box(Modifier.fillMaxSize().clipToBounds().background(GlasmioTheme.colors.groupedBackground)
+                .focusProperties { onEnter = { if (!top) cancelFocusChange() } }.focusGroup().then(input)) {
                 if (route is MainTabsRoute) GithubMainScreen(navigator)
-                else GithubRouteContent(route, navigator)
+                else {
+                    val backdrop = rememberLayerBackdrop()
+                    CompositionLocalProvider(
+                        LocalGithubPageBackdrop provides backdrop,
+                        LocalBlurBackdrop provides backdrop,
+                    ) { GithubRouteContent(route, navigator) }
+                }
             }
         }
     }
@@ -107,13 +130,13 @@ internal class RouteChild(
 /** 在已有组件上下文上创建子栈；路由不跨进程恢复，无须序列化。 */
 internal fun GithubNavigator.routeStack(
     componentContext: ComponentContext,
-    initialRoute: GithubRoute,
+    initialRoutes: List<GithubRoute>,
 ): Value<ChildStack<GithubRouteEntry, RouteChild>> {
     val stack =
         componentContext.childStack(
             source = navigation,
             serializer = null,
-            initialStack = { listOf(GithubRouteEntry(initialRoute)) },
+            initialStack = { initialRoutes.map(::GithubRouteEntry) },
             handleBackButton = true,
         ) { entry, childContext ->
             RouteChild(route = entry.route, navigator = this, componentContext = childContext)

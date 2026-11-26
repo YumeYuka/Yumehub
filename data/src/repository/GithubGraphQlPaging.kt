@@ -143,6 +143,7 @@ fun <T : Any> githubGraphQlPager(
             GithubGraphQlFirstPageCache(
                 restore = { snapshot.initialPage(config.pageSize) },
                 save = snapshot::saveInBackground,
+                discardDenied = snapshot::discardDenied,
                 revalidate = { source, refresh ->
                     context.revalidate(source) {
                         val (page, changed) = refresh()
@@ -161,6 +162,7 @@ internal class GithubGraphQlFirstPageCache<T : Any>(
     val restore: suspend () -> PagingSnapshotPage<T>?,
     val save: (PagingSnapshotPage<T>) -> Unit,
     val revalidate: (PagingSource<Int, T>, suspend () -> Pair<PagingSnapshotPage<T>, Boolean>) -> Unit,
+    val discardDenied: suspend (Throwable) -> Unit,
 )
 
 internal class GithubGraphQlPagingSource<T : Any>(
@@ -238,7 +240,13 @@ internal class GithubGraphQlPagingSource<T : Any>(
 
     private suspend fun requestPage(after: String?, load: suspend (String?) -> GithubGraphQlPage<T>): GithubGraphQlPage<T> {
         ensureCurrent()
-        return load(after).also { result ->
+        val page = try {
+            load(after)
+        } catch (error: Exception) {
+            firstPageCache?.discardDenied?.invoke(error)
+            throw error
+        }
+        return page.also { result ->
             currentCoroutineContext().ensureActive()
             ensureCurrent()
             if (result.nextCursor != null &&
@@ -268,6 +276,25 @@ class GithubPageException(
     val definiteRejection: Boolean = false,
     cause: Throwable? = null,
 ) : Exception(message, cause)
+
+/** A denied read invalidates its cached representation. Network and rate-limit failures retain it. */
+fun Throwable.invalidatesCachedContent(): Boolean = when (this) {
+    is HttpException -> when (code()) {
+        401, 404, 410 -> true
+        403 -> response()?.headers()?.let { it["Retry-After"] == null && it["X-RateLimit-Remaining"] != "0" } == true
+        else -> false
+    }
+    is ProfileUnavailableException, is WorkDetailTypeMismatchException, is WorkspacesFileNotFound -> true
+    is WorkspacesGraphQlException -> cause?.invalidatesCachedContent() == true
+    is GithubPageException -> cause?.invalidatesCachedContent() == true || errors.any { error ->
+        val type = error.type ?: (error.extensions?.get("type") as? JsonPrimitive)?.contentOrNull
+            ?: (error.extensions?.get("code") as? JsonPrimitive)?.contentOrNull
+        type in accessFailureTypes
+    }
+    else -> false
+}
+
+private val accessFailureTypes = setOf("FORBIDDEN", "UNAUTHORIZED", "UNAUTHENTICATED", "INSUFFICIENT_SCOPES", "NOT_FOUND")
 
 internal fun JsonObject.graphObject(key: String): JsonObject =
     get(key) as? JsonObject ?: throw GithubPageException()

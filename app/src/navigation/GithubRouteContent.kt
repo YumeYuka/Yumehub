@@ -376,6 +376,9 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                             ),
                         )
                     },
+                    onOpenLicense = { owner, name ->
+                        openRoute(WorkspacesRoute(owner, name, license = true))
+                    },
                     onOpenWorkspaces = { owner, name, ref, path, file, anchor ->
                         openRoute(WorkspacesRoute(owner, name, ref, path, file, anchor))
                     },
@@ -385,14 +388,7 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                 )
             is WorkspacesRoute ->
                 WorkspacesPage(
-                    owner = route.owner,
-                    name = route.name,
-                    ref = route.ref,
-                    path = route.path,
-                    file = route.file,
-                    anchor = route.anchor,
-                    gitObject = route.gitObject,
-                    linkUrl = route.linkUrl,
+                    route = route,
                     onOpenCommitHistory = { ref ->
                         openRoute(CommitHistoryRoute(route.owner, route.name, ref))
                     },
@@ -442,7 +438,6 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
                     kind = route.kind,
                     number = route.number,
                     login = args.currentLogin,
-                    onOpenInBrowser = { uri -> if (canNavigate()) openInBrowser(uri) },
                     onOpenFiles = {
                         openRoute(PullRequestDiffRoute(route.owner, route.name, route.number))
                     },

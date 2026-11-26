@@ -1,14 +1,7 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,7 +9,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -37,8 +29,7 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import moe.yumeyuka.yumehub.ui.theme.GithubActivityColors
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
@@ -182,10 +173,8 @@ fun GithubFeedActivity(
             }
         }
         when {
-            state?.repository != null && event.workItem() != null ->
-                FeedWorkCard(event, state, onOpen)
-            state?.repository != null && event.payload.release != null ->
-                FeedReleaseCard(event, state.repository, onOpen)
+            event.workItem() != null -> FeedWorkCard(event, state, onOpen)
+            event.payload.release != null -> FeedReleaseCard(event, state?.repository ?: event.repositoryDetails, onOpen)
             state?.repository != null ->
                 RepositoryRow(
                     repository = state.repository,
@@ -198,77 +187,64 @@ fun GithubFeedActivity(
                 val user = state.user
                 GithubActivityCard(
                     onClick = onOpen,
-                    header = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            GithubAvatar(user.avatarUrl, user.login, type = user.type, size = 40.dp)
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    user.name?.takeIf { it.isNotBlank() } ?: user.login.orEmpty(),
-                                    style =
-                                        styles.body.copy(
-                                            fontSize = 18.sp,
-                                            lineHeight = 24.sp,
-                                            fontWeight = FontWeight.Medium,
-                                        ),
-                                    color = colors.content,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    user.login.orEmpty(),
-                                    style =
-                                        styles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                                    color = colors.secondaryContent,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    },
-                    summary =
-                        user.bio
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { bio ->
-                                {
-                                    bio.let {
-                                        Text(
-                                            it,
-                                            style =
-                                                styles.body.copy(
-                                                    fontSize = 16.sp,
-                                                    lineHeight = 24.sp,
-                                                    fontWeight = FontWeight.Normal,
-                                                ),
-                                            color = colors.secondaryContent,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            },
-                    metadata =
-                        if (user.publicRepos != null || user.followers != null)
-                            ({
-                                Text(
-                                    listOfNotNull(
-                                            user.publicRepos?.let(strings.Explore.RepositoryCount),
-                                            user.followers?.let(strings.Profile.Followers),
-                                        )
-                                        .joinToString(" · "),
-                                    style =
-                                        styles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                                    color = colors.secondaryContent,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            })
-                        else null,
+                    header = { FeedUserDetails(user) },
                     action = { FeedAction(state, true, onRetry, onToggle) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun FeedUserDetails(user: UserDto) {
+    val colors = GlasmioTheme.colors
+    val styles = GlasmioTheme.textStyles
+    val strings = LocalGithubStrings.current
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            GithubAvatar(user.avatarUrl, user.login, type = user.type, size = 40.dp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    user.name?.takeIf(String::isNotBlank) ?: user.login.orEmpty(),
+                    style = styles.body.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium),
+                    color = colors.content,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    user.login.orEmpty(),
+                    style = styles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                    color = colors.secondaryContent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        GithubCardField(user.bio?.takeIf(String::isNotBlank)) { bio ->
+            Text(
+                bio,
+                modifier = Modifier.padding(top = 14.dp),
+                style = styles.body.copy(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
+                color = colors.secondaryContent,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        GithubCardField(user.takeIf { it.publicRepos != null || it.followers != null }) { profile ->
+            Text(
+                listOfNotNull(
+                    profile.publicRepos?.let(strings.Explore.RepositoryCount),
+                    profile.followers?.let(strings.Profile.Followers),
+                ).joinToString(" · "),
+                modifier = Modifier.padding(top = 14.dp),
+                style = styles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                color = colors.secondaryContent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -344,32 +320,14 @@ private fun FeedAction(
                             LineHeightStyle.Trim.None,
                         ),
                 )
-            GithubLoadingContent(
-                loading = state.selected == null && state.busy,
-                placeholder = { TextLinePlaceholder(style, Modifier.width(60.dp), fraction = 1f) },
-            ) {
-                AnimatedContent(
-                    targetState = label,
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 })
-                            .togetherWith(
-                                fadeOut(tween(160)) + slideOutVertically(tween(220)) { -it / 2 },
-                            )
-                            .using(SizeTransform(sizeAnimationSpec = { _, _ -> tween(220) }))
-                    },
-                    modifier = Modifier.clipToBounds(),
-                    contentAlignment = Alignment.Center,
-                    label = "feed-action-label",
-                ) { text ->
-                    Text(
-                        if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.PENDING) "$text · ${strings.Common.MutationPending}" else text,
-                        style = style,
-                        color = GlasmioTheme.colors.content,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
-            }
+            Text(
+                if (state.phase == moe.yumeyuka.yumehub.data.cache.WritePhase.PENDING)
+                    "$label · ${strings.Common.MutationPending}" else label,
+                style = style,
+                color = GlasmioTheme.colors.content,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
     state.actionError?.let {

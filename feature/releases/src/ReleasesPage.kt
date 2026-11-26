@@ -20,7 +20,6 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.Lucide
-import io.github.yumeyucca.lucide.RefreshCw
 import io.github.yumeyucca.lucide.RotateCcwClock
 import io.github.yumeyucca.lucide.Tag
 import kotlinx.coroutines.CancellationException
@@ -37,16 +36,17 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
 import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
 import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
+import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseMetadataPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubDetailKind
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
-import moe.yumeyuka.yumehub.ui.navigation.rememberGithubDetailPresentation
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
@@ -74,13 +74,13 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
     ReleaseVersionSheet(
         visible = showTimeline && host.navigationEnabled,
         versions = viewModel.timeline,
-        selectedId = detail?.version?.id ?: state.selectedVersionId,
+        selectedId = detail?.version?.id ?: state.selectedVersion?.id,
         revalidation = viewModel.versionsRevalidation,
         onRetryRevalidation = viewModel::retryVersionsRevalidation,
         onDismiss = { showTimeline = false },
-        onSelect = { versionId ->
+        onSelect = { selected ->
             showTimeline = false
-            if (host.navigationEnabled) viewModel.select(versionId)
+            if (host.navigationEnabled) viewModel.select(selected)
         },
     )
 
@@ -98,19 +98,15 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         } else null
     val assetSlots =
         if (version != null && assets != null) {
-            rememberGithubPagingSlots(assets, "release-assets:${version.id}", autoRefresh = false) {
+            rememberGithubPagingSlots(
+                assets, "release-assets:${version.id}", autoRefresh = false,
+                accessDenied = (assetsRevalidation as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
+            ) {
                 it.id
             }
         } else null
-    val title = version?.title ?: strings.Repository.Releases
-    val presentation =
-        rememberGithubDetailPresentation(
-            key = "release-detail",
-            kind = GithubDetailKind.Release,
-            dataReady = state.result != null,
-            failed = state.failure != null && state.result == null,
-        )
-    val listState = LocalGithubPageState.current?.listState("release:${version?.id.orEmpty()}")
+    val title = version?.title ?: state.selectedVersion?.title ?: route.tag ?: strings.Repository.Releases
+    val listState = LocalGithubPageState.current?.listState("release:${version?.id ?: state.selectedVersion?.id ?: route.tag.orEmpty()}")
     GithubLoadFailureToast(state.failure, strings.Release.LoadFailed)
     GithubLoadFailureToast(
         (assets?.loadState?.refresh as? LoadState.Error)
@@ -123,39 +119,33 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         titleMaxLines = 4,
         listState = listState,
         itemSpacing = 0.dp,
-        detailPresentation = presentation,
-        detailHeaderPlaceholder = { ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp)) },
-        contentHeader =
-            if (detail == null && !state.loading) null
-            else
-                ({
-                    if (detail != null) {
-                        ReleaseMetadata(
-                            detail,
-                            host.navigationEnabled,
-                            Modifier.padding(bottom = 12.dp),
-                        )
-                    }
-                }),
+        contentHeader = {
+            if (detail != null) ReleaseMetadata(detail, host.navigationEnabled, Modifier.padding(bottom = 12.dp))
+            else if (state.loading) ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp))
+        },
         actions = {
             GithubToolbarActions(
-                if (state.failure != null || presentation.hasVisibleDocumentFailure)
-                    toolbarIcon(Lucide.RefreshCw, strings.Common.Retry) {
-                        if (host.navigationEnabled) {
-                            presentation.retryDocuments()
-                            viewModel.retry()
-                        }
-                    }
-                else null,
                 toolbarIcon(Lucide.RotateCcwClock, strings.Release.Timeline, host.navigationEnabled) {
                     if (host.navigationEnabled) showTimeline = true
                 },
             )
         },
     ) {
-        if (detail != null) {
-            readingItem(key = "release-body:${detail.version.id}") {
-                GithubReadingGroup {
+        if (state.failure != null) item(key = "release-detail-error") {
+            GlasmioGroupedList {
+                GlasmioListRow(title = strings.Release.LoadFailed, detail = strings.Common.Retry, onClick = viewModel::retry)
+            }
+        }
+        if (detail == null && state.result != null && state.failure == null) item(key = "release-empty") {
+            GlasmioGroupedList { GlasmioListRow(title = strings.Release.Empty) }
+        }
+        if (detail != null || state.loading) {
+            readingItem(key = "release-body") {
+                GithubReadingGroup(documentKey = detail?.html?.takeIf(String::isNotBlank)) {
+                    if (detail == null) {
+                        GithubMarkdownPlaceholder(Modifier.padding(16.dp), compact = true)
+                        return@GithubReadingGroup
+                    }
                     when {
                         detail.html.isNullOrBlank() ->
                             Text(
@@ -174,7 +164,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
                                 repositoryRootUrl = detail.repositoryUrl,
                             )
                     }
-                    if (detail.canReact || detail.reactions.isNotEmpty()) {
+                    if (detail.canReact || detail.reactions.isNotEmpty()) GithubReadingFooter {
                         GithubReactionBar(
                             subjectKey = detail.version.id,
                             sourceReactions = detail.reactions,

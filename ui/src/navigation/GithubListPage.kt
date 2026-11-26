@@ -32,16 +32,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -63,7 +63,6 @@ import moe.yumeyuka.yumehub.ui.component.LocalGithubMarkdownSelectionHosted
 import moe.yumeyuka.yumehub.ui.component.LocalMarkdownCardRetention
 import moe.yumeyuka.yumehub.ui.component.MarkdownCardRetention
 import moe.yumeyuka.yumehub.ui.component.githubBackdropSource
-import moe.yumeyuka.yumehub.ui.component.placeholders.DetailBodyPlaceholder
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBarState
@@ -123,15 +122,23 @@ internal fun GithubListPage(
     horizontalPadding: Dp = PageHorizontalPadding,
     itemSpacing: Dp = 10.dp,
     backgroundColor: Color? = null,
-    listTransition: GithubListTransition? = null,
     contentHeader: (@Composable () -> Unit)? = null,
     bottomContent: (@Composable () -> Unit)? = null,
-    detailPresentation: GithubDetailPresentation? = null,
-    onRetryDetail: () -> Unit = {},
-    detailHeaderPlaceholder: @Composable () -> Unit = {},
-    detailBottomPlaceholder: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
+    val active = LocalGithubPageHost.current?.isCurrent != false
+    val routeState = LocalGithubPageState.current
+    val section = remember(routeState, listState) { routeState?.contentStateKey(listState) }
+    val sections = rememberSaveableStateHolder()
+    val savedSections = rememberSaveable { arrayListOf<String>() }
+    DisposableEffect(section) {
+        if (section != null) {
+            savedSections.remove(section)
+            savedSections.add(section)
+            if (savedSections.size > MaxKeyedListStates) sections.removeState(savedSections.removeAt(0))
+        }
+        onDispose {}
+    }
     val scrollBehavior =
         key(showTitle) {
             if (showTitle) {
@@ -168,7 +175,6 @@ internal fun GithubListPage(
         }
     CompositionLocalProvider(
         LocalContentColor provides colors.content,
-        LocalGithubDetailPresentation provides detailPresentation,
         LocalMarkdownCardRetention provides remember(listState) { MarkdownCardRetention() },
     ) {
         Scaffold(
@@ -219,17 +225,7 @@ internal fun GithubListPage(
                 GithubScrollingListHeader(
                     listState = listState,
                     horizontalPadding = horizontalPadding,
-                    header =
-                        contentHeader?.let { header ->
-                            {
-                                GithubDetailRegion(
-                                    detailPresentation?.chromeState,
-                                    detailHeaderPlaceholder,
-                                ) {
-                                    header()
-                                }
-                            }
-                        },
+                    header = contentHeader,
                     modifier =
                         Modifier.fillMaxSize()
                             .githubBackdropSource(backdrop)
@@ -245,179 +241,67 @@ internal fun GithubListPage(
                                 else Modifier,
                             ),
                 ) { headerHeight ->
-                    val listPadding = padding
-                    val list:
-                        @Composable
-                        (LazyListState, LazyListScope.() -> Unit, Boolean) -> Unit =
-                        { state, rows, active ->
-                            key(state) {
-                                val drawList:
-                                    @Composable
-                                    (Modifier, LazyListScope.() -> Unit) -> Unit =
-                                    { listModifier, listRows ->
-                                        val revalidationBinding =
-                                            LocalGithubPagingRevalidation.current
-                                        val revalidationState =
-                                            revalidationBinding
-                                                ?.state
-                                                ?.collectAsStateWithLifecycle()
-                                                ?.value
-                                        val revalidationFailed =
-                                            revalidationState is RevalidationState.Failed &&
-                                                revalidationBinding != null
-                                        LazyColumn(
-                                            state = state,
-                                            modifier =
-                                                listModifier
-                                                    .fillMaxSize()
-                                                    .then(
-                                                        if (active) Modifier
-                                                        else
-                                                            Modifier.clearAndSetSemantics {}
-                                                                .pointerInput(Unit) {
-                                                                    awaitPointerEventScope {
-                                                                        while (true) {
-                                                                            awaitPointerEvent(
-                                                                                    PointerEventPass
-                                                                                        .Initial,
-                                                                                )
-                                                                                .changes
-                                                                                .forEach {
-                                                                                    it.consume()
-                                                                                }
-                                                                        }
-                                                                    }
-                                                                },
-                                                    )
-                                                    .then(
-                                                        if (contentHeader == null)
-                                                            Modifier.overScrollVertical(
-                                                                    onOffsetChanged =
-                                                                        if (active)
-                                                                            onOverscrollOffsetChanged
-                                                                        else null,
-                                                                )
-                                                                .nestedScroll(
-                                                                    scrollBehavior
-                                                                        .nestedScrollConnection,
-                                                                )
-                                                        else Modifier,
-                                                    ),
-                                            contentPadding = listPadding,
-                                            verticalArrangement = Arrangement.spacedBy(itemSpacing),
-                                            userScrollEnabled = active,
-                                            overscrollEffect = null,
-                                            content = {
-                                                if (contentHeader != null) {
-                                                    item(
-                                                        key = GithubScrollingHeaderKey,
-                                                        contentType = GithubScrollingHeaderKey,
-                                                    ) {
-                                                        Spacer(
-                                                            Modifier.fillMaxWidth()
-                                                                .height(headerHeight),
-                                                        )
-                                                    }
-                                                }
-                                                if (revalidationFailed && revalidationBinding != null) {
-                                                    item(key = "paging-cache-sync-failed") {
-                                                        val common =
-                                                            LocalGithubStrings.current.Common
-                                                        GlasmioGroupedList {
-                                                            GlasmioListRow(
-                                                                title = common.CacheSyncFailed,
-                                                                detail = common.Retry,
-                                                                showDisclosure = false,
-                                                                onClick =
-                                                                    revalidationBinding.onRetry,
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                                listRows()
-                                            },
-                                        )
+                    val body: @Composable () -> Unit = {
+                        val drawList: @Composable (Modifier, LazyListScope.() -> Unit) -> Unit = { listModifier, rows ->
+                            val binding = LocalGithubPagingRevalidation.current
+                            val syncState = binding?.state?.collectAsStateWithLifecycle()?.value
+                            LazyColumn(
+                                state = listState,
+                                modifier = listModifier.fillMaxSize().then(
+                                    if (contentHeader == null) Modifier
+                                        .overScrollVertical(onOffsetChanged = onOverscrollOffsetChanged)
+                                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                                    else Modifier,
+                                ),
+                                contentPadding = padding,
+                                verticalArrangement = Arrangement.spacedBy(itemSpacing),
+                                userScrollEnabled = active,
+                                overscrollEffect = null,
+                            ) {
+                                if (contentHeader != null) {
+                                    item(key = GithubScrollingHeaderKey, contentType = GithubScrollingHeaderKey) {
+                                        Spacer(Modifier.fillMaxWidth().height(headerHeight))
                                     }
-                                if (markdownRenderer?.supportsHostedSelection == true) {
-                                    val upstreamBringIntoViewSpec = LocalBringIntoViewSpec.current
-                                    val currentPadding = rememberUpdatedState(listPadding)
-                                    val currentDensity = rememberUpdatedState(LocalDensity.current)
-                                    val readingBringIntoViewSpec =
-                                        remember(upstreamBringIntoViewSpec) {
-                                            GithubReadingBringIntoViewSpec(
-                                                upstream = upstreamBringIntoViewSpec,
-                                                topPaddingPx = {
-                                                    with(currentDensity.value) {
-                                                        currentPadding.value
-                                                            .calculateTopPadding()
-                                                            .toPx()
-                                                    }
-                                                },
-                                                bottomPaddingPx = {
-                                                    with(currentDensity.value) {
-                                                        currentPadding.value
-                                                            .calculateBottomPadding()
-                                                            .toPx()
-                                                    }
-                                                },
+                                }
+                                if (syncState is RevalidationState.Failed && binding != null) {
+                                    item(key = "paging-cache-sync-failed") {
+                                        val common = LocalGithubStrings.current.Common
+                                        GlasmioGroupedList {
+                                            GlasmioListRow(
+                                                title = common.CacheSyncFailed,
+                                                detail = common.Retry,
+                                                showDisclosure = false,
+                                                onClick = binding.onRetry,
                                             )
                                         }
-                                    // Host 位于列表回弹之外；禁选项与退场 frame 也保持继承模式。
-                                    CompositionLocalProvider(
-                                        LocalGithubMarkdownSelectionHosted provides true,
-                                        LocalBringIntoViewSpec provides readingBringIntoViewSpec,
-                                    ) {
-                                        markdownRenderer.SelectionHost(
-                                            active = active,
-                                            modifier = Modifier.fillMaxSize(),
-                                        ) { childModifier ->
-                                            drawList(childModifier) {
-                                                rows(
-                                                    ReadingLazyListScope(
-                                                        this,
-                                                        upstreamBringIntoViewSpec,
-                                                    ),
-                                                )
-                                            }
-                                        }
                                     }
-                                } else {
-                                    drawList(Modifier, rows)
                                 }
+                                rows()
                             }
                         }
-                    GithubDetailBody(
-                        state = detailPresentation,
-                        onRetry = onRetryDetail,
-                        contentPadding = listPadding,
-                        placeholder = {
-                            if (detailPresentation != null) {
-                                Box(
-                                    Modifier.fillMaxSize()
-                                        .background(pageBackground)
-                                        .padding(listPadding)
-                                        .padding(
-                                            top =
-                                                headerHeight +
-                                                    if (contentHeader != null) itemSpacing
-                                                    else 0.dp,
-                                        ),
-                                ) {
-                                    DetailBodyPlaceholder(detailPresentation.kind)
+                        if (markdownRenderer?.supportsHostedSelection == true) {
+                            val upstream = LocalBringIntoViewSpec.current
+                            val currentPadding = rememberUpdatedState(padding)
+                            val currentDensity = rememberUpdatedState(LocalDensity.current)
+                            val readingSpec = remember(upstream) {
+                                GithubReadingBringIntoViewSpec(
+                                    upstream = upstream,
+                                    topPaddingPx = { with(currentDensity.value) { currentPadding.value.calculateTopPadding().toPx() } },
+                                    bottomPaddingPx = { with(currentDensity.value) { currentPadding.value.calculateBottomPadding().toPx() } },
+                                )
+                            }
+                            CompositionLocalProvider(
+                                LocalGithubMarkdownSelectionHosted provides true,
+                                LocalBringIntoViewSpec provides readingSpec,
+                            ) {
+                                markdownRenderer.SelectionHost(active = active, modifier = Modifier.fillMaxSize()) { child ->
+                                    drawList(child) { content(ReadingLazyListScope(this, upstream)) }
                                 }
                             }
-                        },
-                    ) {
-                        if (listTransition == null) {
-                            list(listState, content, detailPresentation?.interactive != false)
-                        } else {
-                            GithubAnimatedListContent(
-                                GithubListFrame(listTransition, listState, content),
-                            ) { frame, active ->
-                                list(frame.listState, frame.content, active)
-                            }
-                        }
+                        } else drawList(Modifier, content)
                     }
+                    if (section != null) sections.SaveableStateProvider(section, body)
+                    else key(listState) { body() }
                 }
                 if (bottomContent != null) {
                     CompositionLocalProvider(LocalGlassBackdrop provides backdrop) {
@@ -427,12 +311,7 @@ internal fun GithubListPage(
                                 .padding(bottom = bottomPadding)
                                 .onSizeChanged { bottomContentHeight = it.height },
                         ) {
-                            GithubDetailRegion(
-                                detailPresentation?.chromeState,
-                                detailBottomPlaceholder,
-                            ) {
-                                bottomContent()
-                            }
+                            bottomContent()
                         }
                     }
                 }

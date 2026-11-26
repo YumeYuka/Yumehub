@@ -13,9 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.ExploreCategory
 import moe.yumeyuka.yumehub.core.model.WorkTarget
@@ -23,6 +22,7 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
+import moe.yumeyuka.yumehub.data.auth.AuthSession
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
 
@@ -45,6 +45,7 @@ internal data class ExploreSearch(
     val revalidation: StateFlow<RevalidationState> = MutableStateFlow(RevalidationState.Idle),
     val needsQuery: Boolean = false,
     val query: String = "",
+    val session: AuthSession? = null,
 )
 
 internal class ExploreViewModel(
@@ -53,23 +54,20 @@ internal class ExploreViewModel(
 ) : ViewModel() {
     private val mutableQuery = MutableStateFlow("")
     val query = mutableQuery.asStateFlow()
-    private var account: String? = null
+    private var session: AuthSession? = null
     private var category = ExploreCategory.Repositories
     private var searchJob: Job? = null
     private var adapterJob: Job? = null
-    private var presented: Triple<String, String, ExploreCategory>? = null
+    private var presented: Triple<AuthSession, String, ExploreCategory>? = null
     private val mutableSearch = MutableStateFlow(emptySearch())
     val searchState = mutableSearch.asStateFlow()
 
     init {
         viewModelScope.launch {
-            auth.session
-                .map { it?.login }
-                .distinctUntilChanged()
-                .collect { login ->
-                    account = login
-                    startSearch(0)
-                }
+            auth.session.collect { current ->
+                session = current
+                startSearch(0)
+            }
         }
     }
 
@@ -86,7 +84,7 @@ internal class ExploreViewModel(
     }
 
     fun search() {
-        val login = account
+        val login = session?.login
         val query = mutableQuery.value.trim()
         if (login != null && query.isNotEmpty()) repository.invalidate(login, query, category)
         startSearch(0)
@@ -95,32 +93,40 @@ internal class ExploreViewModel(
     private fun startSearch(debounceMillis: Long) {
         searchJob?.cancel()
         val query = mutableQuery.value.trim()
-        val login = account
+        val session = session
         val selected = category
-        if (login == null || query.isEmpty()) {
+        if (session == null || query.isEmpty()) {
             adapterJob?.cancel()
             presented = null
             mutableSearch.value = emptySearch()
+        } else if (presented == Triple(session, query, selected)) {
+            return
         } else if (debounceMillis == 0L) {
-            present(login, query, selected)
+            present(session, query, selected)
         } else {
+            adapterJob?.cancel()
+            presented = null
+            mutableSearch.value = ExploreSearch(
+                selected, emptyFlow(), MutableStateFlow(null), query = query, session = session,
+            )
             // 防抖在创建共享 Pager 之前执行，不为输入过程中的每个前缀启动会话请求。
             searchJob = viewModelScope.launch {
                 delay(debounceMillis)
-                present(login, query, selected)
+                present(session, query, selected)
             }
         }
     }
 
-    fun retryRevalidation() {
-        val login = account ?: return
-        val search = mutableSearch.value
-        if (search.query.isBlank()) return
-        repository.retryRevalidation(login, search.query, search.category)
+    fun retryRevalidation(search: ExploreSearch) {
+        val login = search.session?.login ?: return
+        if (search.session == session && search.query.isNotBlank()) {
+            repository.retryRevalidation(login, search.query, search.category)
+        }
     }
 
-    private fun present(account: String, query: String, category: ExploreCategory) {
-        val key = Triple(account, query, category)
+    private fun present(session: AuthSession, query: String, category: ExploreCategory) {
+        val account = session.login
+        val key = Triple(session, query, category)
         if (presented == key) return
         adapterJob?.cancel()
         val job = SupervisorJob(viewModelScope.coroutineContext[Job])
@@ -129,6 +135,7 @@ internal class ExploreViewModel(
         mutableSearch.value =
             search.copy(
                 query = query,
+                session = session,
                 revalidation = repository.revalidation(account, query, category),
                 items =
                     search.items.cachedIn(CoroutineScope(viewModelScope.coroutineContext + job)),
@@ -141,6 +148,6 @@ internal class ExploreViewModel(
             category,
             flowOf(PagingData.empty()),
             MutableStateFlow(null),
-            needsQuery = mutableQuery.value.isBlank(),
+            needsQuery = true,
         )
 }

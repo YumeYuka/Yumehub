@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 
 @Composable
 fun GithubCommitSummary(
@@ -47,7 +48,7 @@ fun GithubCommitSummary(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            time?.let {
+            GithubCardField(time) {
                 Text(
                     it,
                     style = GlasmioTheme.textStyles.footnote,

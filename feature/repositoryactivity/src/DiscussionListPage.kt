@@ -16,11 +16,7 @@ import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionCreationDraft
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
@@ -35,12 +31,10 @@ import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityRepository
-import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubDiscussionCard
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.GithubWorkItemPlaceholder
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
@@ -74,9 +68,9 @@ internal fun DiscussionListPage(
     val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
     GithubPagingContent(
         pages,
-        contentKey = filter,
-        revalidation = viewModel.revalidation,
-        onRetryRevalidation = viewModel::retryRevalidation,
+        contentKey = Triple(account, route, filter),
+        revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
+        onRetryRevalidation = { viewModel.retryRevalidation(filter) },
     ) { paging ->
         val items = paging.items
         val slots =
@@ -100,20 +94,18 @@ internal fun DiscussionListPage(
           GithubPage(
             title = route.heading?.takeIf(String::isNotBlank) ?: strings.Repository.Discussions,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 12.dp,
             actions = actions,
           ) {
             githubPagingItems(
                 slots,
                 contentType = "discussion-card",
-                placeholder = { GithubWorkItemPlaceholder() },
             ) { entry ->
                 val target =
                     if (route.name.isNotBlank()) {
                         route.owner to route.name
                     } else {
-                        entry.repository
+                        entry?.repository
                             ?.split("/")
                             ?.takeIf { parts ->
                                 parts.size == 2 && parts.all { part -> part.isNotBlank() }
@@ -123,17 +115,16 @@ internal fun DiscussionListPage(
                 GithubDiscussionCard(
                     item = entry,
                     onClick =
-                        if (target != null) {
+                        if (entry != null && target != null) {
                             { onOpenDiscussion(target.first, target.second, entry.number) }
                         } else {
-                            entry.url?.let { url -> { open(url) } }
+                            entry?.url?.let { url -> { open(url) } }
                         },
                 )
             }
             collaborationPagingStatus(
-                items = items,
+                slots = slots,
                 title = strings.Repository.Discussions,
-                loadingPlaceholder = {},
                 emptyMessage = strings.WorkList.EmptyDiscussions,
                 emptyIcon = Lucide.MessagesSquare,
                 emptyVerticalBias = -0.2f,
@@ -231,20 +222,11 @@ internal class DiscussionListViewModel(
     fun itemsFor(filter: CollaborationListFilter) =
         source.discussionItems(account, route.owner, route.name, personal, filter)
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val revalidation: StateFlow<RevalidationState> =
-        mutableFilter
-            .flatMapLatest { f ->
-                source.revalidation(account, source.discussionItemsKey(route.owner, route.name, personal, f))
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    fun revalidationFor(filter: CollaborationListFilter) =
+        source.revalidation(account, source.discussionItemsKey(route.owner, route.name, personal, filter))
 
-    fun retryRevalidation() {
-        source.retryRevalidation(
-            account,
-            source.discussionItemsKey(route.owner, route.name, personal, mutableFilter.value),
-        )
-    }
+    fun retryRevalidation(filter: CollaborationListFilter) =
+        source.retryRevalidation(account, source.discussionItemsKey(route.owner, route.name, personal, filter))
 
     private fun saveDraft() {
         val state = mutableCreationState.value

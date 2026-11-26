@@ -5,7 +5,9 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
@@ -78,7 +80,12 @@ class WorkDetailRepository(
 
   fun rowProjection(account: String, target: WorkTarget): Flow<WorkRowProjection> {
     val base = resource(account, target.owner, target.repository, target.kind, target.number)
-    return workRowProjection(cache, account, target, base.state.map { it.data }.distinctUntilChanged())
+    val confirmed = channelFlow {
+      // Replay disk state independently of live writes and never fetch full detail from a row.
+      if (base.cached == null) launch { base.restore() }
+      base.state.collect { send(it.data) }
+    }.distinctUntilChanged()
+    return workRowProjection(cache, account, target, confirmed)
   }
 
   inner class Detail

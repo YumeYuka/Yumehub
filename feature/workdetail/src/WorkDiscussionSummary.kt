@@ -16,11 +16,13 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.githubDiffColors
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
 
 @Composable
 internal fun WorkDiscussionSummary(
-    entry: CollaborationItemDto,
+    item: CollaborationItemDto?,
     enabled: Boolean,
     onStatus: (WorkStatusPanel) -> Unit,
     onOpenFiles: () -> Unit,
@@ -28,23 +30,21 @@ internal fun WorkDiscussionSummary(
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
     Column {
-        GithubSection(strings.Changes) {
+        WorkSummarySection(strings.Changes, item) { entry ->
             GlasmioListRow(
                 title = entry.changedFiles?.let(strings.FileCount) ?: strings.Files,
                 trailing = {
-                    val additions = entry.additions
-                    val deletions = entry.deletions
-                    if (additions != null && deletions != null) {
+                    GithubCardField(entry.takeIf { it.additions != null && it.deletions != null }) { diff ->
                         val colors = githubDiffColors(GlasmioTheme.colors.isDark)
                         Row {
                             Text(
-                                "+$additions",
+                                "+${diff.additions}",
                                 color = colors.additionForeground,
                                 style = GlasmioTheme.textStyles.subheadline,
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                "−$deletions",
+                                "−${diff.deletions}",
                                 color = colors.deletionForeground,
                                 style = GlasmioTheme.textStyles.subheadline,
                             )
@@ -77,7 +77,7 @@ internal fun WorkDiscussionSummary(
                 onClick = if (enabled) onOpenCommits else null,
             )
         }
-        GithubSection(strings.Status) {
+        WorkSummarySection(strings.Status, item) { entry ->
             val reviewColor =
                 when (entry.viewerLatestReviewState.takeUnless { entry.viewerReviewRequested }) {
                     "APPROVED" -> GithubWorkColors.open
@@ -134,6 +134,28 @@ internal fun WorkDiscussionSummary(
                 systemName = null,
                 onClick = if (enabled) ({ onStatus(WorkStatusPanel.Checks) }) else null,
             )
+        }
+    }
+}
+
+@Composable
+private fun WorkSummarySection(
+    title: String,
+    item: CollaborationItemDto?,
+    rows: @Composable (CollaborationItemDto) -> Unit,
+) {
+    GithubSection(title) {
+        GithubLoadingContent(
+            loading = item == null,
+            deferUntilEntry = false,
+            placeholder = {
+                Column {
+                    WorkInfoRowPlaceholder()
+                    WorkInfoRowPlaceholder(showTopSeparator = true)
+                }
+            },
+        ) {
+            if (item != null) Column { rows(item) }
         }
     }
 }

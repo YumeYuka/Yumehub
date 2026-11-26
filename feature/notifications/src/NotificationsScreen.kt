@@ -1,7 +1,5 @@
 package moe.yumeyuka.yumehub.feature.notifications
 
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +26,7 @@ import moe.yumeyuka.yumehub.locale.GithubStrings_Notifications
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
 
 internal fun LazyListScope.NotificationsScreen(
     strings: GithubStrings_Notifications,
@@ -41,6 +40,7 @@ internal fun LazyListScope.NotificationsScreen(
     onThreadActions: (NotificationDto) -> Unit,
     onRetryAction: () -> Unit,
     onRetryLoad: () -> Unit,
+    onRetryWindow: () -> Unit,
     retryLabel: String,
     onToggleSelection: (String) -> Unit,
     rowKeys: List<String>,
@@ -88,9 +88,7 @@ internal fun LazyListScope.NotificationsScreen(
     if (
         rowKeys.isEmpty() &&
             notifications.isEmpty() &&
-            !state.isRefreshing &&
-            state.loadError == null &&
-            state.appendError == null
+            state.hasCachedContent && state.loadError == null && state.appendError == null
     ) {
         val hasActiveFilters =
             hasActiveSearch ||
@@ -116,13 +114,7 @@ internal fun LazyListScope.NotificationsScreen(
         contentType = { "notification-card" },
     ) { index ->
         val notification = notifications.getOrNull(index)
-        Box(
-            Modifier.animateItem(
-                fadeInSpec = tween(260),
-                fadeOutSpec = tween(180),
-                placementSpec = spring(dampingRatio = 1f, stiffness = 400f),
-            ),
-        ) {
+        Box(githubCardItemMotion()) {
             NotificationRow(
                 notification,
                 notification?.let { state.previews[it] },
@@ -153,7 +145,7 @@ internal fun LazyListScope.NotificationsScreen(
             "notifications-next-page-error",
             retryLabel,
             appendError,
-            onLoadMore.takeUnless { state.isLoadingMore },
+            onRetryWindow.takeUnless { state.isLoadingMore },
         )
     } else if (state.hasMore && !state.isLoadingMore) {
         notificationStatus(
@@ -305,8 +297,6 @@ private fun NotificationRow(
             preview = preview,
             isSelecting = isSelecting,
             isSelected = isSelected,
-            pending = pending,
-            uncertain = uncertain,
             onLongClick =
                 if (enabled && !isSelecting && threadId != null) {
                     { onThreadActions(notification) }

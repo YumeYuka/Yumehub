@@ -7,7 +7,7 @@ import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.GithubPagingRetryAction
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
@@ -35,7 +35,7 @@ fun ProfileCollectionsPage(
     val organizations = route.kind == ProfileCollectionsRoute.Kind.Organizations
     GithubPagingContent(
         viewModel.entries,
-        contentKey = route,
+        contentKey = viewModel.account to route,
         revalidation = viewModel.revalidation,
         onRetryRevalidation = viewModel::retryRevalidation,
     ) { paging ->
@@ -52,9 +52,7 @@ fun ProfileCollectionsPage(
         GithubPage(
             title = title,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 12.dp,
-            actions = { GithubPagingRetryAction(pages) },
         ) {
             githubPagingItems(slots, contentType = "profile-collection") { entry ->
                 if (organizations) {
@@ -101,6 +99,7 @@ fun ProfileCollectionsPage(
                     )
                 }
             }
+            collaborationPagingStatus(slots, title, emptyMessage = strings.Profile.CollectionEmpty(title))
         }
     }
 }

@@ -72,6 +72,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     private val mutableStatusEditor = MutableStateFlow<StatusEditorState?>(null)
     private var cachedOrganizations: List<ProfileOrganizationDto> = emptyList()
     private var organizationsJob: Job? = null
+    private var readmeJob: Job? = null
     private var coordinator: MutationCoordinator? = null
     private val statusKey =
         MutationKey(
@@ -119,6 +120,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
 
     fun refresh() {
         if (mutableStatusEditor.value?.blocksRefresh == true) return
+        readmeJob?.cancel()
         val coord = coordinator
         val stamp = coord?.beginRead(statusKey)
         resource.refresh(force = true) {
@@ -126,6 +128,24 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
                 if (coord != null && stamp != null) {
                     coord.publishConfirmed(statusKey, stamp, NullableValue(loaded.status))
                 }
+            }
+        }
+    }
+
+    fun retryReadme() {
+        val profile = resource.cached ?: return
+        if (profile.readmeResolved || resource.state.value.loading || readmeJob?.isActive == true) return
+        readmeJob = viewModelScope.launch {
+            val result = try {
+                repository.loadProfileReadme(account, profile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            val current = resource.cached ?: return@launch
+            if (repository.account == account && !current.readmeResolved && result.readmeResolved && !resource.state.value.loading) {
+                resource.update(current.withReadme(result))
             }
         }
     }
@@ -335,6 +355,7 @@ internal class ProfileViewModel(private val repository: ProfileRepository) : Vie
     }
 
     private fun CachedDataState<ProfileDto>.toUiState(): ProfileUiState {
+        if (error is moe.yumeyuka.yumehub.data.repository.ProfileUnavailableException) return ProfileUiState.Error
         val statusWrite = coordinator?.current(statusKey)
         val statusOverride = statusWrite?.visible
         val projectedData =

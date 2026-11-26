@@ -37,7 +37,6 @@ import moe.yumeyuka.yumehub.data.cache.PendingMutationSummary
 import moe.yumeyuka.yumehub.locale.GithubStrings
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.RepositoryRow
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
@@ -85,12 +84,6 @@ fun HomePage(
     val onEditWork = {
         draftOrder = currentLayout.encode()
         editingWork = true
-    }
-    if (
-        state == HomeFavoritesState.Error ||
-            (state as? HomeFavoritesState.Content)?.refreshFailed == true
-    ) {
-        GithubLoadFailureToast(Unit, strings.FavoritesLoadFailed)
     }
     GithubPage(
         title = strings.Title,
@@ -151,13 +144,16 @@ fun HomePage(
         }
         item(key = "home-favorites") {
             GithubSection(strings.Favorites) {
+                if (state == HomeFavoritesState.Error || favorites?.refreshFailed == true) {
+                    GlasmioListRow(title = strings.FavoritesLoadFailed, detail = retry, onClick = viewModel::retry)
+                }
                 GithubLoadingContent(
                     loading = state == HomeFavoritesState.Loading,
+                    deferUntilEntry = false,
                     placeholder = { ListRowPlaceholder() },
                 ) {
-                    if (favorites == null) {
-                        GlasmioListRow(title = retry, onClick = viewModel::retry)
-                    } else if (favorites.repositories.isEmpty()) {
+                    if (favorites == null) return@GithubLoadingContent
+                    if (favorites.repositories.isEmpty()) {
                         GlasmioListRow(
                             title = strings.NoFavorites,
                             subtitle = strings.FavoritesHint,

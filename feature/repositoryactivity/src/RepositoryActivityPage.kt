@@ -81,7 +81,7 @@ fun RepositoryActivityPage(
                 RepositoryActivityKind.Watchers -> Lucide.Eye
                 else -> Lucide.CirclePlay
             },
-        contentKey = route,
+        contentKey = account to route,
         subtitle = if (route.name.isNotEmpty()) "${route.owner}/${route.name}" else route.owner,
         onOpen = { it.url?.let(open) },
     )

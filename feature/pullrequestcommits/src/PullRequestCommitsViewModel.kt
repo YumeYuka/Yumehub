@@ -1,32 +1,12 @@
 package moe.yumeyuka.yumehub.feature.pullrequestcommits
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
-import androidx.paging.map
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
-import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 
-internal data class PullRequestCommitEntry(val head: String, val commit: RepositoryActivityEntry) {
-    val id: String
-        get() = commit.id
-}
-
-@OptIn(ExperimentalCoroutinesApi::class)
 internal class PullRequestCommitsViewModel(
     repository: WorkDetailRepository,
     route: PullRequestCommitsRoute,
@@ -41,33 +21,12 @@ internal class PullRequestCommitsViewModel(
             route.number,
         )
     val state = detail.state
-    val commits =
-        state
-            .map { it.data?.head?.sha?.takeIf(String::isNotBlank) }
-            .distinctUntilChanged()
-            .flatMapLatest { head ->
-                if (head == null) flowOf(PagingData.empty<PullRequestCommitEntry>())
-                else
-                    detail.commits(head).map { page ->
-                        page.map { PullRequestCommitEntry(head, it) }
-                    }
-            }
-            .cachedIn(viewModelScope)
-    val revalidation: StateFlow<RevalidationState> =
-        state
-            .map { it.data?.head?.sha?.takeIf(String::isNotBlank) }
-            .distinctUntilChanged()
-            .flatMapLatest { head ->
-                if (head == null) flowOf(RevalidationState.Idle)
-                else detail.revalidation(detail.commitsPagingKey(head))
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    fun commits(head: String?) = if (head != null) detail.commits(head) else flowOf(PagingData.empty<RepositoryActivityEntry>())
 
-    fun retryRevalidation() {
-        val head = state.value.data?.head?.sha?.takeIf(String::isNotBlank) ?: return
-        detail.retryRevalidation(detail.commitsPagingKey(head))
-    }
-    private var refreshJob: Job? = null
+    fun revalidation(head: String) = detail.revalidation(detail.commitsPagingKey(head))
+
+    fun retryRevalidation(head: String) = detail.retryRevalidation(detail.commitsPagingKey(head))
+
     private var recoveredHead: String? = null
 
     fun recoverRevision(head: String?) {
@@ -84,11 +43,6 @@ internal class PullRequestCommitsViewModel(
     }
 
     fun refresh() {
-        if (refreshJob?.isActive == true) return
-        refreshJob = viewModelScope.launch {
-            detail.refresh(force = true).join()
-            val snapshot = state.value
-            if (snapshot.data != null && snapshot.error == null) detail.refreshEntries()
-        }
+        detail.refresh(force = true)
     }
 }

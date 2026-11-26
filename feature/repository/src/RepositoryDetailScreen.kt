@@ -1,16 +1,13 @@
 package moe.yumeyuka.yumehub.feature.repository
 
 import android.net.Uri
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.selection.DisableSelection
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
@@ -22,12 +19,12 @@ import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
+import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
 import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
 import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubContentVisibility
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.ReadmePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryEntryRowsPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryHeaderPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
@@ -47,18 +44,24 @@ internal fun LazyListScope.RepositoryDetailScreen(
     readmeAnchor: String? = null,
     overviewState: RepositoryOverviewState,
     onToggleStar: () -> Unit,
-    onRetryOverviewReadme: () -> Unit,
+    onRetryRepository: () -> Unit,
+    onRetryOverview: () -> Unit,
+    onRetryReadme: () -> Unit,
     onRepositoryExternal: (String) -> Unit,
     onOpenLicense: () -> Unit,
 ) {
     val loaded = state.repository
     if (loaded is RepositoryLoad.Error) {
+        item(key = "repository-error") { GlasmioGroupedList { RepositoryRetryRow(loaded.message, onRetryRepository) } }
         return
     }
     // 占位与正文共用同一批 item key：数据到达时由卡片内部交接，列表不重建。
     val repository = (loaded as? RepositoryLoad.Ready)?.value
+    (loaded as? RepositoryLoad.Ready)?.refreshError?.let { error ->
+        item(key = "repository-error") { GlasmioGroupedList { RepositoryRetryRow(error, onRetryRepository) } }
+    }
     val currentRef = state.selectedRef ?: repository?.defaultBranch?.let { "refs/heads/$it" }
-    if (state.page is RepositoryDetailPage.Readme) {
+    if (state.page == RepositoryDetailPage.Readme) {
         item(key = "repository-ref") {
             GithubSection(strings.Refs) {
                 RepositoryRefSelector(
@@ -71,53 +74,37 @@ internal fun LazyListScope.RepositoryDetailScreen(
             }
         }
     }
-    when (val page = state.page) {
+    when (state.page) {
         RepositoryDetailPage.Overview ->
             repositoryOverview(
                 strings,
                 repository,
                 currentRef,
-                state.overviewReadme,
+                state.readme,
                 overviewState,
                 enabled,
                 onToggleStar,
                 onBrowseFiles,
                 onOpenIssues,
                 onOpenPullRequests,
-                onRetryOverviewReadme,
+                onRetryOverview,
+                onRetryReadme,
                 onRepositoryExternal,
                 onOpenLicense,
                 onOpenSource,
             )
-        is RepositoryDetailPage.Readme -> {
+        RepositoryDetailPage.Readme -> {
             repository?.let { repositoryLocation(strings, it, ref = currentRef) }
             repositoryReadme(
                 strings,
-                page.preview,
+                state.readme,
                 ref = currentRef,
                 repositoryRootUrl = repository?.contentRoot(currentRef),
                 onOpenSource = onOpenSource,
                 scrollToAnchor = readmeAnchor,
+                onRetry = onRetryReadme,
             )
         }
-        is RepositoryDetailPage.License ->
-            readingItem(key = "repository-license") {
-                GithubReadingGroup {
-                    GithubLoadingContent(
-                        loading = page.contents is RepositoryLoad.Loading,
-                        placeholder = { ReadmePlaceholder() },
-                    ) {
-                        (page.contents as? RepositoryLoad.Ready)?.let {
-                            Text(
-                                it.value,
-                                Modifier.fillMaxWidth().padding(16.dp),
-                                style = GlasmioTheme.textStyles.body,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                        }
-                    }
-                }
-            }
     }
 }
 
@@ -125,13 +112,14 @@ private fun LazyListScope.repositoryOverview(
     strings: GithubStrings_Repository,
     repository: RepositoryDto?,
     ref: String?,
-    readme: RepositoryLoad<RepositoryTextPreview>?,
+    readme: RepositoryLoad<RepositoryTextPreview>,
     overview: RepositoryOverviewState,
     enabled: Boolean,
     onToggleStar: () -> Unit,
     onBrowseFiles: () -> Unit,
     onOpenIssues: (() -> Unit)?,
     onOpenPullRequests: (() -> Unit)?,
+    onRetryOverview: () -> Unit,
     onRetryReadme: () -> Unit,
     onExternal: (String) -> Unit,
     onOpenLicense: () -> Unit,
@@ -140,106 +128,60 @@ private fun LazyListScope.repositoryOverview(
     item(key = "repository-header") {
         GithubLoadingContent(
             loading = repository == null,
+            deferUntilEntry = false,
             placeholder = { RepositoryHeaderPlaceholder() },
         ) {
-            if (repository != null)
-                RepositoryHeaderCard(
-                    repository,
-                    overview,
-                    enabled,
-                    onToggleStar,
-                    onFork = { onExternal("fork") },
-                    onOpenLink = onExternal,
-                )
-        }
-    }
-    readingItem(key = "repository-overview-body") {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            GithubLoadingContent(
-                loading = repository == null,
-                placeholder = { RepositoryEntryRowsPlaceholder() },
-            ) {
-                if (repository != null)
-                    RepositoryEntryCard(
+            if (repository != null) {
+                Column {
+                    RepositoryHeaderCard(
                         repository,
                         overview,
                         enabled,
-                        onBrowseFiles,
-                        onOpenIssues,
-                        onOpenPullRequests,
-                        onExternal,
-                        onOpenLicense,
+                        onToggleStar,
+                        onFork = { onExternal("fork") },
+                        onOpenLink = onExternal,
                     )
-            }
-            val readmeText = (readme as? RepositoryLoad.Ready)?.value
-            GithubContentVisibility(
-                animateEnter = false,
-                visible =
-                    readme == null ||
-                        readme is RepositoryLoad.Loading ||
-                        readme is RepositoryLoad.Error ||
-                        readmeText?.html != null,
-            ) {
-                when (readme) {
-                    null,
-                    RepositoryLoad.Loading -> GithubReadingGroup { RepositoryReadmePlaceholder() }
-                    is RepositoryLoad.Error -> Unit
-                    is RepositoryLoad.Ready ->
-                        readmeText?.html?.let { html ->
-                            RepositoryOverviewReadme(
-                                html = html,
-                                pageUrl =
-                                    readmeText.htmlUrl?.takeIf { "/blob/" in it }
-                                        ?: repository?.contentRoot(ref),
-                                repositoryRootUrl = repository?.contentRoot(ref),
-                                ref = ref,
-                                onOpenFile =
-                                    readmeText.path
-                                        ?.takeIf { it.isNotBlank() }
-                                        ?.let { path -> { onOpenSource(path) } },
-                            )
-                        }
                 }
             }
         }
     }
-}
-
-/** 概览 README：首帧占位由共享渲染器管理。 */
-@Composable
-private fun RepositoryOverviewReadme(
-    html: String,
-    pageUrl: String?,
-    repositoryRootUrl: String?,
-    ref: String?,
-    onOpenFile: (() -> Unit)?,
-) {
-    GithubReadingGroup(
-        onHeaderClick = onOpenFile,
-        header = {
-            DisableSelection {
-                val labelColor = GlasmioTheme.colors.secondaryContent
-                GlasmioListRow(
-                    title = LocalGithubStrings.current.Repository.ReadmeFileTitle,
-                    titleColor = labelColor,
-                    systemName = null,
-                    leading = { GithubEntryIcon(Lucide.BookOpen, tint = labelColor) },
-                    showTopSeparator = false,
-                    showDisclosure = true,
+    item(key = "repository-entries") {
+        GithubLoadingCard(
+            loading = repository == null,
+            deferUntilEntry = false,
+            placeholder = { RepositoryEntryRowsPlaceholder() },
+        ) {
+            if (repository != null) {
+                RepositoryEntryCard(
+                    repository,
+                    overview,
+                    enabled,
+                    onBrowseFiles,
+                    onOpenIssues,
+                    onOpenPullRequests,
+                    onExternal,
+                    onOpenLicense,
                 )
             }
-        },
-    ) {
-        GithubMarkdown(
-            "",
-            Modifier.fillMaxWidth().readmePadding(),
-            pageUrl = pageUrl,
-            repositoryRootUrl = repositoryRootUrl,
-            html = html,
-            readme = true,
-            ref = ref,
+            overview.error?.let { RepositoryRetryRow(it, onRetryOverview) }
+        }
+    }
+    readingItem(key = "repository-overview-readme") {
+        RepositoryReadmeCard(strings, readme, ref, repository?.contentRoot(ref), onOpenSource, onRetryReadme, overview = true)
+    }
+}
+
+@Composable
+private fun RepositoryOverviewReadmeHeader() {
+    DisableSelection {
+        val labelColor = GlasmioTheme.colors.secondaryContent
+        GlasmioListRow(
+            title = LocalGithubStrings.current.Repository.ReadmeFileTitle,
+            titleColor = labelColor,
+            systemName = null,
+            leading = { GithubEntryIcon(Lucide.BookOpen, tint = labelColor) },
+            showTopSeparator = false,
+            showDisclosure = true,
         )
     }
 }
@@ -270,55 +212,71 @@ private fun LazyListScope.repositoryReadme(
     ref: String?,
     repositoryRootUrl: String?,
     onOpenSource: (path: String?) -> Unit,
-    scrollToAnchor: String? = null,
+    scrollToAnchor: String?,
+    onRetry: () -> Unit,
 ) {
-    if (preview is RepositoryLoad.Error) return
     readingItem(key = "repository-text") {
-        GithubReadingGroup {
-            GithubLoadingContent(
-                loading = preview is RepositoryLoad.Loading,
-                placeholder = { RepositoryReadmePlaceholder() },
-            ) {
-                if (preview is RepositoryLoad.Ready)
-                    Column {
-                        val html = preview.value.html
-                        if (html.isNullOrEmpty()) {
-                            DisableSelection {
-                                GlasmioListRow(
-                                    title =
-                                        if (html == null) strings.ReadNotFound
-                                        else strings.ContentEmpty,
-                                    systemName = null,
-                                )
-                            }
-                        } else {
-                            GithubMarkdown(
-                                "",
-                                Modifier.fillMaxWidth().readmePadding(),
-                                pageUrl =
-                                    preview.value.htmlUrl?.takeIf { "/blob/" in it }
-                                        ?: repositoryRootUrl,
-                                repositoryRootUrl = repositoryRootUrl,
-                                html = html,
-                                readme = true,
-                                ref = ref,
-                                scrollToAnchor = scrollToAnchor,
-                            )
-                        }
-                        DisableSelection {
-                            if (preview.value.path != null) {
-                                GlasmioListRow(
-                                    title = strings.ViewSource,
-                                    systemName = null,
-                                    onClick = { onOpenSource(preview.value.path) },
-                                )
-                            }
+        RepositoryReadmeCard(strings, preview, ref, repositoryRootUrl, onOpenSource, onRetry, scrollToAnchor)
+    }
+}
+
+@Composable
+private fun RepositoryReadmeCard(
+    strings: GithubStrings_Repository,
+    preview: RepositoryLoad<RepositoryTextPreview>,
+    ref: String?,
+    repositoryRootUrl: String?,
+    onOpenSource: (String?) -> Unit,
+    onRetry: () -> Unit,
+    scrollToAnchor: String? = null,
+    overview: Boolean = false,
+) {
+    val document = (preview as? RepositoryLoad.Ready)?.value
+    val html = document?.html?.takeIf(String::isNotBlank)
+    val path = document?.path?.takeIf(String::isNotBlank)
+    GithubReadingGroup(
+        documentKey = html,
+        onHeaderClick = if (overview && path != null) ({ onOpenSource(path) }) else null,
+        header = { if (overview) RepositoryOverviewReadmeHeader() },
+    ) {
+        when (preview) {
+            RepositoryLoad.Loading -> RepositoryReadmePlaceholder()
+            is RepositoryLoad.Error -> RepositoryRetryRow(preview.message, onRetry)
+            is RepositoryLoad.Ready -> {
+                if (html == null) {
+                    val empty = if (preview.value.html == null) {
+                        LocalGithubStrings.current.Profile.CollectionEmpty(strings.Readme)
+                    } else strings.ContentEmpty
+                    GlasmioListRow(title = empty, systemName = null)
+                } else {
+                    GithubMarkdown(
+                        "",
+                        Modifier.fillMaxWidth().readmePadding(),
+                        pageUrl = preview.value.htmlUrl?.takeIf { "/blob/" in it } ?: repositoryRootUrl,
+                        repositoryRootUrl = repositoryRootUrl,
+                        ref = ref,
+                        html = html,
+                        readme = true,
+                        scrollToAnchor = scrollToAnchor,
+                    )
+                }
+                preview.refreshError?.let { RepositoryRetryRow(it, onRetry) }
+                if (!overview) GithubReadingFooter {
+                    DisableSelection {
+                        Column {
+                            if (path != null) GlasmioListRow(title = strings.ViewSource, systemName = null, onClick = { onOpenSource(path) })
                             RepositoryWebRow(preview.value.htmlUrl)
                         }
                     }
+                }
             }
         }
     }
+}
+
+@Composable
+internal fun RepositoryRetryRow(message: String, onRetry: () -> Unit) {
+    GlasmioListRow(title = message, detail = LocalGithubStrings.current.Common.Retry, systemName = null, onClick = onRetry)
 }
 
 private fun RepositoryDto.contentRoot(ref: String?): String? {

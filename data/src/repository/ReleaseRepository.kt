@@ -1,6 +1,9 @@
 package moe.yumeyuka.yumehub.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -75,8 +78,14 @@ class ReleaseRepository(
         tag: String?,
         versionId: String?,
     ): Flow<CachedDataState<GithubReleaseResult>> =
-        if (versionId != null) versionResource(account, versionId).observe {
-            RemoteFetch.Fresh(readVersion(account, versionId))
+        if (versionId != null) flow {
+            val routeResource = releaseResource(account, owner, name, tag)
+            if (routeResource.cached?.detail?.version?.id == versionId) {
+                emitAll(observe(account, owner, name, tag, versionId = null).takeWhile {
+                    it.data?.detail?.version?.id == versionId || it.error?.invalidatesCachedContent() == true
+                })
+            }
+            emitAll(versionResource(account, versionId).observe { RemoteFetch.Fresh(readVersion(account, versionId)) })
         } else releaseResource(account, owner, name, tag).observe {
                 val data =
                     GithubGraphQlSession(api, tokens, account)

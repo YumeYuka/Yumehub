@@ -9,16 +9,21 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.repository.WorkflowInput
 import moe.yumeyuka.yumehub.data.repository.WorkflowOption
 import moe.yumeyuka.yumehub.data.repository.WorkflowRepository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
+
+private class DispatchForm {
+    var fields by mutableStateOf<List<WorkflowInput>?>(null)
+    var unavailable by mutableStateOf(false)
+    var failed by mutableStateOf(false)
+    val values = mutableStateMapOf<String, String>()
+}
 
 @Composable
 internal fun WorkflowDispatchSheet(
@@ -34,28 +39,33 @@ internal fun WorkflowDispatchSheet(
     var branch by remember { mutableStateOf(defaultBranch) }
     var pickBranch by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
-    var fields by remember(branch, retry) { mutableStateOf<List<WorkflowInput>?>(null) }
-    var unavailable by remember(branch, retry) { mutableStateOf(false) }
-    var failed by remember(branch, retry) { mutableStateOf(false) }
-    val values = remember(branch, retry) { mutableStateMapOf<String, String>() }
+    val forms = remember(account, workflow.id) { LinkedHashMap<String, DispatchForm>(8, 0.75f, true) }
+    val form = remember(forms, branch) {
+        forms.getOrPut(branch) { DispatchForm() }.also {
+            if (forms.size > 8) forms.remove(forms.keys.first())
+        }
+    }
+    val fields = form.fields
+    val values = form.values
+    val unavailable = form.unavailable
+    val failed = form.failed
     LaunchedEffect(account, workflow.id, branch, retry) {
-        if (branch.isBlank()) return@LaunchedEffect
-        delay(300)
+        if (branch.isBlank() || form.fields != null || form.unavailable) return@LaunchedEffect
+        form.failed = false
         try {
-            val form = repo.inputs(account, workflow.id, branch)
-            unavailable = form == null
-            form?.forEach { field ->
+            val inputs = repo.inputs(account, workflow.id, branch)
+            form.unavailable = inputs == null
+            inputs?.forEach { field ->
                 val initial = field.default ?: if (field.type == "BOOLEAN") "false" else null
                 if (initial != null) values[field.key] = initial
             }
-            fields = form
+            form.fields = inputs
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            failed = true
+            form.failed = true
         }
     }
-    GithubLoadFailureToast(failed.takeIf { it }, strings.Activity.LoadFailed)
     val ready =
         fields?.all { field ->
             val v = values[field.key]
@@ -120,7 +130,7 @@ internal fun WorkflowDispatchSheet(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     when {
                         failed ->
-                            GlasmioListRow(title = strings.Common.Retry, onClick = { retry++ })
+                            GlasmioListRow(title = strings.Activity.LoadFailed, detail = strings.Common.Retry, onClick = { retry++ })
                         unavailable -> GlasmioListRow(title = strings.Activity.ManualUnavailable)
                     }
                     fields.orEmpty().forEach { field ->

@@ -9,16 +9,12 @@ import java.io.IOException
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -60,6 +56,7 @@ import moe.yumeyuka.yumehub.data.repository.WorkItemSubscriptionRepository
 import moe.yumeyuka.yumehub.data.repository.WorkMergeMessage
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.convergeGithubReactions
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.withToggledReaction
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
@@ -147,7 +144,7 @@ internal data class CollaborationDetailUiState(
     val error: String? = null,
     val browserUrl: String? = null,
     val mergePhase: WritePhase = WritePhase.IDLE,
-    val projectTitles: List<String> = emptyList(),
+    val projectTitles: List<String>? = null,
     val section: CollaborationSection = CollaborationSection.Discussion,
     val statusPanel: WorkStatusPanel? = null,
     val composerTarget: CollaborationEditorTarget? = null,
@@ -196,7 +193,6 @@ internal data class CollaborationDetailUiState(
                     reviewDraft.isBlank() && reviewEvent == PullRequestReviewEvent.Approve)
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
 internal class CollaborationDetailViewModel(
     repository: WorkDetailRepository,
     private val owner: String,
@@ -479,6 +475,7 @@ internal class CollaborationDetailViewModel(
         mutableUiState.update {
             it.copy(
                 branchQuery = query,
+                branchChoices = if (it.branchQuery == query) it.branchChoices else emptyList(),
                 branchLoading = true,
                 branchError = false,
                 branchCursor = null,
@@ -500,7 +497,8 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (error: Exception) {
                 if (generation == branchGeneration)
-                    mutableUiState.update { it.copy(branchLoading = false, branchError = true) }
+                    mutableUiState.update { it.copy(branchLoading = false, branchError = true,
+                        branchChoices = if (error.invalidatesCachedContent()) emptyList() else it.branchChoices) }
             }
         }
     }
@@ -532,7 +530,9 @@ internal class CollaborationDetailViewModel(
                 throw error
             } catch (error: Exception) {
                 if (generation == branchGeneration)
-                    mutableUiState.update { it.copy(branchError = true) }
+                    mutableUiState.update { it.copy(branchError = true,
+                        branchChoices = if (error.invalidatesCachedContent()) emptyList() else it.branchChoices,
+                        branchCursor = it.branchCursor.takeUnless { error.invalidatesCachedContent() }) }
             }
         }
     }
@@ -551,19 +551,6 @@ internal class CollaborationDetailViewModel(
             .reviews()
             .map { page ->
                 page.map<PullRequestReviewDto, CollaborationEntry> { CollaborationEntry.Review(it) }
-            }
-            .cachedIn(viewModelScope)
-    private val fileEntries =
-        uiState
-            .map { it.item?.head?.sha?.takeUnless(String::isBlank) }
-            .filterNotNull()
-            .distinctUntilChanged()
-            .flatMapLatest { sha ->
-                detail.files(sha).map { page ->
-                    page.map<PullRequestFileDto, CollaborationEntry> {
-                        CollaborationEntry.File(sha, it)
-                    }
-                }
             }
             .cachedIn(viewModelScope)
 
@@ -590,22 +577,6 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    private val commitEntries =
-        uiState
-            .map { it.item?.head?.sha?.takeIf(String::isNotBlank) }
-            .filterNotNull()
-            .distinctUntilChanged()
-            .flatMapLatest { head ->
-                detail.commits(head).map { page ->
-                    page.map<
-                        moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry,
-                        CollaborationEntry,
-                    > {
-                        CollaborationEntry.Commit(it)
-                    }
-                }
-            }
-            .cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -760,12 +731,22 @@ internal class CollaborationDetailViewModel(
             CollaborationEditorTarget.LineComment -> state.lineCommentDraft
         }
 
-    fun entriesFor(section: CollaborationSection): Flow<PagingData<CollaborationEntry>>? =
+    fun entriesFor(section: CollaborationSection, head: String): Flow<PagingData<CollaborationEntry>>? =
         when (section) {
             CollaborationSection.Discussion -> null
             CollaborationSection.Reviews -> reviewEntries
-            CollaborationSection.Files -> fileEntries
-            CollaborationSection.Commits -> commitEntries
+            CollaborationSection.Files -> head.takeIf(String::isNotBlank)?.let { sha ->
+                detail.files(sha).map { page ->
+                    page.map<PullRequestFileDto, CollaborationEntry> { CollaborationEntry.File(sha, it) }
+                }
+            }
+            CollaborationSection.Commits -> head.takeIf(String::isNotBlank)?.let { sha ->
+                detail.commits(sha).map { page ->
+                    page.map<moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry, CollaborationEntry> {
+                        CollaborationEntry.Commit(it)
+                    }
+                }
+            }
         }
 
     private fun CollaborationDetailUiState.withDetail(
@@ -811,7 +792,7 @@ internal class CollaborationDetailViewModel(
                 !item.head?.sha.isNullOrBlank()
         return copy(
             item = item,
-            projectTitles = coord?.current(detail.keys.property(WorkProperty.Projects))?.visible?.map { it.title }.orEmpty(),
+            projectTitles = coord?.current(detail.keys.property(WorkProperty.Projects))?.visible?.map { it.title },
             loading = cached.loading,
             error = failure?.let(::collaborationErrorMessage),
             browserUrl = githubBrowserUrl(item?.htmlUrl),
@@ -830,6 +811,10 @@ internal class CollaborationDetailViewModel(
             reviewLine = reviewLine.takeIf { it?.commitId == item?.head?.sha },
             lastLineComment = lastLineComment.takeIf { this.item?.head?.sha == item?.head?.sha },
         )
+    }
+
+    fun retryDetail() {
+        if (!uiState.value.submitting) detail.refresh(force = true)
     }
 
     fun refresh() {

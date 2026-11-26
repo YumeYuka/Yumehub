@@ -3,6 +3,7 @@ package moe.yumeyuka.yumehub.feature.pullrequestcommits
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -15,6 +16,8 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
@@ -53,6 +56,9 @@ fun PullRequestCommitsPage(
             showTitle = false,
             itemSpacing = 12.dp,
         ) {
+            if (activityCommits.isEmpty()) item(key = "pr-commits-empty") {
+                GlasmioGroupedList { GlasmioListRow(title = strings.Activity.Empty, systemName = null) }
+            }
             items(
                 count = activityCommits.size,
                 key = { activityCommits[it].id },
@@ -86,20 +92,25 @@ fun PullRequestCommitsPage(
         refreshOnFirstActivation = false,
         onRefresh = viewModel::refresh,
     )
-    val head = state.data?.head?.sha?.takeIf(String::isNotBlank)
+    val denied = state.error?.invalidatesCachedContent() == true
+    val head = state.data?.head?.sha?.takeIf { it.isNotBlank() && !denied }
+    val missingHead = head == null && state.data != null && !denied
     val contentKey = "pr-commits:$account:$route:$head"
+    val source = remember(viewModel, head) { viewModel.commits(head) }
+    val sync = remember(viewModel, head) { head?.let(viewModel::revalidation) ?: IdleGithubPagingRevalidation }
     GithubPagingContent(
-        viewModel.commits,
+        source,
         contentKey = contentKey,
-        revalidation = viewModel.revalidation,
-        onRetryRevalidation = viewModel::retryRevalidation,
+        revalidation = sync,
+        onRetryRevalidation = head?.let { { viewModel.retryRevalidation(it) } },
     ) { paging ->
         val pages = paging.items
         val slots =
             rememberGithubPagingSlots(
                 pages,
                 contentKey,
-                paging.initialLoading || (head == null && state.error == null),
+                if (head == null) state.data == null && state.error == null else paging.initialLoading,
+                contentReady = head != null,
                 autoRefresh = false,
             ) {
                 it.id
@@ -120,24 +131,23 @@ fun PullRequestCommitsPage(
             smallTitle = strings.WorkDetail.Commits,
             showTitle = false,
             listState = paging.listState,
-            listTransition = paging.transition,
             itemSpacing = 12.dp,
         ) {
-            githubPagingItems(slots, contentType = "pr-commit") { row ->
-                val entry = row?.commit
+            if (head != null || (state.data == null && state.error == null)) githubPagingItems(slots, contentType = "pr-commit") { entry ->
                 GithubLoadingCard(
                     loading = entry == null,
+                    deferUntilEntry = false,
                     placeholder = { WorkspaceCommitPlaceholder() },
                 ) {
-                    if (row != null && entry != null) {
+                    if (entry != null) {
                         PullRequestCommitSummary(
                             entry,
                             onClick =
-                                if (!revisionChanged && row.head == head && entry.id.isNotBlank()) {
+                                if (!revisionChanged && head != null && entry.id.isNotBlank()) {
                                     {
                                         if (
                                             host.navigationEnabled &&
-                                                viewModel.canOpenCommit(row.head, entry.id)
+                                                viewModel.canOpenCommit(head, entry.id)
                                         ) {
                                             onOpenCommit(entry.id)
                                         }
@@ -147,15 +157,21 @@ fun PullRequestCommitsPage(
                     }
                 }
             }
-            if (!state.loading && (state.error != null || pageError != null)) {
+            if (head != null && slots.isEmptyResult && pageError == null) {
+                item(key = "pr-commits-empty") {
+                    GlasmioGroupedList { GlasmioListRow(title = strings.Activity.Empty, systemName = null) }
+                }
+            }
+            if (!state.loading && (missingHead || state.error != null || pageError != null)) {
                 item(key = "pr-commits-retry") {
                     GlasmioGroupedList {
                         GlasmioListRow(
-                            title = strings.Common.Retry,
+                            title = strings.WorkDetail.LoadFailed,
+                            detail = strings.Common.Retry,
                             enabled = host.navigationEnabled,
                             onClick = {
-                                if (state.error != null || revisionChanged) viewModel.refresh()
-                                else pages.retry()
+                                if (missingHead || state.error != null || revisionChanged) viewModel.refresh()
+                                if (pageError != null) pages.retry()
                             },
                         )
                     }

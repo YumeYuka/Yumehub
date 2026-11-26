@@ -37,6 +37,11 @@ import moe.yumeyuka.yumehub.data.cache.MutationCoordinator
 import moe.yumeyuka.yumehub.data.cache.workListCacheTag
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 
+data class WorkCardContent(
+    val initial: CollaborationItemDto,
+    val updates: Flow<CollaborationItemDto>,
+)
+
 class WorkListRepository(
     private val api: GitHubGraphQlApi,
     private val tokens: TokenStore,
@@ -406,18 +411,28 @@ class WorkListRepository(
         load
       }
 
-  fun card(account: String, row: CollaborationItemDto): Flow<CollaborationItemDto> {
-    val id = row.nodeId ?: return kotlinx.coroutines.flow.flowOf(row)
+  fun card(account: String, row: CollaborationItemDto): WorkCardContent {
+    val id = row.nodeId ?: return WorkCardContent(row, kotlinx.coroutines.flow.emptyFlow())
     val tag = CacheTag(DataDomain.Work, row.repositoryName?.lowercase())
     val resource = cache.resource(account, "work-card.v1:$id:${row.updatedAt}", CollaborationItemDto.serializer(), tags = setOf(tag))
-    return resource.observe {
-        val batch = cache.sessionResource(account, "work-card-batch") { scope ->
-            WorkCardBatch(scope, GithubGraphQlSession(api, tokens, account))
+    fun enrich(rich: CollaborationItemDto?): CollaborationItemDto? =
+        rich?.takeIf { it.updatedAt == row.updatedAt }?.let {
+          row.copy(
+              bodyPreview = it.bodyPreview,
+              participantsCount = it.participantsCount,
+              participantAvatars = it.participantAvatars,
+              subIssuesTotal = it.subIssuesTotal,
+              subIssuesCompleted = it.subIssuesCompleted,
+          )
         }
-        RemoteFetch.Fresh(batch.read(id))
-    }.mapNotNull { state -> state.data?.takeIf { it.updatedAt == row.updatedAt }?.let { rich ->
-        if (row.merged && !rich.merged) rich.copy(merged = true, state = row.state) else rich
-    } }
+    val initial = enrich(resource.cached) ?: row
+    val updates = resource.observe {
+      val batch = cache.sessionResource(account, "work-card-batch") { scope ->
+        WorkCardBatch(scope, GithubGraphQlSession(api, tokens, account))
+      }
+      RemoteFetch.Fresh(batch.read(id))
+    }.mapNotNull { enrich(it.data) }
+    return WorkCardContent(initial, updates)
   }
 
   /** 筛选菜单按账号与仓库短时缓存；读取失败由调用方保留空选项。 */
@@ -678,7 +693,9 @@ private fun JsonObject.toCollaborationItem(
   )
 }
 
-private const val CommonRowFields = "__typename id number title url createdAt updatedAt author { login avatarUrl __typename } repository { nameWithOwner }"
+// Keep the paged response lightweight. Card summaries and statistics are fetched by visible node ID.
+private const val CommonRowFields =
+    "__typename id number title url createdAt updatedAt author { login avatarUrl __typename } repository { nameWithOwner }"
 private const val IssueRowFields = "$CommonRowFields issueState: state stateReason comments { totalCount }"
 private const val PullRowFields = "$CommonRowFields pullRequestState: state isDraft merged headRefName baseRefName totalCommentsCount"
 

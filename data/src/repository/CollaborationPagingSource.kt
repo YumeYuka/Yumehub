@@ -105,7 +105,11 @@ private class CollaborationPagingSource<T : Any, R : Any>(
 
     private suspend fun request(page: Int): PagingSnapshotPage<T> {
         val response = requestPage(page, CollaborationPageSize)
-        if (!response.isSuccessful) throw HttpException(response)
+        if (!response.isSuccessful) {
+            val error = HttpException(response)
+            snapshot?.discardDenied(error)
+            throw error
+        }
         currentCoroutineContext().ensureActive()
         return PagingSnapshotPage(
             items = response.body().orEmpty(),

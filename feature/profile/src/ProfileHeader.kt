@@ -55,21 +55,17 @@ internal fun ProfileHeader(
     ) {
         Box(Modifier.size(100.dp)) {
             val avatarUrl = profile?.avatarUrl?.takeIf { it.isNotBlank() } ?: fallbackAvatarUrl
-            GithubLoadingContent(
-                loading = avatarUrl == null,
+            GithubAvatar(
+                avatarUrl,
+                profile?.login ?: fallbackName,
+                type = avatarType,
+                size = 100.dp,
                 placeholder = { AvatarPlaceholder(100.dp, type = avatarType) },
-            ) {
-                GithubAvatar(
-                    avatarUrl,
-                    profile?.login,
-                    type = avatarType,
-                    size = 100.dp,
-                    placeholder = { AvatarPlaceholder(100.dp, type = avatarType) },
-                )
-            }
+            )
         }
         GithubLoadingContent(
             loading = profile == null && fallbackName == null,
+            deferUntilEntry = false,
             modifier = Modifier.fillMaxWidth().height(28.dp),
             placeholder = {
                 Box(Modifier.fillMaxWidth().height(28.dp), contentAlignment = Alignment.Center) {
@@ -121,9 +117,10 @@ internal fun ProfileHeader(
                     }
             }
         }
-        if (!organization)
+        if (!organization && (profile == null || profile.audienceResolved))
             GithubLoadingContent(
                 loading = profile?.audienceResolved != true,
+                deferUntilEntry = false,
                 modifier = Modifier.fillMaxWidth().height(18.dp),
                 placeholder = {
                     Box(

@@ -16,25 +16,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +42,7 @@ import io.github.neoruaa.glasmio.glass.glassBackdropSource
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.Eye
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Pencil
@@ -78,9 +76,7 @@ internal fun EditorMarkdownContent(
     val editorContentHorizontalPadding = 16.dp
     val commonStrings = LocalGithubStrings.current.Common
     val markdownStrings = LocalGithubStrings.current.Markdown
-    var preview by remember(session) { mutableStateOf(session.previewOnOpen) }
-    var previewSource by
-        remember(session) { mutableStateOf(session.source.takeIf { session.previewOnOpen }) }
+    var preview by rememberSaveable(session.id, session.pageUrl) { mutableStateOf(session.previewOnOpen) }
     var previousEditable by remember(session) { mutableStateOf(session.editable) }
     val focusRequester = remember(session) { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -94,23 +90,14 @@ internal fun EditorMarkdownContent(
         rememberGithubMarkdownSelectionModifier(state, enabled, session::changeSource)
     LaunchedEffect(session, session.editable) {
         if (!previousEditable && session.editable && preview) {
-            previewSource = session.source
             preview = false
         }
         previousEditable = session.editable
     }
-    LaunchedEffect(session, fileReady, enabled, preview, focusReady) {
-        if (!fileReady) return@LaunchedEffect
-        if (preview) {
-            // 预览覆盖编辑器时先放掉焦点，避免选区浮层和软键盘停在预览上方。
-            focusManager.clearFocus()
-            keyboard?.hide()
-        } else if (enabled && focusReady) {
-            snapshotFlow { editorPlaced }.first { it }
-            withFrameNanos {}
+    LaunchedEffect(session, enabled, preview, focusReady, editorPlaced) {
+        if (!preview && enabled && focusReady && editorPlaced) {
             focusRequester.requestFocus()
             snapshotFlow { editorFocused }.first { it }
-            withFrameNanos {}
             keyboard?.show()
         }
     }
@@ -132,6 +119,7 @@ internal fun EditorMarkdownContent(
         // 顶栏与底栏仅采样原生编辑器和背景；WebView 是两个采样层之外的兄弟节点。
         EditorFileReadContent(
             status = fileReadStatus,
+            showEditor = !preview,
             modifier =
                 Modifier.matchParentSize()
                     .then(LocalGithubEditorBackdropSource.current)
@@ -139,27 +127,9 @@ internal fun EditorMarkdownContent(
                     .trackBackdropPosition(dockBackdrop)
                     .background(colors.elevatedBackground),
         ) {
-            // 编辑器始终留在组合与布局中；预览时透明，并拦截触摸与无障碍。
-            Box(
-                Modifier.fillMaxSize()
-                    .graphicsLayer { alpha = if (preview) 0f else 1f }
-                    .then(
-                        if (preview) {
-                            Modifier.clearAndSetSemantics {}
-                                .pointerInput(Unit) {
-                                    awaitPointerEventScope {
-                                        while (true) {
-                                            awaitPointerEvent(PointerEventPass.Initial)
-                                                .changes
-                                                .forEach { it.consume() }
-                                        }
-                                    }
-                                }
-                        } else {
-                            Modifier
-                        },
-                    ),
-            ) {
+            DisposableEffect(focusRequester) {
+                onDispose { editorPlaced = false }
+            }
                 GlasmioEditableText(
                     value = state.value,
                     onValueChange = {
@@ -195,17 +165,22 @@ internal fun EditorMarkdownContent(
                             bottom = dockClearance,
                         ),
                 )
-            }
         }
-        if (!fileReady) return@Box
-        previewSource?.let { snapshot ->
-            // 首次打开后保留预览；隐藏时位于不透明采样层下方，切换只改 z 序。
+        val source = session.source
+        val html = session.readHtml
+        if (fileReady && preview && remember(source, html) { source.isBlank() && html.isNullOrBlank() }) {
+            GlasmioListRow(
+                title = LocalGithubStrings.current.Repository.ContentEmpty,
+                modifier = Modifier.padding(top = contentInsets.calculateTopPadding()),
+                systemName = null,
+            )
+        } else if (fileReady && preview) {
             GithubMarkdownPreview(
-                text = if (preview) session.source else snapshot,
-                html = session.readHtml,
-                visible = preview,
+                text = source,
+                html = html,
+                visible = true,
                 modifier =
-                    Modifier.matchParentSize().zIndex(if (preview) 1f else -1f).layout {
+                    Modifier.matchParentSize().zIndex(1f).layout {
                         measurable,
                         constraints ->
                         // 外层按键盘逐帧收缩；预览按无键盘高度固定测量，避免收起键盘时逐帧
@@ -253,16 +228,14 @@ internal fun EditorMarkdownContent(
                     GlasmioIconButton(
                         onClick = {
                             val nextPreview = !preview
-                            // 隐藏期间固定原文；预览时仍跟随撤销、重做等草稿变化。
-                            previewSource = session.source
-                            if (nextPreview) {
+                            if (nextPreview && editorFocused) {
                                 // 先释放输入焦点，再组合预览 WebView，避免 IME/选区同帧跳变。
                                 focusManager.clearFocus(force = true)
                                 keyboard?.hide()
                             }
                             preview = nextPreview
                         },
-                        enabled = !session.submitting && !session.closeRequested,
+                        enabled = fileReady && !session.submitting && !session.closeRequested,
                         navigationSurfaceColor =
                             if (GlasmioTheme.appearance.reduceTransparency) colors.container
                             else Color.Transparent,

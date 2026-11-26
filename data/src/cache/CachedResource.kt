@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.ResponseCacheStore
 import okio.utf8Size
 
@@ -230,9 +231,25 @@ internal constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            repository.locked {
-                if (isCurrent(version)) {
+            val sequence = repository.locked {
+                if (!isCurrent(version)) return@locked null
+                if (error.invalidatesCachedContent()) {
+                    validator = null
+                    checkedAt = 0L
+                    bodyUpdatedAt = 0L
+                    diskBodyVersion = -1L
+                    bodyVersion++
+                    mutableState.value = CachedDataState(error = error)
+                    ++writeSequence
+                } else {
                     mutableState.value = mutableState.value.copy(loading = false, error = error)
+                    null
+                }
+            }
+            if (sequence != null) {
+                val session = repository.sessionId(account, generation)
+                repository.writeQueue.run {
+                    repository.store.remove(session, diskKey(session)) { mayPersist(version, sequence) }
                 }
             }
             throw error

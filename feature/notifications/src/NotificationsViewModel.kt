@@ -94,6 +94,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private var listJob: Job? = null
     private var observationJob: Job? = null
     private var appending = false
+    private var failedWindow: (() -> Unit)? = null
     private var listGeneration = 0L
     private var loadedThroughPage = 0
     private var loadedFromPage = 1
@@ -162,6 +163,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     }
 
     fun revalidate() {
+        failedWindow = null
         val state = mutableUiState.value
         repository.refresh(account, state.query())
     }
@@ -212,19 +214,14 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         loadPages(start, loadedFromPage - 1, replace = true)
     }
 
+    fun retryWindow() {
+        failedWindow?.invoke() ?: revalidate()
+    }
+
     fun selectFilter(filter: NotificationFilter) {
         val state = mutableUiState.value
         if (state.filter == filter) return
-        loadedThroughPage = 0
-        mutableUiState.value =
-            state
-                .clearSelectionRetry()
-                .copy(
-                    filter = filter,
-                    isSelecting = false,
-                    selectedThreadIds = emptySet(),
-                )
-        observeQuery()
+        observeQuery(state.clearSelectionRetry().copy(filter = filter, isSelecting = false, selectedThreadIds = emptySet()))
     }
 
     fun selectRepository(repository: String?) {
@@ -235,16 +232,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         ) {
             return
         }
-        loadedThroughPage = 0
-        mutableUiState.value =
-            state
-                .clearSelectionRetry()
-                .copy(
-                    repository = repository,
-                    isSelecting = false,
-                    selectedThreadIds = emptySet(),
-                )
-        observeQuery()
+        observeQuery(state.clearSelectionRetry().copy(repository = repository, isSelecting = false, selectedThreadIds = emptySet()))
     }
 
     fun selectReason(reason: NotificationReasonFilter) {
@@ -332,23 +320,25 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private fun NotificationsUiState.query() =
         NotificationsQuery(filter.includeRead, filter.done, repository)
 
-    private fun observeQuery(refresh: Boolean = true) {
+    private fun observeQuery(selection: NotificationsUiState = mutableUiState.value, refresh: Boolean = true) {
         listGeneration++
         listJob?.cancel()
         observationJob?.cancel()
         appending = false
-        val query = mutableUiState.value.query()
+        failedWindow = null
+        val query = selection.query()
         val observed = repository.resource(account, query)
         resource = observed
-        applySnapshot(observed.state.value)
+        applySnapshot(observed.state.value, selection)
         observationJob = viewModelScope.launch {
             observed.state.collect { if (resource === observed) applySnapshot(it) }
         }
-        if (refresh) repository.refresh(account, query)
+        if (refresh && (observed.state.value.data == null || observed.state.value.updatedAt == 0L)) {
+            repository.refresh(account, query)
+        }
     }
 
-    private fun applySnapshot(cached: CachedDataState<NotificationsSnapshot>) {
-        val current = mutableUiState.value
+    private fun applySnapshot(cached: CachedDataState<NotificationsSnapshot>, current: NotificationsUiState = mutableUiState.value) {
         val snapshot = cached.data
         loadedFromPage = snapshot?.loadedFromPage ?: 1
         loadedThroughPage = snapshot?.loadedThroughPage ?: 0
@@ -388,8 +378,8 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 isLoadingMore = cached.loading && appending,
                 hasMore = nextPage != null,
                 hasPrevious = loadedFromPage > 1,
-                loadError = error.takeUnless { appending },
-                appendError = error.takeIf { appending },
+                loadError = error.takeUnless { appending || failedWindow != null },
+                appendError = if (failedWindow != null) current.appendError else error.takeIf { appending },
                 selectedThreadIds = selected,
                 uncertainThreadIds = pendingUncertainTargets.toSet(),
             )
@@ -403,12 +393,12 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
         val generation = ++listGeneration
         listJob?.cancel()
         val state = mutableUiState.value
-        val replacesList = replace || fromPage == 1
-        appending = !replacesList
+        failedWindow = null
+        appending = true
         mutableUiState.value =
             state.copy(
-                isRefreshing = replacesList,
-                isLoadingMore = !replacesList,
+                isRefreshing = false,
+                isLoadingMore = true,
                 loadError = null,
                 appendError = null,
             )
@@ -424,12 +414,13 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             } catch (error: Exception) {
                 if (generation != listGeneration) return@launch
                 appending = false
+                failedWindow = { loadPages(fromPage, throughPage, replace) }
                 mutableUiState.value =
                     mutableUiState.value.copy(
                         isRefreshing = false,
                         isLoadingMore = false,
-                        loadError = error.messageForUser().takeIf { replacesList },
-                        appendError = error.messageForUser().takeUnless { replacesList },
+                        loadError = null,
+                        appendError = error.messageForUser(),
                     )
             }
         }

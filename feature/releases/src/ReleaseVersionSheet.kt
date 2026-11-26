@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,10 +30,11 @@ import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseVersion
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
+import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
@@ -50,29 +50,31 @@ internal fun ReleaseVersionSheet(
     visible: Boolean,
     versions: Flow<PagingData<GithubReleaseVersion>>,
     selectedId: String?,
-    revalidation: StateFlow<RevalidationState> = MutableStateFlow(RevalidationState.Idle),
-    onRetryRevalidation: () -> Unit = {},
+    revalidation: StateFlow<RevalidationState>,
+    onRetryRevalidation: () -> Unit,
     onDismiss: () -> Unit,
-    onSelect: (String) -> Unit,
+    onSelect: (GithubReleaseVersion) -> Unit,
 ) {
     val strings = LocalGithubStrings.current
     val revalidationState by revalidation.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf("") }
-    var opened by remember { mutableStateOf(false) }
-    LaunchedEffect(visible) {
-        if (visible) {
-            opened = true
-            query = ""
-        }
+    var query by remember(visible) { mutableStateOf("") }
+    val pages = if (visible) versions.collectAsLazyPagingItems() else null
+    val slots = pages?.let { items ->
+        rememberGithubPagingSlots(
+            items, "release-selector", autoRefresh = false,
+            accessDenied = (revalidationState as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
+        ) { it.id }
     }
-    val pages = if (opened) versions.collectAsLazyPagingItems() else null
-    val snapshot = pages?.itemSnapshotList
+    val snapshot = slots?.snapshot
     val matches =
         remember(snapshot, query) {
-            snapshot?.items.orEmpty().withIndex().filter { (_, version) ->
-                query.isEmpty() ||
-                    version.tag.contains(query, ignoreCase = true) ||
-                    version.name?.contains(query, ignoreCase = true) == true
+            buildList {
+                snapshot?.forEachIndexed { index, version ->
+                    if (version != null && (query.isEmpty() || version.tag.contains(query, ignoreCase = true) ||
+                        version.name?.contains(query, ignoreCase = true) == true)) {
+                        add(IndexedValue(index, version))
+                    }
+                }
             }
         }
     val failure =
@@ -80,7 +82,7 @@ internal fun ReleaseVersionSheet(
             ?: (pages?.loadState?.append as? LoadState.Error)
     GithubLoadFailureToast(failure.takeIf { visible }, strings.Release.LoadFailed)
     val initialLoading =
-        pages == null || (pages.loadState.refresh is LoadState.Loading && pages.itemCount == 0)
+        pages == null || (slots?.snapshot.isNullOrEmpty() && slots?.isEmptyResult != true && pages.loadState.refresh is LoadState.Loading)
     val appending = pages?.loadState?.append is LoadState.Loading
     val allocator = remember(versions, query) { GithubPagingSlotKeys("release-versions") }
     val rowKeys =
@@ -115,13 +117,13 @@ internal fun ReleaseVersionSheet(
                 query.isNotEmpty() &&
                 pages.itemCount > 0 &&
                 !pages.loadState.append.endOfPaginationReached
-        val footer = !initialLoading && (failure != null || canLoadMore || matches.isEmpty())
+        val footer = !initialLoading && (failure != null || canLoadMore || matches.isEmpty() && (slots?.isEmptyResult == true || !snapshot.isNullOrEmpty()))
         val size = rowKeys.size + if (footer && !appending) 1 else 0
         items(size, key = { rowKeys.getOrNull(it) ?: "versions-footer" }) { index ->
             val match = matches.getOrNull(index)
             // 浏览时正常预取；搜索时由「加载更多」继续翻页。
-            if (query.isEmpty() && match != null) pages?.get(match.index)
-            ReleaseListGroupRow(index, size, Modifier.animateItem()) {
+            if (visible && query.isEmpty() && match != null && match.index < (pages?.itemCount ?: 0)) pages?.get(match.index)
+            ReleaseListGroupRow(index, size) {
                 GithubLoadingContent(
                     loading = match == null && (initialLoading || appending && failure == null),
                     placeholder = { ReleaseVersionPlaceholder(index > 0) },
@@ -133,7 +135,7 @@ internal fun ReleaseVersionSheet(
                                 version = version,
                                 selected = version.id == selectedId,
                                 showTopSeparator = index > 0,
-                                onClick = { finish { onSelect(version.id) } },
+                                onClick = { finish { onSelect(version) } },
                             )
                         }
                         failure != null ->

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,14 +68,4 @@ fun ReadingTextPlaceholder(modifier: Modifier = Modifier, lines: Int = 5) {
             TextPlaceholder(height = 12.dp, fraction = fraction)
         }
     }
-}
-
-fun LazyListScope.repositorySkeletons(count: Int = 5) {
-    repeat(count) { index ->
-        item(key = "repository-skeleton-$index") { RepositoryCardPlaceholder() }
-    }
-}
-
-fun LazyListScope.listRowSkeletons(count: Int = 6) {
-    repeat(count) { index -> item(key = "list-row-skeleton-$index") { ListRowPlaceholder() } }
 }

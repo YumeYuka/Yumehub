@@ -25,7 +25,6 @@ import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSelectionList
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
@@ -74,7 +73,6 @@ private fun RepositoryRefField(
             is RepositoryLoad.Ready -> refs.refreshError
             RepositoryLoad.Loading -> null
         }
-    if (choosing && enabled) GithubLoadFailureToast(failure, failure.orEmpty())
     GlasmioListRow(
         title = label,
         subtitle =
@@ -119,6 +117,7 @@ private fun RepositoryRefField(
             )
             GithubLoadingContent(
                 loading = refs is RepositoryLoad.Loading,
+                deferUntilEntry = false,
                 placeholder = { GlasmioGroupedList { repeat(3) { TitleRowPlaceholder(it > 0) } } },
             ) {
                 if (refs is RepositoryLoad.Ready) {
@@ -145,6 +144,7 @@ private fun RepositoryRefField(
                         )
                 }
             }
+            failure?.let { GlasmioGroupedList { RepositoryRetryRow(it, onLoadRefs) } }
         }
     }
 }

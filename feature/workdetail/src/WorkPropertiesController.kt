@@ -2,14 +2,13 @@ package moe.yumeyuka.yumehub.feature.workdetail
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
 import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 
 internal class WorkPropertiesController(
@@ -20,6 +19,8 @@ internal class WorkPropertiesController(
     private val loadIssueFields: Boolean,
 ) {
     private var loadJob: Job? = null
+    private var referencesJob: Job? = null
+    private var fieldsJob: Job? = null
     private var editorJob: Job? = null
     private val coord = detail.mutations()
     private var fieldObserver: Job? = null
@@ -52,8 +53,9 @@ internal class WorkPropertiesController(
 
     fun load() {
         val current = state()
-        if (current.value != null || current.loading || current.failed) return
-        refresh()
+        if (current.value == null && !current.failed && !current.loading) refresh()
+        if (current.references == null && !current.referencesFailed && referencesJob?.isActive != true) loadReferences()
+        if (loadIssueFields && current.issueFields == null && !current.fieldsFailed && fieldsJob?.isActive != true) loadFields()
     }
 
     fun refresh() {
@@ -62,42 +64,45 @@ internal class WorkPropertiesController(
         update { it.copy(loading = true, failed = false) }
         loadJob = scope.launch {
             try {
-                coroutineScope {
-                    val value = async { detail.properties() }
-                    // 引用列表只读，失败不影响属性面板本身。
-                    val references = async {
-                        try {
-                            detail.crossReferences()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: Exception) {
-                            emptyList<WorkPropertyOption>()
-                        }
-                    }
-                    // 议题字段只属于 Issue，失败时不影响属性面板。
-                    val fields = async {
-                        if (!loadIssueFields) return@async null
-                        try {
-                            detail.issueFields()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-                    val props = value.await()
-                    val refs = references.await()
-                    val issues = fields.await()
-                    update { it.copy(value = props, references = refs, issueFields = issues, loading = false, failed = false) }
-                    fieldObserver?.cancel()
-                    if (issues != null) fieldObserver = scope.launch {
-                        detail.projectedFields(issues).collect { fields -> update { it.copy(issueFields = fields) } }
-                    }
-                }
+                val properties = detail.properties()
+                update { it.copy(value = properties, loading = false, failed = false) }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                update { it.copy(loading = false, failed = true) }
+                update { it.copy(value = it.value.takeUnless { error.invalidatesCachedContent() }, loading = false, failed = true) }
+            }
+        }
+    }
+
+    fun loadReferences() {
+        if (referencesJob?.isActive == true) return
+        update { it.copy(referencesFailed = false) }
+        referencesJob = scope.launch {
+            try {
+                val references = detail.crossReferences()
+                update { it.copy(references = references) }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                update { it.copy(references = it.references.takeUnless { error.invalidatesCachedContent() }, referencesFailed = true) }
+            }
+        }
+    }
+
+    fun loadFields() {
+        if (fieldsJob?.isActive == true) return
+        update { it.copy(fieldsFailed = false) }
+        fieldsJob = scope.launch {
+            try {
+                val fields = detail.issueFields()
+                fieldObserver?.cancel()
+                update { it.copy(issueFields = fields) }
+                fieldObserver = scope.launch {
+                    detail.projectedFields(fields).collect { projected -> update { it.copy(issueFields = projected) } }
+                }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                if (error.invalidatesCachedContent()) fieldObserver?.cancel()
+                update { it.copy(issueFields = it.issueFields.takeUnless { error.invalidatesCachedContent() }, fieldsFailed = true) }
             }
         }
     }
@@ -112,7 +117,7 @@ internal class WorkPropertiesController(
         }
         val value = current.value ?: return
         val editable = if (property == WorkProperty.Labels) value.labelsEditable else value.editable
-        if (current.submitting || (!editable && property != WorkProperty.Labels)) return
+        if (current.submitting) return
         if (current.editor?.property == property) return
         val key = detail.keys.property(property)
         val write = coord.current(key)
@@ -209,7 +214,7 @@ internal class WorkPropertiesController(
 
     private fun loadOptions(property: WorkProperty) {
         if (property.isSearchBacked()) {
-            searchItems(property, "")
+            searchItems(property, state().editor?.query.orEmpty())
             return
         }
         editorJob = scope.launch {
@@ -272,6 +277,7 @@ internal class WorkPropertiesController(
                 editor =
                     it.editor?.copy(
                         query = query,
+                        options = if (editor.query == query) editor.options else emptyList(),
                         loading = true,
                         failed = false,
                         nextCursor = null,

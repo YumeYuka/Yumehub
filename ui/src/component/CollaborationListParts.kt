@@ -4,7 +4,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.paging.LoadState
-import androidx.paging.compose.LazyPagingItems
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.FileText
@@ -13,41 +12,27 @@ import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.placeholders.listRowSkeletons
 import retrofit2.HttpException
 
 /** 分页列表共用的加载/空态/错误尾行，供各 feature 的列表直接复用。 */
 fun LazyListScope.collaborationPagingStatus(
-    items: LazyPagingItems<*>,
+    slots: GithubPagingSlots<*>,
     title: String,
-    loadingPlaceholder: (LazyListScope.() -> Unit)? = null,
     emptyPlaceholder: Boolean = true,
     emptyMessage: String? = null,
     emptyIcon: ImageVector = Lucide.FileText,
     emptyVerticalBias: Float = -0.1f,
 ) {
-    when (items.loadState.refresh) {
-        LoadState.Loading ->
-            if (items.itemCount == 0) {
-                if (loadingPlaceholder != null) {
-                    loadingPlaceholder.invoke(this)
-                } else {
-                    listRowSkeletons()
-                }
-            }
-        is LoadState.Error -> Unit
-        is LoadState.NotLoading ->
-            // 探索动态取不到内容时留空，不显示空态卡片。
-            if (items.itemCount == 0 && emptyPlaceholder) {
-                item(key = "collaboration-page-empty") {
-                    GithubEmptyState(
-                        icon = emptyIcon,
-                        title = emptyMessage ?: "暂无$title",
-                        modifier = Modifier.fillParentMaxHeight(),
-                        verticalBias = emptyVerticalBias,
-                    )
-                }
-            }
+    val items = slots.items
+    if (slots.isEmptyResult && emptyPlaceholder) {
+        item(key = "collaboration-page-empty") {
+            GithubEmptyState(
+                icon = emptyIcon,
+                title = emptyMessage ?: "暂无$title",
+                modifier = Modifier.fillParentMaxHeight(),
+                verticalBias = emptyVerticalBias,
+            )
+        }
     }
 
     val failure = (items.loadState.refresh as? LoadState.Error)
@@ -57,7 +42,7 @@ fun LazyListScope.collaborationPagingStatus(
         item(key = "collaboration-page-retry") {
             GlasmioGroupedList {
                 GlasmioListRow(
-                    title = if (failure.error is IOException && items.itemCount == 0)
+                    title = if (failure.error is IOException && slots.snapshot.isEmpty())
                         LocalGithubStrings.current.Common.NoOfflineData else collaborationErrorMessage(failure.error),
                     detail = LocalGithubStrings.current.Common.Retry,
                     onClick = items::retry,

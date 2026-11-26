@@ -1,13 +1,12 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
@@ -25,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryCardPlaceholderContent
 import moe.yumeyuka.yumehub.ui.theme.githubLanguageColor
@@ -61,6 +61,7 @@ fun RepositoryLoadingCard(
     GithubLoadingCard(
         loading = repository == null,
         modifier = modifier,
+        deferUntilEntry = false,
         placeholder = { RepositoryCardPlaceholderContent(showCover && showCoverPlaceholder) },
     ) {
         if (repository != null)
@@ -78,58 +79,59 @@ private fun RepositoryCardContent(
 ) {
     val colors = GlasmioTheme.colors
     val textStyles = GlasmioTheme.textStyles
-    val stars = repository.stargazersCount ?: 0
-    val forks = repository.forksCount ?: 0
     GithubActivityCardContent(
         cover = if (showCover) ({ GithubRepositoryCover(repository.openGraphImageUrl) }) else null,
         onClick = onClick,
         action = action,
-        header = { RepositoryCardHeading(repository) },
-        summary =
-            repository.description
-                ?.takeIf { it.isNotBlank() }
-                ?.let { description ->
-                    {
-                        Text(
-                            description,
-                            style = repositoryCardBodyStyle(),
-                            color = colors.secondaryContent,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
+        header = {
+            Column(Modifier.fillMaxWidth()) {
+                RepositoryCardHeading(repository)
+                GithubCardField(repository.description?.takeIf(String::isNotBlank)) { description ->
+                    Text(
+                        description,
+                        modifier = Modifier.padding(top = 14.dp),
+                        style = repositoryCardBodyStyle(),
+                        color = colors.secondaryContent,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        },
         metadata = {
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Stat(Lucide.Star, stars.toString(), "星标 $stars")
-                if (contributorsCount != null) {
-                    Stat(Lucide.UserRound, "$contributorsCount 个贡献者", "$contributorsCount 个贡献者")
-                } else Stat(Lucide.BookCopy, forks.toString(), "派生 $forks")
-                val language = repository.language?.takeIf { it.isNotBlank() }
-                if (language != null) {
-                    Row(
-                        Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
-                    ) {
-                        Box(
-                            Modifier.size(9.dp)
-                                .clip(CircleShape)
-                                .background(githubLanguageColor(language)),
-                        )
-                        Text(
-                            language,
-                            style = textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                            color = colors.secondaryContent,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                GithubCardField(repository.stargazersCount) { stars ->
+                    Stat(Lucide.Star, stars.toString(), "星标 $stars")
+                }
+                GithubCardField(contributorsCount ?: repository.forksCount) { count ->
+                    if (contributorsCount != null) Stat(Lucide.UserRound, "$count 个贡献者", "$count 个贡献者")
+                    else Stat(Lucide.BookCopy, count.toString(), "派生 $count")
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    GithubCardField(repository.language?.takeIf(String::isNotBlank)) { language ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Box(
+                                Modifier.size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(githubLanguageColor(language)),
+                            )
+                            Text(
+                                language,
+                                style = textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                                color = colors.secondaryContent,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                } else Spacer(Modifier.weight(1f))
+                }
             }
         },
     )
@@ -137,14 +139,14 @@ private fun RepositoryCardContent(
 
 @Composable
 internal fun RepositoryCardHeading(
-    repository: RepositoryDto,
+    repository: RepositoryDto?,
     fallbackFullName: String? = null,
     number: Int? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val owner = repository.owner
+    val owner = repository?.owner
     val name =
-        (repository.fullName ?: fallbackFullName ?: repository.name.orEmpty()).replace("/", " / ")
+        (repository?.fullName ?: fallbackFullName ?: repository?.name.orEmpty()).replace("/", " / ")
     val style = repositoryCardHeadingStyle()
     val color = GlasmioTheme.colors.content
     Row(
@@ -196,19 +198,13 @@ private fun Stat(icon: ImageVector, value: String, description: String) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         GithubIcon(icon, contentDescription = null, size = 17.dp, tint = colors.secondaryContent)
-        Crossfade(
-            targetState = value,
-            animationSpec = tween(180),
-            label = "stat-value",
-        ) { text ->
-            Text(
-                text,
-                style = GlasmioTheme.textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                color = colors.secondaryContent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            value,
+            style = GlasmioTheme.textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
+            color = colors.secondaryContent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

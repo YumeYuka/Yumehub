@@ -47,7 +47,6 @@ internal data class UserProfileState(
     val profile: ProfileDto? = null,
     val failed: Boolean = false,
     val unavailable: Boolean = false,
-    val readmeFailed: Boolean = false,
     val following: Boolean? = null,
     val followSubmitting: Boolean = false,
     val followFailed: Boolean = false,
@@ -71,6 +70,7 @@ internal class UserProfileViewModel(
     private var followObserverJob: Job? = null
     private var observedTargetLogin: String? = null
     private var loadJob: Job? = null
+    private var readmeJob: Job? = null
     val isSelf: Boolean
         get() = (state.value.profile?.login ?: login).equals(account, ignoreCase = true)
 
@@ -159,6 +159,7 @@ internal class UserProfileViewModel(
 
     fun load() {
         if (loadJob?.isActive == true) return
+        readmeJob?.cancel()
         loadJob = viewModelScope.launch {
             mutableState.update { it.copy(failed = false) }
             try {
@@ -183,6 +184,7 @@ internal class UserProfileViewModel(
                 val profile = repository.loadUserForAccount(account, login, nodeId)
                 if (repository.account != account) throw CancellationException("Account changed")
                 confirmedProfile = profile
+                mutableState.update { it.copy(profile = profile, unavailable = false) }
                 ensureFollowObserver(profile.login)
                 val key = followKeyFor(profile.login)
                 val resolvedFollowing =
@@ -224,21 +226,35 @@ internal class UserProfileViewModel(
                         profile = projected,
                         following = activeDesired ?: it.following,
                         unavailable = false,
-                        readmeFailed = !profile.readmeResolved,
                     )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: ProfileUnavailableException) {
-                // 保留路由带来的已知资料；不可用账号不伪装成空资料或触发循环请求。
-                mutableState.update { it.copy(unavailable = true, failed = false) }
+                confirmedProfile = null
+                mutableState.update { UserProfileState(unavailable = true) }
             } catch (_: Exception) {
                 mutableState.update { it.copy(failed = true) }
             }
         }
     }
 
-    fun retryReadme() = load()
+    fun retryReadme() {
+        val profile = confirmedProfile ?: return
+        if (loadJob?.isActive == true || readmeJob?.isActive == true || profile.readmeResolved) return
+        readmeJob = viewModelScope.launch {
+            val result = try {
+                repository.loadProfileReadme(account, profile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (repository.account != account || confirmedProfile !== profile || !result.readmeResolved) return@launch
+            confirmedProfile = profile.withReadme(result)
+            mutableState.update { it.copy(profile = it.profile?.withReadme(result)) }
+        }
+    }
 
     fun toggleFollowing() {
         val current = state.value
@@ -321,3 +337,10 @@ internal class UserProfileViewModel(
         mutableState.update { it.copy(followFailed = false) }
     }
 }
+
+internal fun ProfileDto.withReadme(document: ProfileDto): ProfileDto = copy(
+    readmeHtml = document.readmeHtml,
+    readmePath = document.readmePath,
+    readmeResolved = document.readmeResolved,
+)
+

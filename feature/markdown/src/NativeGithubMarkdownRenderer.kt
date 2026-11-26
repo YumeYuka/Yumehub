@@ -1,9 +1,6 @@
 package moe.yumeyuka.yumehub.feature.markdown
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,11 +13,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import java.net.URI
 import kotlinx.coroutines.launch
@@ -31,15 +23,9 @@ import moe.yumeyuka.markdown.compose.NativeHtmlSelectionMode
 import moe.yumeyuka.markdown.compose.NativeHtmlViewport
 import moe.yumeyuka.markdown.core.isSafeHtmlMailto
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdownRenderer
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingOverlay
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubDetailPresentation
 import org.koin.compose.koinInject
 
 /** 统一适配入口；图片及 HTML 专有布局交给现有 WebView，其余内容使用原生库。 */
@@ -77,104 +63,8 @@ internal object NativeGithubMarkdownRenderer : GithubMarkdownRenderer {
             actions.onTaskChanged != null,
             actions.onCommitSuggestion != null,
         ) {
-            val state = rememberNativeMarkdownDocument(content, repository, session.isCurrent)
-            val style = rememberNativeMarkdownStyles(content.transparentBackground, state.revision)
-            val strings = LocalGithubStrings.current
-            val presentation = LocalGithubDetailPresentation.current
-            val renderToken = remember(state.revision) { Any() }
-            DisposableEffect(presentation, renderToken) {
-                presentation?.documentVisible(renderToken, false)
-                onDispose { presentation?.removeDocument(renderToken) }
-            }
-            var renderFailure by remember(state.revision) { mutableStateOf(false) }
-            val document = state.document
-            val styles = style.styles
-            // 缓存命中的原生正文可随本次布局直接绘制；新建 WebView 仍必须等待可绘制首帧。
-            var readyRevision by remember {
-                mutableStateOf(
-                    document
-                        ?.takeIf { styles != null && !needsWebMarkdownLayout(it.content) }
-                        ?.revision,
-                )
-            }
-            val revealed = document != null && readyRevision === document.revision
-            LaunchedEffect(presentation, renderToken, revealed, state.revision) {
-                if (revealed && document.revision === state.revision && session.isCurrent()) {
-                    presentation?.documentReady(renderToken)
-                }
-            }
-            val failureMessage =
-                when {
-                    style.failed || renderFailure || state.failure == NativeMarkdownFailure.PARSE ->
-                        strings.Markdown.RenderingFailed
-                    state.failure == NativeMarkdownFailure.FETCH -> strings.Markdown.LoadFailed
-                    else -> null
-                }
-            LaunchedEffect(failureMessage, presentation, renderToken) {
-                if (failureMessage != null)
-                    presentation?.documentFailed(renderToken) {
-                        if (session.isCurrent()) state.retry()
-                    }
-            }
-            var documentBounds by remember(renderToken) { mutableStateOf(Rect.Zero) }
-            val viewport = presentation?.viewport
-            LaunchedEffect(presentation, renderToken, viewport, documentBounds) {
-                if (presentation != null && viewport != null) {
-                    presentation.documentVisible(renderToken, documentBounds.overlaps(viewport))
-                }
-            }
-            Column(modifier.onGloballyPositioned { documentBounds = it.boundsInWindow() }) {
-                GithubLoadingOverlay(
-                    loading = !revealed,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .heightIn(
-                                min =
-                                    if (!revealed && failureMessage == null)
-                                        PlaceholderTokens.ReadmeMinHeight
-                                    else 0.dp,
-                            ),
-                    placeholder = {
-                        if (failureMessage == null) {
-                            GithubMarkdownPlaceholder(compact = true)
-                        }
-                    },
-                ) {
-                    if (document != null && styles != null) {
-                        NativeMarkdownBoundContent(
-                            state = state,
-                            document = document,
-                            style = styles,
-                            modifier =
-                                Modifier.fillMaxWidth()
-                                    .then(
-                                        if (revealed) Modifier
-                                        else Modifier.clearAndSetSemantics {},
-                                    ),
-                            actions = actions,
-                            isCurrentAccount = session.isCurrent,
-                            visible =
-                                hostActive &&
-                                    revealed &&
-                                    !renderFailure &&
-                                    presentation?.interactive != false,
-                            selectionHosted = content.selectionHosted,
-                            scrollToAnchor = content.scrollToAnchor,
-                            onReady = { revision ->
-                                if (revision === state.revision && session.isCurrent()) {
-                                    readyRevision = revision
-                                    presentation?.documentReady(renderToken)
-                                }
-                            },
-                            onRenderFailure = { revision ->
-                                if (revision === state.revision) renderFailure = true
-                            },
-                        )
-                    }
-                }
-                if (failureMessage != null && session.isCurrent())
-                    GithubLoadFailureToast(state.failure ?: failureMessage, failureMessage)
-            }
+            MarkdownSurface(content, modifier, actions, repository, session.isCurrent,
+                hostActive = hostActive, native = true)
         }
     }
 
@@ -198,9 +88,12 @@ internal object NativeGithubMarkdownRenderer : GithubMarkdownRenderer {
             actions.onTaskChanged != null,
             actions.onCommitSuggestion != null,
         ) {
-            NativeMarkdownPreviewPane(
+            MarkdownSurface(
                 content = content,
-                visible = visible && hostActive,
+                visible = visible,
+                hostActive = hostActive,
+                native = true,
+                viewport = true,
                 contentPadding = contentPadding,
                 modifier = modifier,
                 actions = actions,
@@ -340,30 +233,12 @@ internal fun rememberNativeMarkdownBinding(
     var anchor by remember { mutableStateOf<String?>(null) }
     var documentFatal by remember(document.revision) { mutableStateOf(false) }
     var laidOut by remember(document.revision) { mutableStateOf(false) }
-    var readyDelivered by remember(document.revision) { mutableStateOf(false) }
     val ownsDocument = { mount.active && latestAccount() && latestState.owns(document) }
     val allowsInteraction = {
         ownsDocument() && latestState.allowsInteraction(document) && latestVisible && !documentFatal
     }
     LaunchedEffect(document.revision, scrollToAnchor) {
         anchor = scrollToAnchor.takeIf { ownsDocument() }
-    }
-    LaunchedEffect(
-        document.revision,
-        state.revision,
-        state.loading,
-        state.failure,
-        state.requestEnabled,
-        visible,
-        laidOut,
-        documentFatal,
-        actions.onReady,
-    ) {
-        // 非活动帧可先完成布局，首次激活后再交付一次业务 ready。
-        if (laidOut && !readyDelivered && allowsInteraction()) {
-            readyDelivered = true
-            latestActions.onReady?.invoke()
-        }
     }
     val nativeActions =
         NativeHtmlActions(

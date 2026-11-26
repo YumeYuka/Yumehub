@@ -41,12 +41,12 @@ import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTokens
 import moe.yumeyuka.yumehub.ui.component.GithubWorkflowStatusIcon
 import moe.yumeyuka.yumehub.ui.component.githubRelativeTime
 import moe.yumeyuka.yumehub.ui.component.githubTitleOpticalCenter
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowTokens
 import moe.yumeyuka.yumehub.ui.theme.GithubActivityColors
 import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
-import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
 @Composable
 internal fun NotificationCard(
@@ -54,8 +54,6 @@ internal fun NotificationCard(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
-    pending: Boolean,
-    uncertain: Boolean = false,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
@@ -69,8 +67,6 @@ internal fun NotificationCard(
                 preview,
                 isSelecting,
                 isSelected,
-                pending,
-                uncertain,
                 onClick,
                 onLongClick,
             )
@@ -84,8 +80,6 @@ private fun NotificationCardContent(
     preview: NotificationPreviewDto?,
     isSelecting: Boolean,
     isSelected: Boolean,
-    pending: Boolean,
-    uncertain: Boolean,
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
@@ -120,8 +114,7 @@ private fun NotificationCardContent(
     val statusAlignment = with(LocalDensity.current) { statusSlotSize.roundToPx() / 2 }
     val number = work?.number
     val repository = notification.repository?.fullName ?: strings.Repository
-    val activityText = preview?.body?.takeIf(String::isNotBlank)
-    val hasActivity = preview?.author != null || activityText != null
+    val activity = preview?.takeIf { it.author != null || !it.body.isNullOrBlank() }
     Column(
         Modifier.fillMaxWidth()
             .then(
@@ -165,7 +158,6 @@ private fun NotificationCardContent(
             }
             Column(
                 Modifier.weight(1f).alignBy(githubTitleOpticalCenter(title, titleStyle)),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     title,
@@ -175,7 +167,7 @@ private fun NotificationCardContent(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(top = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -199,26 +191,13 @@ private fun NotificationCardContent(
                         GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
                     }
                 }
-                workMergeProgress(write.mergePhase)?.let { Text(it, style = metadataStyle, color = colors.secondaryContent) }
-                if (hasActivity) {
-                    NotificationPreviewContent(
-                        preview = preview,
-                        activityText = activityText,
-                        metadataStyle = metadataStyle,
-                    )
+                workMergeProgress(write.mergePhase)?.let {
+                    Text(it, modifier = Modifier.padding(top = 3.dp), style = metadataStyle, color = colors.secondaryContent)
                 }
-                if (uncertain || pending) {
-                    Text(
-                        if (uncertain) LocalGithubStrings.current.Common.MutationUncertain else LocalGithubStrings.current.Common.MutationPending,
-                        style = metadataStyle,
-                        color =
-                            readableForeground(
-                                if (uncertain) colors.destructive else colors.secondaryContent,
-                                colors.elevatedBackground,
-                                colors.content,
-                            ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                GithubCardField(activity) { shown ->
+                    NotificationPreviewContent(
+                        preview = shown,
+                        metadataStyle = metadataStyle,
                     )
                 }
             }
@@ -228,16 +207,15 @@ private fun NotificationCardContent(
 
 @Composable
 private fun NotificationPreviewContent(
-    preview: NotificationPreviewDto?,
-    activityText: String?,
+    preview: NotificationPreviewDto,
     metadataStyle: TextStyle,
 ) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().padding(top = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        preview?.author?.let { actor ->
+        preview.author?.let { actor ->
             GithubAvatar(
                 url = actor.avatarUrl,
                 login = actor.login,
@@ -247,7 +225,7 @@ private fun NotificationPreviewContent(
                     Modifier.clearAndSetSemantics { contentDescription = actor.login.orEmpty() },
             )
         }
-        activityText?.let { text ->
+        preview.body?.takeIf(String::isNotBlank)?.let { text ->
             Text(
                 text,
                 style = metadataStyle,

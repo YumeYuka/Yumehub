@@ -78,6 +78,7 @@ fun RepositoryPage(
             createInitially: Boolean,
         ) -> Unit,
     onCreateDiscussion: (owner: String, name: String) -> Unit,
+    onOpenLicense: (owner: String, name: String) -> Unit,
     onOpenWorkspaces:
         (
             owner: String,
@@ -94,7 +95,9 @@ fun RepositoryPage(
     val strings = LocalGithubStrings.current.Repository
     val profileStrings = LocalGithubStrings.current.Profile
     val viewModel: RepositoryDetailViewModel =
-        koinViewModel(key = "repository-$owner-$name", parameters = { parametersOf(owner, name) })
+        koinViewModel(key = "repository-$owner-$name", parameters = {
+            parametersOf(owner, name, if (readme == null) RepositoryDetailPage.Overview else RepositoryDetailPage.Readme)
+        })
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val overviewViewModel: RepositoryOverviewViewModel =
         koinViewModel(
@@ -122,8 +125,6 @@ fun RepositoryPage(
     LaunchedEffect(overviewViewModel, homeOverview) {
         if (homeOverview != null) overviewViewModel.loadPinned()
     }
-    // 回到被覆盖的页面时不重新应用入口，保留用户后续浏览的位置。
-    var linkApplied by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val host = requireNotNull(LocalGithubPageHost.current)
     val common = LocalGithubStrings.current.Common
@@ -144,12 +145,6 @@ fun RepositoryPage(
         onOpenWorkspaces(currentOwner, currentName, ref, path, file, anchor)
     }
     val latestOpenWorkspaces by rememberUpdatedState(openWorkspaces)
-    LaunchedEffect(viewModel, readme, details) {
-        if (readme != null && details != null && !linkApplied) {
-            viewModel.openReadme()
-            linkApplied = true
-        }
-    }
     val repositoryUrl =
         remember(currentOwner, currentName) {
             Uri.Builder()
@@ -197,10 +192,10 @@ fun RepositoryPage(
             }
         }
     }
+    val currentRef = state.selectedRef ?: details?.defaultBranch?.let { "refs/heads/$it" }
     val pageKey =
         when (state.page) {
-            is RepositoryDetailPage.Readme -> "readme"
-            is RepositoryDetailPage.License -> "license"
+            RepositoryDetailPage.Readme -> "readme:$currentRef"
             RepositoryDetailPage.Overview -> "overview"
         }
     // 没有外壳注入时仍分别保留概览和 README 的滚动位置。
@@ -214,11 +209,6 @@ fun RepositoryPage(
                         fallbackListStates.remove(fallbackListStates.keys.first())
                     }
                 }
-    val currentRef =
-        state.selectedRef
-            ?: (state.repository as? RepositoryLoad.Ready)?.value?.defaultBranch?.let {
-                "refs/heads/$it"
-            }
     val overviewActions = state.page == RepositoryDetailPage.Overview
     if (!overviewActions) {
         GithubBackHandler { if (host.backEnabled) viewModel.navigateUp() }
@@ -256,21 +246,12 @@ fun RepositoryPage(
                 }
             }
         }
-    val loadFailure =
-        (state.repository as? RepositoryLoad.Error)
-            ?: when (val page = state.page) {
-                is RepositoryDetailPage.Readme -> page.preview as? RepositoryLoad.Error
-                is RepositoryDetailPage.License -> page.contents as? RepositoryLoad.Error
-                RepositoryDetailPage.Overview -> state.overviewReadme as? RepositoryLoad.Error
-            }
-    GithubLoadFailureToast(loadFailure, loadFailure?.message.orEmpty())
     CompositionLocalProvider(LocalGithubLinkHandler provides repositoryLinkHandler) {
         GithubPage(
             title =
                 when (state.page) {
                     RepositoryDetailPage.Overview -> currentName
-                    is RepositoryDetailPage.Readme -> strings.Readme
-                    is RepositoryDetailPage.License -> strings.License
+                    RepositoryDetailPage.Readme -> strings.Readme
                 },
             titleStyle =
                 if (overviewActions) {
@@ -291,8 +272,13 @@ fun RepositoryPage(
                     }
                 } else null,
             titleFooter =
-                if (overviewActions && description != null) {
-                    { RepositoryHeaderDescription(description) }
+                if (overviewActions) {
+                    {
+                        RepositoryHeaderDescription(
+                            description = description,
+                            loading = state.repository is RepositoryLoad.Loading,
+                        )
+                    }
                 } else null,
             titleOnClick =
                 if (overviewActions && details != null && host.navigationEnabled) {
@@ -510,10 +496,14 @@ fun RepositoryPage(
                 onToggleStar = {
                     if (host.navigationEnabled) overviewViewModel.star()
                 },
-                onRetryOverviewReadme = {
-                    if (host.navigationEnabled) viewModel.retryOverviewReadme()
+                onRetryRepository = { if (host.navigationEnabled) viewModel.retryRepository() },
+                onRetryOverview = { if (host.navigationEnabled) overviewViewModel.refresh(force = true) },
+                onRetryReadme = {
+                    if (host.navigationEnabled) viewModel.retryReadme()
                 },
-                onOpenLicense = { if (host.navigationEnabled) viewModel.openLicense() },
+                onOpenLicense = {
+                    if (host.navigationEnabled) onOpenLicense(currentOwner, currentName)
+                },
                 onRepositoryExternal = { path ->
                     if (host.navigationEnabled) {
                         // 仓库设置里的网站是完整地址，其余入口传的是仓库内相对路径。

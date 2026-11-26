@@ -1,7 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component
 
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListScope
@@ -9,37 +7,54 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardEnterSpec
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.navigation.GithubListTransition
 import moe.yumeyuka.yumehub.ui.navigation.GithubPagingRevalidationBinding
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubListFrameActive
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPagingRevalidation
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
+import androidx.paging.CombinedLoadStates
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
 
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.progressBarRangeInfo
+
 private val LocalPagingContentKey = staticCompositionLocalOf<Any?> { null }
+private val LocalPrimaryPagingItems = staticCompositionLocalOf<LazyPagingItems<*>?> { null }
+private val LocalPagingAccessDenied = staticCompositionLocalOf { false }
+
+private fun CombinedLoadStates.accessDenied(): Boolean =
+    (refresh as? LoadState.Error)?.error?.invalidatesCachedContent() == true ||
+        (append as? LoadState.Error)?.error?.invalidatesCachedContent() == true ||
+        (prepend as? LoadState.Error)?.error?.invalidatesCachedContent() == true
+
 val IdleGithubPagingRevalidation: StateFlow<RevalidationState> =
     MutableStateFlow<RevalidationState>(RevalidationState.Idle).asStateFlow()
 
@@ -47,7 +62,6 @@ class GithubPagingPresentation<T : Any>
 internal constructor(
     val items: LazyPagingItems<T>,
     val listState: LazyListState,
-    val transition: GithubListTransition,
     val initialLoading: Boolean,
 )
 
@@ -56,9 +70,9 @@ internal constructor(
 fun <T : Any> GithubPagingContent(
     source: Flow<PagingData<T>>,
     contentKey: Any,
-    revalidation: StateFlow<RevalidationState>,
-    onRetryRevalidation: () -> Unit,
-    order: Int = 0,
+    revalidation: StateFlow<RevalidationState> = IdleGithubPagingRevalidation,
+    onRetryRevalidation: (() -> Unit)? = null,
+    showLoadErrors: Boolean = true,
     content: @Composable (GithubPagingPresentation<T>) -> Unit,
 ) {
     val pageState = LocalGithubPageState.current
@@ -66,7 +80,11 @@ fun <T : Any> GithubPagingContent(
     val savedListState =
         rememberSaveable(contentKey, saver = LazyListState.Saver) { LazyListState() }
     val listState = pageState?.listState(stateKey) ?: savedListState
-    val anchor = remember(pageState, stateKey) { pageState?.scrollAnchor(stateKey) }
+    val retained = remember(pageState, stateKey) { pageState?.pagingFrame<T>(stateKey) != null }
+    val anchor = remember(pageState, stateKey) {
+        // With retained rows, LazyListState already has both the entity key and the pixel offset.
+        if (!retained) pageState?.scrollAnchor(stateKey) else null
+    }
     // 恢复请求提交前再次离开组合时保留原锚点，不能用被空首帧夹到 0 的位置覆盖。
     val restorePending = remember(stateKey, listState) { mutableStateOf(anchor != null) }
     // 页面被覆盖后回来，分页重新收集首帧为空，LazyListState 会被夹到 0；离开时先记下真实位置。
@@ -75,60 +93,61 @@ fun <T : Any> GithubPagingContent(
             if (!restorePending.value) pageState?.rememberScrollAnchor(stateKey, listState)
         }
     }
-    val items = source.collectAsLazyPagingItems()
-    val failure =
-        (items.loadState.refresh as? LoadState.Error)
-            ?: (items.loadState.append as? LoadState.Error)
-    GithubLoadFailureToast(failure, LocalGithubStrings.current.Activity.LoadFailed)
-    val retained = pageState?.pagingFrame<T>("content:$contentKey")
-    val loading =
-        retained == null && items.itemCount == 0 && items.loadState.refresh is LoadState.Loading
-    SideEffect {
-        if (items.itemCount > 0 || items.loadState.refresh is LoadState.NotLoading) {
-            pageState?.retainPagingFrame("content:$contentKey", items.itemSnapshotList)
-        }
+    val active = LocalGithubPageHost.current?.isCurrent != false
+    val observable = if (active) source else remember { emptyFlow<PagingData<T>>() }
+    val items = key(contentKey) { observable.collectAsLazyPagingItems() }
+    val validation = revalidation.collectAsState().value
+    val denied = items.loadState.accessDenied() ||
+        (validation as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true
+    if (showLoadErrors) {
+        val failure =
+            (items.loadState.refresh as? LoadState.Error)
+                ?: (items.loadState.append as? LoadState.Error)
+        GithubLoadFailureToast(failure, LocalGithubStrings.current.Activity.LoadFailed)
     }
+    val loading = !denied && !retained && items.itemCount == 0 &&
+        items.loadState.refresh is LoadState.Loading
     SideEffect {
         val pending = anchor
-        if (restorePending.value && pending != null && items.itemCount > 0) {
+        if (restorePending.value && pending != null && !denied && items.itemCount > 0) {
             // 在测量前改写位置，缓存数据到达的那一帧就落在原处，不先闪一下顶部。
             listState.requestScrollToItem(pending.index, pending.offset)
-            // 只有分页条目确实覆盖锚点才丢弃；缓存只回放首页时保留，下次进入还能再试。
-            if (items.itemCount > pending.index) pageState?.clearScrollAnchor(stateKey, pending)
             restorePending.value = false
+            pageState?.clearScrollAnchor(stateKey, pending)
         }
     }
     CompositionLocalProvider(
         LocalPagingContentKey provides contentKey,
-        LocalGithubPagingRevalidation provides
-            GithubPagingRevalidationBinding(revalidation, onRetryRevalidation),
+        LocalPrimaryPagingItems provides items,
+        LocalPagingAccessDenied provides denied,
+        LocalGithubPagingRevalidation provides onRetryRevalidation?.let {
+            GithubPagingRevalidationBinding(revalidation, it)
+        },
     ) {
         content(
             GithubPagingPresentation(
                 items,
                 listState,
-                GithubListTransition(contentKey, loading, order),
                 loading,
             ),
         )
     }
 }
 
-internal fun <T> retainedPagingSnapshot(
-    previous: List<T>?,
-    current: List<T>,
-    refresh: LoadState,
-    contentReady: Boolean,
-): List<T> =
-    if (!contentReady || current.isEmpty() && refresh !is LoadState.NotLoading) {
-        previous ?: current
-    } else current
-
+/** Insertion is eligible only after an active row of this list instance has actually drawn. */
+internal class PagingDrawHistory {
+    var hasDrawn = false
+    var lastKeys: Set<String> = emptySet()
+}
 class GithubPagingSlots<T : Any>
 internal constructor(
     internal val items: LazyPagingItems<T>,
-    internal val snapshot: List<T?>,
+    val snapshot: List<T?>,
     internal val keys: List<String>,
+    val isEmptyResult: Boolean,
+    internal val live: Boolean,
+    internal val drawHistory: PagingDrawHistory,
+    internal val insertedKeys: Set<String>,
 ) {
     val size: Int
         get() = keys.size
@@ -161,34 +180,34 @@ fun <T : Any> rememberGithubPagingSlots(
             DataDomain.Work,
             DataDomain.Content,
         ),
+    accessDenied: Boolean = false,
     itemKey: (T) -> String?,
 ): GithubPagingSlots<T> {
     val page = LocalGithubPageState.current
-    val frameKey = "$keyPrefix:${LocalPagingContentKey.current}"
+    val contentKey = LocalPagingContentKey.current
+    val frameKey = "$keyPrefix:$contentKey"
     val allocator =
         remember(page, frameKey) { page?.pagingKeys(frameKey) ?: GithubPagingSlotKeys(frameKey) }
-    val previous =
-        remember(items, frameKey) { mutableStateOf(page?.pagingFrame<T>("slots:$frameKey")) }
-    val entryReady = LocalGithubRouteEntryReady.current
-    val firstPresentation = remember(items, frameKey) { mutableStateOf(previous.value != null) }
-    if (!firstPresentation.value && entryReady) {
-        LaunchedEffect(items, frameKey) {
-            withFrameNanos {}
-            withFrameNanos {}
-            firstPresentation.value = true
-        }
-    }
-    val showEntrySkeleton = !firstPresentation.value
+    val cacheKey = if (LocalPrimaryPagingItems.current === items) "paging:$contentKey" else "slots:$frameKey"
+    val previous = remember(page, cacheKey) { mutableStateOf(page?.pagingFrame<T>(cacheKey)) }
     val current = items.itemSnapshotList
-    val retain =
-        !contentReady || current.isEmpty() && items.loadState.refresh !is LoadState.NotLoading
-    val snapshot =
-        if (showEntrySkeleton) emptyList()
-        else retainedPagingSnapshot(previous.value, current, items.loadState.refresh, contentReady)
+    val refresh = items.loadState.refresh
+    val denied = accessDenied || LocalPagingAccessDenied.current || items.loadState.accessDenied()
+    val blocked = denied || allocator.rejectedFrame?.get() === current
+    val hasResult = contentReady && (current.isNotEmpty() || !initialLoading && refresh is LoadState.NotLoading)
+    val snapshot = when {
+        blocked -> emptyList()
+        hasResult -> current
+        else -> previous.value.orEmpty()
+    }
     SideEffect {
-        if (!retain && (current.isNotEmpty() || items.loadState.refresh is LoadState.NotLoading)) {
+        if (denied) {
+            allocator.rejectFrame(current)
+            previous.value = null
+            page?.forgetPagingFrame(cacheKey)
+        } else if (hasResult && !blocked) {
             previous.value = current
-            page?.retainPagingFrame("slots:$frameKey", current)
+            page?.retainPagingFrame(cacheKey, current)
         }
     }
     val refreshOwner = remember(page, frameKey) { "paging-refresh:$frameKey" }
@@ -203,18 +222,8 @@ fun <T : Any> rememberGithubPagingSlots(
         }
     }
     val append = items.loadState.append
-    val awaitingFirstPage = initialLoading && previous.value == null
-    val showInitialSlots =
-        remember(items, frameKey, awaitingFirstPage) { mutableStateOf(false) }
-    if (awaitingFirstPage) {
-        LaunchedEffect(items, frameKey) {
-            // 给会话回放和磁盘快照一个短窗口，避免在正文前只闪一帧骨架。
-            delay(120L)
-            showInitialSlots.value = true
-        }
-    }
-    val showSkeleton = showEntrySkeleton || showInitialSlots.value
-    val appending = append is LoadState.Loading
+    val showSkeleton = !blocked && snapshot.isEmpty() && previous.value == null && initialLoading
+    val appending = !blocked && append is LoadState.Loading && snapshot.isNotEmpty()
     val ids = remember(allocator, snapshot) { snapshot.map { it?.let(itemKey) } }
     val keys =
         remember(allocator, snapshot, appending, showSkeleton) {
@@ -224,7 +233,18 @@ fun <T : Any> rememberGithubPagingSlots(
                 showSkeleton,
             )
         }
-    return remember(items, snapshot, keys) { GithubPagingSlots(items, snapshot, keys) }
+    val emptyResult = !blocked && !showSkeleton && snapshot.isEmpty() &&
+        (hasResult || previous.value != null)
+    val history = remember(frameKey, items) { PagingDrawHistory() }
+    val keySet = remember(keys) { keys.toSet() }
+    val inserted = remember(history, keySet) {
+        if (history.hasDrawn) keySet - history.lastKeys else emptySet()
+    }
+    SideEffect { history.lastKeys = keySet }
+    val live = !blocked && hasResult
+    return remember(items, snapshot, keys, emptyResult, live, history, inserted) {
+        GithubPagingSlots(items, snapshot, keys, emptyResult, live, history, inserted)
+    }
 }
 
 fun <T : Any> LazyListScope.githubPagingItems(
@@ -245,7 +265,7 @@ fun <T : Any> LazyListScope.githubPagingItems(
     itemContent: @Composable (T) -> Unit,
 ) {
     githubPagingItems(slots, contentType, reading) { item ->
-        GithubLoadingContent(loading = item == null, placeholder = placeholder) {
+        GithubLoadingContent(loading = item == null, deferUntilEntry = false, placeholder = placeholder) {
             if (item != null) itemContent(item)
         }
     }
@@ -259,19 +279,26 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
     itemContent: @Composable (T?, Int, Int) -> Unit,
 ) {
     val renderItem: @Composable LazyItemScope.(Int) -> Unit = { index ->
-        val active = LocalGithubListFrameActive.current
-        if (active && index < slots.snapshot.size && index < slots.items.itemCount) {
-            // 访问 Paging 以触发预取，但显示内容来自本帧快照，退场占位不能偷读新数据。
+        val active = LocalGithubPageHost.current?.isCurrent != false
+        if (active && slots.live && index < slots.items.itemCount) {
+            // A retained frame can be longer or differently ordered than Paging's live generation.
             slots.items[index]
         }
-        Box(
-            Modifier.animateItem(
-                fadeInSpec = null,
-                fadeOutSpec = tween(180),
-                placementSpec = spring(dampingRatio = 1f, stiffness = 400f),
-            ),
-        ) {
-            itemContent(slots.snapshot.getOrNull(index), index, slots.keys.size)
+        val item = slots.snapshot.getOrNull(index)
+        val motion = if (item != null && slots.keys[index] in slots.insertedKeys) githubCardItemMotion() else Modifier
+        val history = slots.drawHistory
+        val receipt = if (active && item != null && !history.hasDrawn) Modifier.drawWithContent {
+            drawContent()
+            if (!history.hasDrawn && size.width > 0f && size.height > 0f) history.hasDrawn = true
+        } else Modifier
+        val semantics = if (item != null) Modifier else Modifier.clearAndSetSemantics {
+            if (index == 0 || index == slots.snapshot.size) {
+                liveRegion = LiveRegionMode.Polite
+                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+            }
+        }
+        Box(motion.then(receipt).then(semantics)) {
+            itemContent(item, index, slots.keys.size)
         }
     }
     if (reading) {
@@ -290,3 +317,14 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
         )
     }
 }
+
+/** Animate insertion. Removed or access-revoked entities disappear immediately. */
+@Composable
+fun LazyItemScope.githubCardItemMotion(): Modifier =
+    if (LocalGithubCardMotionEnabled.current && LocalGithubPageHost.current?.isCurrent != false) {
+        Modifier.animateItem(
+            fadeInSpec = GithubCardEnterSpec,
+            fadeOutSpec = null,
+            placementSpec = null,
+        )
+    } else Modifier

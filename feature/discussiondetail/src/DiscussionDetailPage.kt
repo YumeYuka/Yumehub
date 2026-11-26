@@ -44,8 +44,6 @@ import moe.yumeyuka.yumehub.locale.GithubTxt
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.ReadingTextPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.*
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
@@ -93,14 +91,6 @@ fun DiscussionDetailPage(
       } else null
   val comments = state.comments
   val window = comments?.state?.collectAsStateWithLifecycle()?.value
-  val contentReady = state.detail != null
-  val presentation =
-      rememberGithubDetailPresentation(
-          key = "discussion-detail",
-          kind = GithubDetailKind.Discussion,
-          dataReady = contentReady,
-          failed = state.failed || window?.error != null,
-      )
   GithubLoadFailureToast(window?.error, strings.Activity.LoadFailed)
   if (state.failed) GithubLoadFailureToast(Unit, strings.Activity.LoadFailed)
   if (state.actionFailed) GithubLoadFailureToast(Unit, strings.Activity.ActionFailed)
@@ -110,8 +100,6 @@ fun DiscussionDetailPage(
           if (route.parentId == null) strings.Repository.Discussions else strings.Activity.Reply,
       titleSuffix = "#${route.number}",
       itemSpacing = 12.dp,
-      detailPresentation = presentation,
-      onRetryDetail = viewModel::load,
       bottomContent = {
         GlasmioButton(
             onClick = openComposer,
@@ -138,14 +126,15 @@ fun DiscussionDetailPage(
           else -> strings.Common.MutationNotSubmitted
       }, detail = strings.Common.MutationReconcile.takeIf { uncertain }, onClick = if (uncertain) viewModel::revalidate else null)
     }
-    val loading = detail == null && !state.failed
-    if (detail != null || loading) {
+    if (state.failed) item(key = "discussion-detail-retry") {
+      GlasmioGroupedList {
+        GlasmioListRow(title = strings.Activity.LoadFailed, detail = strings.Common.Retry, onClick = viewModel::load)
+      }
+    }
+    if (detail != null || !state.failed) {
       readingItem(key = "discussion-body") {
-        GithubLoadingContent(
-            loading,
-            placeholder = { GithubReadingGroup { ReadingTextPlaceholder() } },
-        ) {
-          if (detail != null) {
+          if (detail == null) GithubReadingGroup { GithubThreadContentPlaceholder(showTitle = route.parentId == null) }
+          else {
             val parent = detail.parent
             if (parent != null)
                 DiscussionCommentCard(
@@ -174,7 +163,6 @@ fun DiscussionDetailPage(
               )
             }
           }
-        }
       }
     }
     val poll = detail?.poll
@@ -211,12 +199,17 @@ fun DiscussionDetailPage(
         }
       }
     }
-    if (detail != null && comments != null && window != null) {
+    if (detail == null && !state.failed) {
+      githubThreadPlaceholder { GithubReadingGroup { GithubThreadContentPlaceholder() } }
+    } else if (detail != null && comments != null && window != null) {
+      if (window.ready && window.items.isEmpty() && window.error == null) item(key = "discussion-comments-empty") {
+        GlasmioListRow(title = strings.Activity.Empty)
+      }
       githubThreadItems(
           window,
           GithubDiscussionComment::id,
           comments::load,
-          placeholder = { GithubReadingGroup { ReadingTextPlaceholder() } },
+          placeholder = { GithubReadingGroup { GithubThreadContentPlaceholder() } },
       ) { comment, _ ->
         DiscussionCommentCard(
             comment = comment.copy(isAnswer = comment.id == (state.answer ?: NullableValue(detail.answerId)).value),
@@ -262,7 +255,7 @@ private fun DiscussionPostCard(
               detail.labels.firstOrNull() ?: detail.category.takeIf(String::isNotBlank),
           )
           .joinToString(" · ")
-  GithubReadingGroup {
+  GithubReadingGroup(documentKey = detail.bodyHtml.takeIf(String::isNotBlank)) {
       GithubCommentAuthorHeader(
           author = detail.author,
           avatarUrl = detail.avatarUrl,
@@ -290,7 +283,7 @@ private fun DiscussionPostCard(
       )
       DiscussionBody(detail.bodyHtml, detail.url, post = true)
       val showVote = detail.canUpvote || detail.upvoted || detail.upvotes > 0
-      if (showVote || detail.canReact || detail.reactions.any { it.count > 0 }) {
+      if (showVote || detail.canReact || detail.reactions.any { it.count > 0 }) GithubReadingFooter {
         Row(
             modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -359,6 +352,7 @@ private fun DiscussionCommentCard(
     }
   }
   GithubReadingGroup(
+      documentKey = comment.bodyHtml.takeIf(String::isNotBlank),
       onFooterClick = onOpenReplies?.takeIf { comment.replies > 0 }?.let { open ->
         { open(comment.id) }
       },
@@ -394,16 +388,18 @@ private fun DiscussionCommentCard(
         menuEnabled = enabled,
     )
     DiscussionBody(comment.bodyHtml, pageUrl)
-    if (comment.isAnswer)
-        GlasmioListRow(title = strings.Activity.Answer, systemName = null, enabled = false)
-    GithubReactionBar(
-        subjectKey = comment.id,
-        sourceReactions = comment.reactions,
-        canReact = comment.canReact,
-        enabled = enabled,
-        updates = reactionUpdates,
-    ) { content, reacted ->
-      onToggleReaction(comment.id, content, reacted)
+    GithubReadingFooter {
+      if (comment.isAnswer)
+          GlasmioListRow(title = strings.Activity.Answer, systemName = null, enabled = false)
+      GithubReactionBar(
+          subjectKey = comment.id,
+          sourceReactions = comment.reactions,
+          canReact = comment.canReact,
+          enabled = enabled,
+          updates = reactionUpdates,
+      ) { content, reacted ->
+        onToggleReaction(comment.id, content, reacted)
+      }
     }
   }
 }
@@ -477,8 +473,13 @@ internal class DiscussionDetailViewModel(
     }
     viewModelScope.launch {
       resource.state.collect { cached ->
-        cached.data?.let(::present)
-        if (cached.error != null) mutableState.update { it.copy(failed = true) }
+        val detail = cached.data
+        if (detail != null) present(detail)
+        else if (confirmedDetail != null) {
+          confirmedDetail = null
+          mutableState.update { it.copy(detail = null, comments = null) }
+        }
+        mutableState.update { it.copy(failed = cached.error != null) }
       }
     }
     load()

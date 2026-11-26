@@ -74,8 +74,7 @@ fun GithubChoiceSheet(
                     GlasmioGroupedList(
                         framed = false,
                         modifier =
-                            Modifier.animateItem()
-                                .glasmioGroupedListBackground(
+                            Modifier.glasmioGroupedListBackground(
                                     ContinuousRoundedRectangle(
                                         topStart = if (index == 0) 26.dp else 0.dp,
                                         topEnd = if (index == 0) 26.dp else 0.dp,
@@ -86,6 +85,7 @@ fun GithubChoiceSheet(
                     ) {
                         GithubLoadingContent(
                             loading = branch == null,
+                            deferUntilEntry = false,
                             placeholder = { TitleRowPlaceholder(showTopSeparator = index > 0) },
                         ) {
                             if (branch != null)

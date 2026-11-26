@@ -4,7 +4,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateMap
-import androidx.paging.compose.LazyPagingItems
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.*
@@ -13,24 +12,21 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.FeedActivityPlaceholder
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 
 internal fun LazyListScope.FeedScreen(
-    events: LazyPagingItems<FeedEventDto>,
     slots: GithubPagingSlots<FeedEventDto>,
     cards: SnapshotStateMap<String, MutableState<FeedCardState>>,
-    filters: Set<FeedFilter>,
+    initialCard: (FeedEventDto) -> FeedCardState?,
     onRetry: (FeedEventDto) -> Unit,
     onToggle: (FeedEventDto) -> Unit,
     onOpenRepository: (RepositoryDto) -> Unit,
     onOpenWork: (WorkTarget) -> Unit,
     onOpenUser: (UserDto) -> Unit,
 ) {
-    if (filters.isEmpty()) return
     githubPagingItems(
         slots,
         contentType = "feed-activity",
         placeholder = { FeedActivityPlaceholder() },
     ) { event ->
-        val initial = remember(event) { event.initialCard() }
-        val state = cards[event.cardKey()]?.value ?: initial
+        val state = cards[event.cardKey()]?.value ?: remember(event, initialCard) { initialCard(event) }
         val openUri = rememberGithubUriHandler()
         val repository = state?.repository
         val user = state?.user
@@ -60,5 +56,4 @@ internal fun LazyListScope.FeedScreen(
             }
         GithubFeedActivity(event, state, { onRetry(event) }, { onToggle(event) }, open)
     }
-    collaborationPagingStatus(events, "动态", loadingPlaceholder = {}, emptyPlaceholder = true)
 }

@@ -127,6 +127,7 @@ internal fun RepositoryManagementSheet(
                 RepositorySheet.Notifications ->
                     GithubLoadingContent(
                         loading = editor.loading,
+                        deferUntilEntry = false,
                         placeholder = { ListRowPlaceholder() },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

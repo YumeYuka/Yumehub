@@ -8,7 +8,7 @@ import java.util.LinkedHashMap
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 
-private const val MaxKeyedListStates = 16
+internal const val MaxKeyedListStates = 16
 
 /** 列表离开组合时的真实位置；分页重新收集数据首帧为空，不能指望 LazyListState 自己保住。 */
 internal data class GithubScrollAnchor(val index: Int, val offset: Int)
@@ -21,8 +21,9 @@ internal data class GithubScrollAnchor(val index: Int, val offset: Int)
 @Stable
 class GithubPageState {
     val listState = LazyListState()
-    private val detailPresentations = LinkedHashMap<Any, GithubDetailPresentation>(16, 0.75f, true)
     private val refreshGates = LinkedHashMap<Any, PageRefreshGate>()
+
+    internal fun forgetPagingFrame(key: String) { pagingFrames.remove(key) }
     private val pagingFrames = LinkedHashMap<String, List<Any?>>(16, 0.75f, true)
     private val pagingKeys = LinkedHashMap<String, GithubPagingSlotKeys>()
 
@@ -49,38 +50,14 @@ class GithubPageState {
         if (pagingFrames.size > MaxKeyedListStates) pagingFrames.remove(pagingFrames.keys.first())
     }
 
-    /**
-     * 该路由身份的详情是否已经展示过。页面用它决定返回组合后跳过加载位，必须与 [rememberGithubDetailPresentation] 传入的 key
-     * 完全一致；已展示就意味着这份呈现状态还在 [detailPresentations] 里（超出上限被淘汰的按首次进入处理）。
-     */
-    fun detailPresented(key: Any): Boolean = key in detailPresentations
-
-    /**
-     * 详情首屏状态跟着路由子项存活，而不是跟着页面组合存活。
-     *
-     * 页面被覆盖后重新组合时，只靠一个「已展示」布尔值重建不出已经走完的进度、已经就绪的文档 登记和首帧的
-     * `interactive`，骨架因此有重新盖住正文的机会。这里返回同一个对象，返回路径 不再需要任何重建条件成立。
-     */
-    internal fun detailPresentation(
-        key: Any,
-        create: () -> GithubDetailPresentation,
-    ): GithubDetailPresentation {
-        val retained = detailPresentations[key]
-        if (retained != null) {
-            retained.restore()
-            return retained
-        }
-        val created = create()
-        detailPresentations[key] = created
-        if (detailPresentations.size > MaxKeyedListStates) {
-            detailPresentations.remove(detailPresentations.keys.first())
-        }
-        return created
-    }
-
     private val keyedListStates = LinkedHashMap<String, LazyListState>(16, 0.75f, true)
     private val keyedTopBarStates = LinkedHashMap<LazyListState, TopAppBarState>(16, 0.75f, true)
     private val keyedScrollAnchors = LinkedHashMap<String, GithubScrollAnchor>(16, 0.75f, true)
+
+    /** SaveableStateHolder keys must survive recreation; never use the LazyListState instance. */
+    internal fun contentStateKey(state: LazyListState): String? =
+        if (state === listState) null
+        else keyedListStates.entries.firstOrNull { it.value === state }?.key
 
     /** 按数据源或页面模式复用状态；超出上限时淘汰最久未访问的 key，默认状态不参与淘汰。 */
     fun listState(key: String): LazyListState {

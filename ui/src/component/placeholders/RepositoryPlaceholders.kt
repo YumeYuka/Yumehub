@@ -19,17 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButtonDefaults
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
 import moe.yumeyuka.yumehub.ui.component.GithubActivityCardContent
 import moe.yumeyuka.yumehub.ui.component.RepositoryCoverShape
-import moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard
-
-/** 列表里的仓库卡片占位：直接复用真实卡片外壳。 */
-@Composable
-fun RepositoryCardPlaceholder(modifier: Modifier = Modifier) {
-    RepositoryLoadingCard(repository = null, modifier = modifier)
-}
 
 /** 卡片内部内容：18dp 头像、标题、两行描述与三个统计槽。 */
 @Composable
@@ -99,38 +91,27 @@ fun RepositoryCardPlaceholderContent(showCover: Boolean = false) {
     )
 }
 
-/** 仓库头部占位：两行简介加元信息胶囊，与真实头部共用同一段间距，不加卡片背景。 */
+/** 链接占位撑满余宽，星标和复刻占位贴右，与真实按钮的布局一致。 */
 @Composable
 fun RepositoryHeaderPlaceholder(modifier: Modifier = Modifier) {
-    val styles = GlasmioTheme.textStyles
-    Column(modifier.fillMaxWidth()) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            TextLinePlaceholder(styles.body, fraction = 0.92f)
-            TextLinePlaceholder(styles.body, fraction = 0.58f)
-        }
-        // 上间距与真实胶囊一致，即使没有简介也保留。
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            PillPlaceholder(Modifier.weight(1f))
-            PillPlaceholder(Modifier.width(74.dp))
-            PillPlaceholder(Modifier.width(74.dp))
-        }
+    Row(
+        modifier.fillMaxWidth()
+            .padding(start = 2.dp, top = 20.dp, end = 2.dp, bottom = 2.dp)
+            .height(GlasmioButtonDefaults.MediumHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PillPlaceholder(Modifier.weight(1f))
+        PillPlaceholder(Modifier.width(62.dp))
+        PillPlaceholder(Modifier.width(62.dp))
     }
 }
 
 /** 入口卡占位：与真实分组同外壳，默认显示代码、议题、PR、发行版与「更多」。 */
 @Composable
 fun RepositoryEntryRowsPlaceholder(modifier: Modifier = Modifier) {
-    GlasmioGroupedList(modifier = modifier) {
-        Column {
-            repeat(5) { index -> RepositoryEntryRowPlaceholder(showTopSeparator = index > 0) }
-        }
+    Column(modifier) {
+        repeat(5) { index -> RepositoryEntryRowPlaceholder(showTopSeparator = index > 0) }
     }
 }
 
@@ -154,13 +135,13 @@ private fun RepositoryEntryRowPlaceholder(showTopSeparator: Boolean) {
     }
 }
 
-/** 玻璃胶囊占位：高度与 GlasmioButton Medium 一致，宽度由调用方约束。 */
+/** 元信息按钮的紧凑占位。 */
 @Composable
 private fun PillPlaceholder(modifier: Modifier = Modifier) {
     Spacer(
         modifier
-            .height(GlasmioButtonDefaults.MediumHeight)
-            .clip(RoundedCornerShape(17.dp))
+            .height(28.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(GlasmioTheme.colors.content.copy(alpha = PlaceholderTokens.ContentAlpha)),
     )
 }

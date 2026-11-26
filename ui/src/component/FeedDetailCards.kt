@@ -24,16 +24,16 @@ import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 @Composable
 internal fun FeedWorkCard(
     event: FeedEventDto,
-    state: FeedCardState,
+    state: FeedCardState?,
     open: (() -> Unit)?,
 ) {
-    val work = state.work ?: event.workItem() ?: return
-    val repository = state.repository ?: return
+    val work = state?.work ?: event.workItem() ?: return
+    val repository = state?.repository ?: event.repositoryDetails
     val pullRequest = event.isPullRequestWork()
     val number = work.number ?: event.payload.number
     val strings = LocalGithubStrings.current
     val discussion = event.payload.discussion != null
-    val slug = repository.fullName ?: event.repo?.name
+    val slug = repository?.fullName ?: event.repo?.name
     val kind = if (pullRequest) CollaborationKind.PullRequest else CollaborationKind.Issue
     val target = remember(slug, number, kind, discussion) {
         if (discussion || number == null || slug == null || '/' !in slug) null
@@ -83,7 +83,7 @@ internal fun FeedWorkCard(
 }
 
 @Composable
-internal fun FeedReleaseCard(event: FeedEventDto, repository: RepositoryDto, open: (() -> Unit)?) {
+internal fun FeedReleaseCard(event: FeedEventDto, repository: RepositoryDto?, open: (() -> Unit)?) {
     val release = event.payload.release ?: return
     val strings = LocalGithubStrings.current.Explore
     val title = release.name?.takeIf { it.isNotBlank() } ?: release.tagName ?: strings.ReleaseTitle
@@ -93,7 +93,7 @@ internal fun FeedReleaseCard(event: FeedEventDto, repository: RepositoryDto, ope
         open = open,
         cover = {
             GithubRepositoryCover(
-                imageUrl = release.socialPreviewImageUrl ?: repository.openGraphImageUrl,
+                imageUrl = release.socialPreviewImageUrl ?: repository?.openGraphImageUrl,
                 description = strings.ReleaseCover(title),
             )
         },

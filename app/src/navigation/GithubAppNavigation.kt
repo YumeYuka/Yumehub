@@ -1,17 +1,23 @@
 package moe.yumeyuka.yumehub.navigation
 
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.ViewModel
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -25,26 +31,25 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimator
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.PredictiveBackAnimatable
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.androidPredictiveBackAnimatableV1
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
-import com.arkivanov.decompose.extensions.compose.stack.animation.slide
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.backhandler.BackEvent
 import com.arkivanov.essenty.backhandler.BackHandler
 import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.ui.component.LocalGithubEditorFocusReady
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 private const val MinPredictiveBackPercent = 1f
 private const val MaxPredictiveBackPercent = 100f
 
-/** 复用页面的占位直到普通入场结束，编辑器随后才请求焦点。 */
-internal fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> {
-    // Scaling around the window center moves the toolbar into the status bar during entry.
-    val routeAnimator = slide(tween(400, easing = CubicBezierEasing(0.48f, 0.19f, 0.05f, 1.03f)))
-    return stackAnimation(animator = RouteEntryAnimator(routeAnimator))
-}
+/** 页面在绘制层滑动，避免每帧重新测量顶栏和列表。 */
+internal fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> =
+    stackAnimation(animator = RouteEntryAnimator)
 
-private class RouteEntryAnimator(private val delegate: StackAnimator) : StackAnimator {
+private object RouteEntryAnimator : StackAnimator {
+    private val slideSpec = tween<Float>(300, easing = FastOutSlowInEasing)
+
     @Composable
     override fun invoke(
         direction: Direction,
@@ -52,22 +57,33 @@ private class RouteEntryAnimator(private val delegate: StackAnimator) : StackAni
         onFinished: () -> Unit,
         content: @Composable (Modifier) -> Unit,
     ) {
-        var finished by remember(direction, isInitial) { mutableStateOf(isInitial) }
+        val remaining = remember(direction, isInitial) { Animatable(if (isInitial) 0f else 1f) }
+        var finished by remember(remaining) { mutableStateOf(isInitial) }
+        val currentOnFinished by rememberUpdatedState(onFinished)
         val entering = direction == Direction.ENTER_FRONT || direction == Direction.ENTER_BACK
-        delegate(
-            direction = direction,
-            isInitial = isInitial,
-            onFinished = {
-                finished = true
-                onFinished()
-            },
-        ) { modifier ->
-            CompositionLocalProvider(
-                LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
-                LocalGithubEditorFocusReady provides (entering && finished),
-            ) {
-                content(modifier)
-            }
+        val axis = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else -1f
+        LaunchedEffect(remaining) {
+            if (!isInitial) remaining.animateTo(0f, slideSpec)
+            finished = true
+            currentOnFinished()
+        }
+        CompositionLocalProvider(
+            LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
+            LocalGithubCardMotionEnabled provides (entering && finished),
+            LocalGithubEditorFocusReady provides (entering && finished),
+        ) {
+            content(
+                Modifier.graphicsLayer {
+                    val value = remaining.value
+                    val fraction = when (direction) {
+                        Direction.ENTER_FRONT -> value
+                        Direction.ENTER_BACK -> -value
+                        Direction.EXIT_FRONT -> 1f - value
+                        Direction.EXIT_BACK -> value - 1f
+                    }
+                    translationX = size.width * fraction * axis
+                },
+            )
         }
     }
 }
@@ -115,13 +131,14 @@ private fun BackEvent.scaled(amplitude: Float): BackEvent =
 /**
  * 持有唯一的导航栈、主标签和发往它们的全部命令。
  *
- * 由 Activity 以 retainedComponent 保留：配置重建沿用同一条栈，进程重启回首页。[predictiveBackEnabledAtLaunch] 在启动时
+ * Activity 配置重建复用组件；进程恢复仅接受当前会话的轻量路由参数。[predictiveBackEnabledAtLaunch] 在启动时
  * 取值，会话中切换会在栈存活期间换掉转场对象，所以该设置下次启动生效。
  */
 internal class GithubAppNavigationComponent(
     val componentContext: ComponentContext,
     val predictiveBackEnabledAtLaunch: Boolean,
     predictiveBackPercent: Float,
+    restored: RestoredNavigation? = null,
 ) {
     val state = GithubNavigationState()
     val navigator = GithubNavigator(state)
@@ -134,17 +151,19 @@ internal class GithubAppNavigationComponent(
             value =
                 navigator.routeStack(
                     componentContext = componentContext.childContext("RootNavigation"),
-                    initialRoute = MainTabsRoute(rootSession),
+                    initialRoutes = listOf(MainTabsRoute(rootSession)) + restored?.routes.orEmpty(),
                 ),
         )
 
-    private var mainTabState by mutableStateOf(GithubTab.Home)
+    private var mainTabState by mutableStateOf(restored?.tab ?: GithubTab.Home)
     private var predictiveBackPercentState by
         mutableFloatStateOf(
             predictiveBackPercent.coerceIn(MinPredictiveBackPercent, MaxPredictiveBackPercent),
         )
     private var sessionLogin: String? = null
     private var session: GithubNavigationSession? = null
+
+    val navigationSessionId: String? get() = session?.navigationSessionId
 
     var pendingLink by mutableStateOf<String?>(null)
         private set
@@ -235,6 +254,7 @@ internal class GithubAppNavigationComponent(
 internal class GithubNavigationSession(
     private val component: GithubAppNavigationComponent,
     login: String,
+    val navigationSessionId: String?,
 ) : ViewModel() {
     init {
         component.bindSession(this, login)

@@ -19,6 +19,7 @@ import moe.yumeyuka.yumehub.data.cache.MutationKey
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.NullableValue
 import moe.yumeyuka.yumehub.data.cache.WritePhase
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 
 internal enum class IssueMetadataPanel { Type, Assignees, Fields }
@@ -48,7 +49,8 @@ internal class IssueMetadataEditor(
 
     fun open(panel: IssueMetadataPanel) {
         loadJob?.cancel()
-        mutableState.value = IssueMetadataState(panel = panel, loading = true)
+        val previous = state.value.takeIf { it.panel == panel } ?: IssueMetadataState(panel)
+        mutableState.value = previous.copy(loading = true, loadFailed = false)
         loadJob = scope.launch {
             try {
                 when (panel) {
@@ -69,7 +71,10 @@ internal class IssueMetadataEditor(
                     }
                 }
             } catch (error: CancellationException) { throw error }
-            catch (_: Exception) { mutableState.value = IssueMetadataState(panel, loadFailed = true) }
+            catch (error: Exception) {
+                val retained = if (error.invalidatesCachedContent()) IssueMetadataState(panel) else previous
+                mutableState.value = retained.copy(loading = false, loadFailed = true)
+            }
         }
     }
 

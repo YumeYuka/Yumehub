@@ -4,6 +4,7 @@ import moe.yumeyuka.yumehub.data.api.dto.FeedEventDto
 import moe.yumeyuka.yumehub.data.api.dto.ForkRepositoryRequest
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryContentDto
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.data.api.dto.RepositoryLicenseDto
 import moe.yumeyuka.yumehub.data.api.dto.SearchRepositoriesResponse
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRequest
@@ -149,6 +150,12 @@ interface GitHubApi {
         @Path("path", encoded = true) encodedPath: String,
         @Query("ref") ref: String?,
     ): RepositoryContentDto
+
+    @GET("repos/{owner}/{repo}/license")
+    suspend fun getRepositoryLicense(
+        @Path("owner") owner: String,
+        @Path("repo") repository: String,
+    ): RepositoryLicenseDto
 
     @GET("search/repositories")
     suspend fun searchRepositories(

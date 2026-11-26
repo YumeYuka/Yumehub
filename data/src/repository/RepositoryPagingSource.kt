@@ -133,14 +133,18 @@ class RepositoryPagingSource(
         }
         val context = snapshot?.context
         val result =
-            if (context == null) load()
-            else
+            try {
+                if (context == null) load() else
                 context.await(
                     key = "page:$page:size:$pageSize:after=${after.orEmpty()}",
                     serializer = PagingSnapshotPage.serializer(RepositoryDto.serializer()),
                     force = force,
                     loader = load,
                 )
+            } catch (error: Exception) {
+                snapshot?.discardDenied(error)
+                throw error
+            }
         if (record) recordCursor(result)
         if (page == 1 && record) snapshot?.saveInBackground(result)
         return result

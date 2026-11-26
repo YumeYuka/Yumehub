@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.CachedDataState
-import moe.yumeyuka.yumehub.data.cache.CachedResource
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentTimeoutException
 import moe.yumeyuka.yumehub.data.repository.RepositoryTextContent
@@ -41,15 +40,13 @@ typealias RepositoryTextPreview = RepositoryTextContent
 sealed interface RepositoryDetailPage {
     data object Overview : RepositoryDetailPage
 
-    data class Readme(val preview: RepositoryLoad<RepositoryTextPreview>) : RepositoryDetailPage
-
-    data class License(val contents: RepositoryLoad<String>) : RepositoryDetailPage
+    data object Readme : RepositoryDetailPage
 }
 
 data class RepositoryDetailUiState(
     val repository: RepositoryLoad<RepositoryDto> = RepositoryLoad.Loading,
     val page: RepositoryDetailPage = RepositoryDetailPage.Overview,
-    val overviewReadme: RepositoryLoad<RepositoryTextPreview>? = null,
+    val readme: RepositoryLoad<RepositoryTextPreview> = RepositoryLoad.Loading,
     val selectedRef: String? = null,
     val refs: RepositoryLoad<List<String>> = RepositoryLoad.Loading,
 )
@@ -60,15 +57,14 @@ class RepositoryDetailViewModel(
     private val workspaces: WorkspacesRepository,
     private val owner: String,
     private val repository: String,
+    private val initialPage: RepositoryDetailPage,
 ) : ViewModel() {
     private var activeAccount = currentAccount()
     private val mutableUiState =
-        MutableStateFlow(RepositoryDetailUiState(repository = initialRepositoryState()))
+        MutableStateFlow(RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage))
     private var repositoryObserver: Job? = null
-    private var contentObserver: Job? = null
-    private var overviewReadmeObserver: Job? = null
+    private var readmeObserver: Job? = null
     private var refsJob: Job? = null
-    private var pageGeneration = 0L
     private var accountGeneration = 0L
 
     val uiState = mutableUiState.asStateFlow()
@@ -103,96 +99,45 @@ class RepositoryDetailViewModel(
     fun switchRef(ref: String) {
         if (!isCurrentAccount(activeAccount)) return
         if (ref == currentRef()) return
-        mutableUiState.value = mutableUiState.value.copy(selectedRef = ref)
-        when (mutableUiState.value.page) {
-            RepositoryDetailPage.Overview -> loadOverviewReadme()
-            is RepositoryDetailPage.Readme -> openReadme()
-            is RepositoryDetailPage.License -> Unit
-        }
+        loadReadme(selectedRef = ref)
     }
 
-    fun retry() {
-        if (currentRepository() == null) {
-            loadRepository(force = true)
-            return
-        }
-        refreshCurrentPage(force = true)
-    }
+    fun retryRepository() = loadRepository(force = true)
 
     fun refresh() {
         loadRepository(force = true)
-        when (mutableUiState.value.page) {
-            RepositoryDetailPage.Overview -> loadOverviewReadme(force = true)
-            is RepositoryDetailPage.Readme -> loadReadme(force = true)
-            is RepositoryDetailPage.License -> loadLicense(force = true)
-        }
+        loadReadme(force = true)
     }
 
-    private fun refreshCurrentPage(force: Boolean) {
-        when (mutableUiState.value.page) {
-            RepositoryDetailPage.Overview -> loadRepository(force)
-            is RepositoryDetailPage.Readme -> loadReadme(force)
-            is RepositoryDetailPage.License -> loadLicense(force)
-        }
-    }
+    fun retryReadme() = loadReadme(force = true)
 
-    fun openLicense() = loadLicense(force = false)
-
-    private fun loadLicense(force: Boolean) {
-        val account = activeAccount
-        if (!isCurrentAccount(account)) return
-        observeContent(
-            resource = contentRepository.license(account, owner, repository),
-            force = force,
-            update = { setPage(RepositoryDetailPage.License(it)) },
-            request = { contentRepository.loadLicense(account, owner, repository) },
-        )
-    }
-
-    fun retryOverviewReadme() = loadOverviewReadme(force = true)
-
-    private fun loadOverviewReadme(force: Boolean = false) {
+    private fun loadReadme(force: Boolean = false, selectedRef: String? = mutableUiState.value.selectedRef) {
         if (currentRepository() == null) return
         val account = activeAccount
         val session = accountGeneration
-        val ref = currentRef()
+        val ref = selectedRef ?: currentRepository()?.defaultBranch?.let { "refs/heads/$it" }
         val resource = contentRepository.readme(account, owner, repository, ref)
-        overviewReadmeObserver?.cancel()
-        mutableUiState.value =
-            mutableUiState.value.copy(overviewReadme = resource.state.value.toLoad())
-        overviewReadmeObserver = viewModelScope.launch {
+        readmeObserver?.cancel()
+        mutableUiState.value = mutableUiState.value.copy(selectedRef = selectedRef, readme = resource.state.value.toLoad())
+        readmeObserver = viewModelScope.launch {
             resource.state.collect { snapshot ->
                 if (
                     session == accountGeneration && isCurrentAccount(account) && ref == currentRef()
                 ) {
                     mutableUiState.value =
-                        mutableUiState.value.copy(overviewReadme = snapshot.toLoad())
+                        mutableUiState.value.copy(readme = snapshot.toLoad())
                 }
             }
         }
         resource.refresh(force) { contentRepository.loadReadme(account, owner, repository, ref) }
     }
 
-    fun openReadme() = loadReadme(force = false)
-
-    private fun loadReadme(force: Boolean) {
-        if (currentRepository() == null) return
-        val account = activeAccount
-        val source = contentRepository
-        val ref = currentRef()
-        observeContent(
-            resource = source.readme(account, owner, repository, ref),
-            force = force,
-            update = { setPage(RepositoryDetailPage.Readme(it)) },
-            request = { source.loadReadme(account, owner, repository, ref) },
-        )
-    }
+    fun openReadme() = setPage(RepositoryDetailPage.Readme)
 
     fun navigateUp(): Boolean =
         when (mutableUiState.value.page) {
             RepositoryDetailPage.Overview -> false
-            is RepositoryDetailPage.Readme,
-            is RepositoryDetailPage.License -> {
+            RepositoryDetailPage.Readme -> {
                 showOverview()
                 true
             }
@@ -228,24 +173,20 @@ class RepositoryDetailViewModel(
 
     private fun projectRepository(state: CachedDataState<RepositoryDto>) {
         val previous = currentRepository()
-        val current = state.data
-        mutableUiState.value = mutableUiState.value.copy(repository = state.toLoad())
-        if (
-            current != null &&
-                (overviewReadmeObserver == null ||
-                    (previous?.defaultBranch != current.defaultBranch &&
-                        mutableUiState.value.selectedRef == null))
-        ) {
-            loadOverviewReadme()
+        val repositoryState = state.toLoad()
+        val current = (repositoryState as? RepositoryLoad.Ready)?.value
+        if (current == null) {
+            readmeObserver?.cancel()
+            readmeObserver = null
+            mutableUiState.value = mutableUiState.value.copy(repository = repositoryState, readme = RepositoryLoad.Loading)
+            return
         }
+        mutableUiState.value = mutableUiState.value.copy(repository = repositoryState)
         if (
-            previous != null &&
-                current != null &&
-                previous.defaultBranch != current.defaultBranch &&
-                mutableUiState.value.selectedRef == null &&
-                mutableUiState.value.page is RepositoryDetailPage.Readme
+            readmeObserver == null ||
+                (previous?.defaultBranch != current.defaultBranch && mutableUiState.value.selectedRef == null)
         ) {
-            refreshCurrentPage(force = false)
+            loadReadme()
         }
     }
 
@@ -258,47 +199,12 @@ class RepositoryDetailViewModel(
             isCurrentAccount(activeAccount)
         }
 
-    internal fun showOverview() {
-        stopObservingContent()
-        setPage(RepositoryDetailPage.Overview)
-        loadRepository()
-    }
+    internal fun showOverview() = setPage(RepositoryDetailPage.Overview)
 
     private fun setPage(page: RepositoryDetailPage) {
         mutableUiState.value = mutableUiState.value.copy(page = page)
     }
 
-    private fun stopObservingContent() {
-        pageGeneration++
-        contentObserver?.cancel()
-        contentObserver = null
-    }
-
-    private fun <T : Any> observeContent(
-        resource: CachedResource<T>,
-        force: Boolean,
-        update: (RepositoryLoad<T>) -> Unit,
-        request: suspend () -> T,
-    ) {
-        stopObservingContent()
-        val generation = pageGeneration
-        val account = activeAccount
-        val session = accountGeneration
-        update(resource.state.value.toLoad())
-        contentObserver = viewModelScope.launch {
-            resource.state.collect { state ->
-                if (
-                    generation == pageGeneration &&
-                        session == accountGeneration &&
-                        isCurrentAccount(account)
-                ) {
-                    update(state.toLoad())
-                }
-            }
-        }
-        // 只取消页面订阅；请求由共享仓库持有，多页面共用并合并同 key 的请求。
-        resource.refresh(force = force, loader = request)
-    }
 
     private fun currentAccount(): String =
         tokenStore.accountLogin.value.trim().lowercase(Locale.ROOT)
@@ -312,11 +218,10 @@ class RepositoryDetailViewModel(
         activeAccount = account
         accountGeneration++
         refsJob?.cancel()
-        stopObservingContent()
         repositoryObserver?.cancel()
-        overviewReadmeObserver?.cancel()
-        overviewReadmeObserver = null
-        mutableUiState.value = RepositoryDetailUiState(repository = initialRepositoryState())
+        readmeObserver?.cancel()
+        readmeObserver = null
+        mutableUiState.value = RepositoryDetailUiState(repository = initialRepositoryState(), page = initialPage)
         loadRepository()
     }
 
@@ -325,7 +230,11 @@ class RepositoryDetailViewModel(
 
     private fun <T : Any> CachedDataState<T>.toLoad(): RepositoryLoad<T> {
         val content = data
-        val message = error?.takeUnless { it is CancellationException }?.readErrorMessage()
+        val failure = error?.takeUnless { it is CancellationException }
+        val message = failure?.readErrorMessage()
+        if (failure is HttpException && (failure.code() == 401 || failure.code() == 403 || failure.code() == 404)) {
+            return RepositoryLoad.Error(requireNotNull(message))
+        }
         return when {
             content != null -> RepositoryLoad.Ready(content, loading, message)
             message != null && !loading -> RepositoryLoad.Error(message)

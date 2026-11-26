@@ -23,7 +23,7 @@ internal class ProfileCollectionsViewModel(
     private val repository: ProfileCollectionsRepository,
     route: ProfileCollectionsRoute,
 ) : ViewModel() {
-    private val account = repository.account
+    val account = repository.account
     private val pagingKey =
         when (route.kind) {
             ProfileCollectionsRoute.Kind.Repositories ->

@@ -22,6 +22,7 @@ import moe.yumeyuka.yumehub.core.model.GithubRepositoryLocation
 import moe.yumeyuka.yumehub.core.model.githubGitRefCandidates
 import moe.yumeyuka.yumehub.core.model.resolveGithubGitObject
 import moe.yumeyuka.yumehub.data.api.GitHubGraphQlApi
+import moe.yumeyuka.yumehub.data.api.dto.GraphQlError
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlRequest
 import moe.yumeyuka.yumehub.data.api.dto.GraphQlResponse
 import moe.yumeyuka.yumehub.data.cache.CachedDataRepository
@@ -71,8 +72,9 @@ data class WorkspaceEntry(
 
 data class WorkspaceLinkTarget(val gitObject: GithubGitObject, val repositoryUrl: String)
 
-class WorkspacesGraphQlException(messages: List<String>) :
-    Exception(messages.firstOrNull() ?: "Workspaces GraphQL request failed")
+class WorkspacesGraphQlException(errors: List<GraphQlError>) :
+    Exception(errors.firstNotNullOfOrNull { it.message?.takeIf(String::isNotBlank) }
+        ?: "Workspaces GraphQL request failed", GithubPageException(errors = errors))
 
 class WorkspacesTimeoutException : IOException("Workspaces request timed out")
 
@@ -239,7 +241,7 @@ class WorkspacesRepository(
                 ),
                 generation,
             )
-        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errorMessages())
+        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errors)
         val repository =
             (response.data as? JsonObject)?.nested("repository")
                 ?: throw SerializationException("Missing branches repository")
@@ -310,7 +312,7 @@ class WorkspacesRepository(
             // 探测不存在的候选可能得到 NOT_FOUND，不能因此丢弃同批里的有效对象。
             val errors = response.errors.filterNot { it.type == "NOT_FOUND" }
             if (errors.isNotEmpty())
-                throw WorkspacesGraphQlException(errors.mapNotNull { it.message })
+                throw WorkspacesGraphQlException(errors)
             val repository = (response.data as? JsonObject)?.nested("repository") ?: return null
             val url =
                 repository.string("url") ?: throw SerializationException("Missing repository URL")
@@ -366,7 +368,7 @@ class WorkspacesRepository(
                     operationName = "WorkspaceDirectory",
                 ),
             )
-        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errorMessages())
+        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errors)
         val tree = (response.data as? JsonObject)?.nested("repository")?.nested("gitObject")
         // 空仓库根目录没有 Tree；非根路径不存在时不能显示为一个空目录。
         if ((requireTree || path.isNotEmpty()) && tree?.get("entries") !is JsonArray) {
@@ -480,7 +482,7 @@ class WorkspacesRepository(
         variables: JsonObject,
     ): JsonObject {
         val response = execute(account, GraphQlRequest(query, variables, operation), generation)
-        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errorMessages())
+        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errors)
         val data = response.data as? JsonObject ?: throw SerializationException("Missing file data")
         return data.nested("repository") ?: throw WorkspacesFileNotFound()
     }
@@ -509,7 +511,7 @@ class WorkspacesRepository(
                     operationName = "WorkspaceCommit",
                 ),
             )
-        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errorMessages())
+        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errors)
         val objectNode =
             (response.data as? JsonObject)?.nested("repository")?.nested("object") ?: return null
         val history = objectNode.nested("history") ?: objectNode.nested("target")?.nested("history")
@@ -548,7 +550,7 @@ class WorkspacesRepository(
                     operationName = "WorkspaceCommitHistory",
                 ),
             )
-        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errorMessages())
+        if (response.errors.isNotEmpty()) throw WorkspacesGraphQlException(response.errors)
         val history =
             (response.data as? JsonObject)
                 ?.nested("repository")
@@ -642,10 +644,6 @@ class WorkspacesRepository(
         if (account.isBlank() || !tokens.accountLogin.value.equals(account, ignoreCase = true)) {
             throw CancellationException("Workspaces account changed")
         }
-    }
-
-    private fun GraphQlResponse.errorMessages(): List<String> = errors.mapNotNull {
-        it.message?.takeIf(String::isNotBlank)
     }
 
     private fun refCandidatesQuery(size: Int): String {

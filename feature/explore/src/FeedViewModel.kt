@@ -7,11 +7,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -36,7 +34,6 @@ import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.DashboardFeedRepository
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentRepository
-import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.StarredRepositoriesPagingKey
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.locale.GithubTxt
@@ -52,9 +49,7 @@ internal fun FeedEventDto.cardKey(): String? =
             ?.takeIf { type == "FollowEvent" || type == "FollowRecommendationEvent" }
             ?.let { "user:$it" } ?: repo?.name?.let { "repo:$it" }
 
-private data class FeedQuery(val session: AuthSession?, val options: FeedOptions)
 
-@OptIn(ExperimentalCoroutinesApi::class)
 internal class FeedViewModel(
     auth: AuthRepository,
     private val pagingRepository: PagingRepository,
@@ -75,46 +70,21 @@ internal class FeedViewModel(
     private val mutableOptions = MutableStateFlow<FeedOptions?>(null)
     private var settingsWrite: Job? = null
     val settingsFailed = MutableStateFlow(false)
-    val remoteFilters = MutableStateFlow<Set<FeedFilter>?>(null)
-    val filterPhase = MutableStateFlow(WritePhase.IDLE)
+    private val remoteFilters = MutableStateFlow<Set<FeedFilter>?>(null)
+    private val filterPhase = MutableStateFlow(WritePhase.IDLE)
     private var applying: FeedOptions? = null
     val cards: SnapshotStateMap<String, MutableState<FeedCardState>> = mutableCards
     val options = mutableOptions.asStateFlow()
-    val events =
-        combine(auth.session.distinctUntilChanged(), options.filterNotNull()) { session, options ->
-                FeedQuery(session, options)
-            }
-            .flatMapLatest { query ->
-                val (session, options) = query
-                if (session != null) bind(session)
-                if (session == null || options.filters.isEmpty()) flowOf(PagingData.empty())
-                else
-                    feedPager(
-                        dashboard,
-                        session.login,
-                        options.filters,
-                        options.sort,
-                        pagingRepository,
-                    )
-            }
-            .cachedIn(viewModelScope)
+    private val mutableSession = MutableStateFlow<AuthSession?>(null)
+    val session = mutableSession.asStateFlow()
 
-    val revalidation: StateFlow<RevalidationState> =
-        combine(auth.session.distinctUntilChanged(), options.filterNotNull()) { session, options ->
-                session to options
-            }
-            .flatMapLatest { (session, options) ->
-                if (session == null || options.filters.isEmpty()) flowOf(RevalidationState.Idle)
-                else pagingRepository.revalidation(session.login, feedPagingKey(options.filters, options.sort))
-            }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, RevalidationState.Idle)
+    fun eventsFor(login: String?, options: FeedOptions?): Flow<PagingData<FeedEventDto>> =
+        if (login == null || options == null || options.filters.isEmpty()) flowOf(PagingData.empty())
+        else feedPager(dashboard, login, options.filters, options.sort, pagingRepository)
 
-    fun retryRevalidation() {
-        val login = account ?: return
-        val opts = options.value ?: return
-        if (opts.filters.isEmpty()) return
-        pagingRepository.retryRevalidation(login, feedPagingKey(opts.filters, opts.sort))
-    }
+    fun revalidation(login: String, key: String) = pagingRepository.revalidation(login, key)
+
+    fun retryRevalidation(login: String, key: String) = pagingRepository.retryRevalidation(login, key)
 
     init {
         restoreOptions()
@@ -125,6 +95,7 @@ internal class FeedViewModel(
                 mutableCards.clear(); visible = emptyMap(); applying = null
                 remoteFilters.value = null; filterPhase.value = WritePhase.IDLE
                 coordinator = null; coordinatorAccount = null; account = session?.login
+                mutableSession.value = session
                 if (session == null) return@collectLatest
                 bind(session)
                 kotlinx.coroutines.coroutineScope {
@@ -158,11 +129,6 @@ internal class FeedViewModel(
             catch (error: CancellationException) { throw error }
             catch (_: Exception) { settingsFailed.value = true }
         }
-    }
-
-    fun adoptFilters() {
-        val current = mutableOptions.value ?: return
-        remoteFilters.value?.let { saveOptions(current.copy(filters = it)) }
     }
 
     fun applyOptions(options: FeedOptions) {
@@ -224,13 +190,18 @@ internal class FeedViewModel(
 
     fun retry(event: FeedEventDto) = load(event, retry = true)
 
+    // Read memory only. The row should not wait for the debounced viewport fetch to show cached fields.
+    fun initialDisplayCard(event: FeedEventDto): FeedCardState? =
+        account?.let { cachedCard(it, event) } ?: event.initialCard()
+
     private fun load(event: FeedEventDto, retry: Boolean = false) {
         val key = event.cardKey() ?: return
         val account = account ?: return
         if (jobs[key]?.isActive == true) return
         val existing = mutableCards[key]?.value
         val current =
-            if (retry) existing ?: cachedCard(account, event)
+            if (existing != null && (retry || (event.viewerSelected == null && existing.selected != null)))
+                projectCardWithSlot(account, key, existing)
             else cachedCard(account, event) ?: existing
         val display = current ?: event.initialCard()
         if (

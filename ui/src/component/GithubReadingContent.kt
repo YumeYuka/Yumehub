@@ -7,21 +7,51 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 
-/** 阅读分组卡片圆角；正文自身带不透明背景时，调用方需按同一形状裁剪。 */
 internal val GithubReadingGroupShape: Shape
     @Composable get() = ContinuousRoundedRectangle(26.dp)
+
+/** A receipt belongs to a mounted renderer, not just to data in a cache. */
+internal class ReadingReceipt {
+    var drawnBy by mutableStateOf<Any?>(null)
+}
+
+internal val LocalReadingReceipt = staticCompositionLocalOf<ReadingReceipt?> { null }
+
+/** One document and its dependent controls. Null means there is no document to wait for. */
+@Composable
+fun GithubReadingUnit(documentKey: Any?, content: @Composable () -> Unit) {
+    val receipt = if (documentKey == null) null else remember(documentKey) { ReadingReceipt() }
+    CompositionLocalProvider(LocalReadingReceipt provides receipt, content = content)
+}
+
+@Composable
+fun GithubReadingFooter(content: @Composable () -> Unit) {
+    val receipt = LocalReadingReceipt.current
+    if (receipt == null || receipt.drawnBy != null) content()
+}
 
 @Composable
 fun GithubReadingGroup(
@@ -31,6 +61,7 @@ fun GithubReadingGroup(
     footer: @Composable () -> Unit = {},
     onHeaderClick: (() -> Unit)? = null,
     header: @Composable () -> Unit = {},
+    documentKey: Any? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = GlasmioTheme.colors
@@ -42,7 +73,7 @@ fun GithubReadingGroup(
             colors.content.copy(alpha = 0.08f).compositeOver(colors.elevatedBackground)
         } else colors.elevatedBackground
     GlasmioGroupedList(
-        modifier = modifier.background(background, GithubReadingGroupShape),
+        modifier = modifier.clip(GithubReadingGroupShape).background(background),
         framed = false,
     ) {
         if (onHeaderClick != null) {
@@ -56,19 +87,21 @@ fun GithubReadingGroup(
             ) {
                 header()
             }
-        }
-        content()
-        if (onFooterClick != null) {
-            Box(
-                Modifier.clickable(
-                    interactionSource = presses,
-                    indication = null,
-                    enabled = footerEnabled,
-                    role = Role.Button,
-                    onClick = onFooterClick,
-                ),
-            ) {
-                footer()
+        } else header()
+        GithubReadingUnit(documentKey) {
+            content()
+            if (onFooterClick != null) {
+                GithubReadingFooter {
+                    Box(
+                        Modifier.clickable(
+                            interactionSource = presses,
+                            indication = null,
+                            enabled = footerEnabled,
+                            role = Role.Button,
+                            onClick = onFooterClick,
+                        ),
+                    ) { footer() }
+                }
             }
         }
     }
@@ -93,6 +126,10 @@ fun GithubMarkdown(
     onCommitSuggestion: ((suggestionId: String, previewHtml: String) -> Unit)? = null,
     onReady: (() -> Unit)? = null,
 ) {
+    if (!LocalGithubRouteEntryReady.current) {
+        GithubMarkdownPlaceholder(modifier.clearAndSetSemantics {}, compact = true)
+        return
+    }
     val renderer =
         requireNotNull(LocalGithubMarkdownRenderer.current) {
             "GithubMarkdown 必须由 app 注册官方 HTML 渲染模块"
@@ -138,6 +175,14 @@ fun GithubMarkdownPreview(
     html: String? = null,
     onOpenLink: ((String) -> Boolean)? = null,
 ) {
+    // Do not create a renderer for an editor tab that has never been opened. Once opened,
+    // retain the same mounted preview behind the editor and suspend its interactions.
+    var visited by remember { mutableStateOf(false) }
+    if (!LocalGithubRouteEntryReady.current || (!visible && !visited)) {
+        if (visible) GithubMarkdownPlaceholder(modifier.padding(contentPadding).padding(16.dp).clearAndSetSemantics {})
+        return
+    }
+    if (visible && !visited) SideEffect { visited = true }
     val renderer =
         requireNotNull(LocalGithubMarkdownRenderer.current) {
             "GithubMarkdownPreview 必须由 app 注册官方 HTML 渲染模块"

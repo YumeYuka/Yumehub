@@ -2,10 +2,6 @@ package moe.yumeyuka.yumehub.feature.profile
 
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,8 +10,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubContentVisibility
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
@@ -66,8 +60,6 @@ fun UserProfilePage(
             viewModel.dismissFollowError()
         }
     }
-    if (state.failed) GithubLoadFailureToast(Unit, strings.Profile.LoadFailed)
-    if (state.readmeFailed) GithubLoadFailureToast(Unit, strings.Profile.ReadmeLoadFailed)
     GithubPage(
         title = targetLogin.ifBlank { strings.Profile.ProfileLink },
         showTitle = false,
@@ -90,7 +82,10 @@ fun UserProfilePage(
         },
     ) {
         val current = state.profile
-        if (!state.failed || current != null) {
+        if (state.failed || state.unavailable) {
+            item(key = "profile-error") { ProfileRetryRow(strings.Profile.LoadFailed, viewModel::load) }
+        }
+        if (current != null || !state.failed && !state.unavailable) {
             item(key = "profile-header") {
                 ProfileHeader(
                     current,
@@ -103,29 +98,11 @@ fun UserProfilePage(
                     fallbackOrganization = organization,
                 )
             }
-            readingItem(key = "profile-details-and-readme") {
-                Column(
-                    androidx.compose.ui.Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    DisableSelection {
-                        ProfileDetailsSection(current, strings.Profile)
-                        ProfileCollectionsCard(
-                            current,
-                            strings.Profile,
-                            onOpenRepositories,
-                            onOpenStarred,
-                            onOpenOrganizations,
-                        )
-                    }
-                    GithubContentVisibility(
-                        animateEnter = false,
-                        visible = current == null || current.readmeHtml != null,
-                    ) {
-                        ProfileReadmeContent(current)
-                    }
-                }
+            item(key = "profile-details") { ProfileDetailsSection(current, strings.Profile) }
+            item(key = "profile-collections") {
+                ProfileCollectionsCard(current, strings.Profile, onOpenRepositories, onOpenStarred, onOpenOrganizations)
             }
+            readingItem(key = "profile-readme") { ProfileReadmeContent(current, viewModel::retryReadme) }
         }
     }
 }

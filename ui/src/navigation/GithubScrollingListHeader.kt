@@ -54,9 +54,8 @@ internal fun GithubScrollingListHeader(
             // 布局信息在 LazyColumn 测量后读取，顶部 inset 与滚动偏移在同一帧生效。
             val layout = listState.layoutInfo
             val slot = layout.visibleItemsInfo.firstOrNull { it.key == GithubScrollingHeaderKey }
-            if (slot != null) {
-                headerPlaceable.placeRelative(0, slot.offset - layout.viewportStartOffset)
-            }
+            val top = slot?.let { it.offset - layout.viewportStartOffset }
+            if (top != null) headerPlaceable.placeRelative(0, top)
         }
     }
 }
