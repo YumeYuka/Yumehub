@@ -64,9 +64,6 @@ fun GithubWorkItemCard(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 GithubActivityCardSummary(shown.title, shown.bodyPreview, titleMaxLines = 2)
                 workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
-                if (shown.labels.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (label in shown.labels) GithubLabelTag(label.name, label.color)
-                }
                 shown.subIssuesTotal
                     ?.takeIf { it > 0 }
                     ?.let { total ->
