@@ -40,6 +40,11 @@ internal fun FeedWorkCard(
         else WorkTarget(slug.substringBefore('/'), slug.substringAfter('/'), number, kind)
     }
     val write = rememberWorkRowProjection(target)
+    val merged =
+        write.merged || write.confirmed?.merged == true || work.merged || work.mergedAt != null
+    val mergedPullRequest =
+        pullRequest &&
+            (merged || event.sourceType == "MergedPullRequestFeedItem" || event.payload.action == "merged")
     val title =
         write.title ?: write.confirmed?.title ?: work.title?.takeIf(String::isNotBlank)
             ?: if (discussion) strings.Repository.Discussions
@@ -49,28 +54,30 @@ internal fun FeedWorkCard(
         body = write.body ?: write.confirmed?.body ?: work.body,
         open = open,
         titleMaxLines = if (discussion) 3 else 2,
+        compactSummary = mergedPullRequest,
         header = {
             RepositoryCardHeading(
                 repository = repository,
                 fallbackFullName = event.repo?.name,
-                number = number,
-            ) {
-                if (discussion) {
-                    GithubIcon(
-                        Lucide.MessagesSquare,
-                        contentDescription = strings.Repository.Discussions,
-                        size = 20.dp,
-                    )
-                } else {
-                    workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
-                    GithubWorkItemStatusIcon(
-                        kind,
-                        write.state ?: write.confirmed?.state ?: work.state,
-                        work.draft,
-                        write.merged || write.confirmed?.merged == true || work.merged || work.mergedAt != null,
-                    )
-                }
-            }
+                number = number.takeUnless { mergedPullRequest },
+                trailing = if (mergedPullRequest) null else ({
+                    if (discussion) {
+                        GithubIcon(
+                            Lucide.MessagesSquare,
+                            contentDescription = strings.Repository.Discussions,
+                            size = 20.dp,
+                        )
+                    } else {
+                        workMergeProgress(write.mergePhase)?.let { Text(it, style = GlasmioTheme.textStyles.caption1) }
+                        GithubWorkItemStatusIcon(
+                            kind,
+                            write.state ?: write.confirmed?.state ?: work.state,
+                            work.draft,
+                            merged,
+                        )
+                    }
+                }),
+            )
         },
     )
 }
@@ -107,6 +114,7 @@ private fun FeedDetailCard(
     header: @Composable () -> Unit,
     cover: (@Composable () -> Unit)? = null,
     titleMaxLines: Int = 3,
+    compactSummary: Boolean = false,
 ) {
     GithubActivityCard(
         onClick = open,
@@ -116,8 +124,10 @@ private fun FeedDetailCard(
             GithubActivityCardSummary(
                 title,
                 body,
-                feedDetailTitleStyle(),
-                repositoryCardBodyStyle(),
+                titleStyle = if (compactSummary) githubWorkItemTitleStyle() else feedDetailTitleStyle(),
+                bodyStyle =
+                    if (compactSummary) repositoryCardBodyStyle().copy(fontSize = 14.sp, lineHeight = 20.sp)
+                    else repositoryCardBodyStyle(),
                 titleMaxLines = titleMaxLines,
             )
         },
