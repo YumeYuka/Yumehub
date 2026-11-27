@@ -53,6 +53,7 @@ import moe.yumeyuka.yumehub.feature.auth.LoginScreen
 import moe.yumeyuka.yumehub.feature.auth.R as AuthResources
 import moe.yumeyuka.yumehub.feature.auth.TwoFactorOverlay
 import moe.yumeyuka.yumehub.feature.auth.TwoFactorViewModel
+import moe.yumeyuka.yumehub.feature.markdown.MarkdownPresentationHost
 import moe.yumeyuka.yumehub.feature.markdown.officialGithubMarkdownRenderer
 import moe.yumeyuka.yumehub.feature.profile.SettingsViewModel
 import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
@@ -179,15 +180,17 @@ internal fun AppRoot(
                                         CompositionLocalProvider(
                                             LocalViewModelStoreOwner provides sessionOwner,
                                         ) {
-                                            GithubAppShell(
-                                                navigationComponent = navigationComponent,
-                                                currentLogin = currentAuthState.login,
-                                                accounts = tokens.accounts,
-                                                onAddAccount = openLogin,
-                                                onSwitchAccount = requestSwitch,
-                                                onSignOut = authViewModel::signOut,
-                                                settingsViewModel = settingsViewModel,
-                                            )
+                                            MarkdownPresentationHost {
+                                                GithubAppShell(
+                                                    navigationComponent = navigationComponent,
+                                                    currentLogin = currentAuthState.login,
+                                                    accounts = tokens.accounts,
+                                                    onAddAccount = openLogin,
+                                                    onSwitchAccount = requestSwitch,
+                                                    onSignOut = authViewModel::signOut,
+                                                    settingsViewModel = settingsViewModel,
+                                                )
+                                            }
                                         }
                                     }
                                     TwoFactorOverlay(

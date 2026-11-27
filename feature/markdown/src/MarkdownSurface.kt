@@ -1,5 +1,6 @@
 package moe.yumeyuka.yumehub.feature.markdown
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,16 +78,32 @@ internal fun MarkdownSurface(
         .onGloballyPositioned { inViewport = !it.boundsInWindow().isEmpty }
     BoxWithConstraints(frameModifier, propagateMinConstraints = true) {
         val width = constraints.maxWidth
+        val dark = GlasmioTheme.colors.isDark
+        val layout = remember(configuration, density, direction, font, native, constraints,
+            dark, actions.onTaskChanged != null, actions.onCommitSuggestion != null) {
+            listOf(Configuration(configuration), density, direction, font, native, constraints,
+                dark, actions.onTaskChanged != null, actions.onCommitSuggestion != null)
+        }
         var attempt by remember(state.revision) { mutableIntStateOf(0) }
         // Changing width/scale invalidates the instance's drawable receipt, not its data.
-        key(state.revision, width, density, direction, configuration, font, attempt) {
-            var drawable by remember { mutableStateOf(false) }
+        key(state.revision, layout, attempt) {
+            var rendererReady by remember { mutableStateOf(false) }
             var renderFailed by remember { mutableStateOf(false) }
             val document = state.document
+            val geometry = document?.geometry?.takeUnless { viewport || renderFailed }
+            val reserved = remember(geometry, layout) { geometry?.heightFor(width, layout) ?: 0 }
+            val presentation = if (!native && !viewport && document != null && !renderFailed)
+                rememberMarkdownPresentation(document, layout, width, reserved) else null
+            val webLayout = native && document != null && remember(document.content) {
+                needsWebMarkdownLayout(document.content)
+            }
             val style =
-                if (native && routeReady)
+                if (native && (routeReady || rendererReady || reserved > 0))
                     rememberNativeMarkdownStyles(request.transparentBackground, state.revision)
                 else null
+            val restored = presentation?.restored == true ||
+                (reserved > 0 && native && !webLayout && style?.styles != null)
+            val drawable = rendererReady || restored
             val failure = when {
                 renderFailed || style?.failed == true || state.failure == NativeMarkdownFailure.PARSE -> strings.Markdown.RenderingFailed
                 state.failure == NativeMarkdownFailure.FETCH -> if (viewport) strings.Markdown.PreviewLoadFailed else strings.Markdown.LoadFailed
@@ -95,11 +112,12 @@ internal fun MarkdownSurface(
             val bodyVisible = visible && active && inViewport && drawable && failure == null
             if (!viewport) RetainVisibleMarkdownCard(bodyVisible)
             GithubLoadingOverlay(
-                loading = !routeReady || !drawable && failure == null,
+                loading = !drawable && failure == null,
                 documentKey = state.revision,
                 layoutWidth = width,
-                layoutKey = native,
-                geometry = document?.geometry?.takeIf { failure == null && !viewport },
+                layoutKey = layout,
+                reservedHeight = if (failure == null) reserved else 0,
+                geometry = geometry.takeIf { failure == null },
                 modifier = if (viewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
                 visible = visible && inViewport,
                 onPresented = if (failure == null) actions.onReady else null,
@@ -108,7 +126,7 @@ internal fun MarkdownSurface(
                     else GithubMarkdownPlaceholder(compact = true)
                 },
             ) {
-                if (!routeReady) return@GithubLoadingOverlay
+                if (!routeReady && !drawable && failure == null) return@GithubLoadingOverlay
                 if (failure != null) {
                     Box(Modifier.padding(contentPadding)) {
                         GlasmioListRow(
@@ -125,7 +143,7 @@ internal fun MarkdownSurface(
                     }
                 } else if (document != null) {
                     val ready: (NativeMarkdownRevision) -> Unit = { revision ->
-                        if (isCurrentAccount() && revision === state.revision) drawable = true
+                        if (isCurrentAccount() && revision === state.revision) rendererReady = true
                     }
                     val failed: (NativeMarkdownRevision) -> Unit = { revision ->
                         if (isCurrentAccount() && revision === state.revision) renderFailed = true
@@ -133,10 +151,12 @@ internal fun MarkdownSurface(
                     val size = if (viewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
                     if (!native) {
                         MarkdownWebDocument(state, document, size, actions, isCurrentAccount,
+                            presentation = presentation, initialHeightPx = reserved,
                             visible = bodyVisible, viewport = viewport, contentPadding = contentPadding,
                             scrollToAnchor = request.scrollToAnchor, onReady = ready, onRenderFailure = failed)
                     } else if (style?.styles != null) {
                         NativeMarkdownBoundContent(state, document, style.styles, size, actions, isCurrentAccount,
+                            webLayout = webLayout, initialHeightPx = reserved,
                             visible = bodyVisible, viewport = viewport, contentPadding = contentPadding,
                             selectionHosted = content.selectionHosted, scrollToAnchor = request.scrollToAnchor,
                             onReady = ready, onRenderFailure = failed)

@@ -77,6 +77,8 @@ internal fun MarkdownWebDocument(
     modifier: Modifier,
     actions: GithubMarkdownActions,
     isCurrentAccount: () -> Boolean,
+    presentation: MarkdownPresentation?,
+    initialHeightPx: Int,
     visible: Boolean,
     viewport: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(),
@@ -101,6 +103,8 @@ internal fun MarkdownWebDocument(
         allowInteraction = binding.allowsInteraction(),
         html = document.html,
         modifier = modifier,
+        presentation = presentation,
+        initialHeightPx = initialHeightPx,
         actions =
             GithubMarkdownActions(
                 onOpenLink = binding.actions.onOpenLink,

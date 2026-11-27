@@ -32,13 +32,13 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 /** 骨架交接的唯一时序与曲线；所有 Card、文档正文都从这里取参数。 */
 object SkeletonTiming {
     internal const val ShowDelayMillis = 120L
-    internal const val MinVisibleMillis = 380L
+    internal const val MinVisibleMillis = 420L
+    internal const val MinPostEntryMillis = 220L
     internal const val BodyStartScale = 0.99f
     internal val BodyBlur = 4.dp
     internal val SkeletonBlur = 3.dp
-    // Interior's spring (260 stiffness, 34 damping, 0.8 mass), normalized to unit mass.
     internal val SwapSpec =
-        spring(dampingRatio = 1.1787f, stiffness = 325f, visibilityThreshold = 0.001f)
+        spring(dampingRatio = 1.08f, stiffness = 220f, visibilityThreshold = 0.001f)
     internal val MaxHeightTravel = 320.dp
 }
 
@@ -68,29 +68,52 @@ fun SkeletonSwap(
 ) {
     val routeReady = LocalGithubRouteEntryReady.current
     val animate = LocalGithubCardMotionEnabled.current
-    var hasSettledBody by remember { mutableStateOf(!loading && !contentPending && !entrance) }
-    var entryPending by remember { mutableStateOf(entrance) }
+    // A measured document is being remounted. Wait for this renderer, not another entrance.
+    val restoring = reservedHeight > 0
+    var hasSettledBody by remember {
+        mutableStateOf(restoring || !loading && !contentPending && !entrance)
+    }
+    var entryPending by remember { mutableStateOf(entrance && !restoring) }
     val entering = entryPending && (animate || !routeReady)
     var shownAt by remember { mutableStateOf<TimeMark?>(null) }
+    var readyAt by remember { mutableStateOf<TimeMark?>(null) }
+    LaunchedEffect(routeReady) {
+        if (routeReady) {
+            if (readyAt == null) readyAt = TimeSource.Monotonic.markNow()
+        } else {
+            readyAt = null
+        }
+    }
     val deferBody = contentPending || !routeReady && (entering || shownAt != null)
     val pending = loading || deferBody
     val waiting = pending || entering
-    val showSkeleton = entering || shownAt != null || !animate || !hasSettledBody
-    val reveal = if (shownAt != null && animate) remember { Animatable(0f) } else null
+    val showSkeleton = entering || shownAt != null || !restoring && (!animate || !hasSettledBody)
+    val reveal = if (shownAt != null && animate && !restoring) remember { Animatable(0f) } else null
 
     LaunchedEffect(waiting, entering, animate, hasSettledBody) {
         if (waiting) {
             reveal?.snapTo(0f)
             if (shownAt == null) {
-                if (animate && !entering && hasSettledBody) delay(SkeletonTiming.ShowDelayMillis)
+                if (restoring || animate && !entering && hasSettledBody)
+                    delay(SkeletonTiming.ShowDelayMillis)
                 shownAt = TimeSource.Monotonic.markNow()
             }
             if (entering) entryPending = false
         } else {
-            val shown = shownAt ?: return@LaunchedEffect
+            val shown =
+                shownAt
+                    ?: run {
+                        hasSettledBody = true
+                        return@LaunchedEffect
+                    }
             if (reveal != null) {
-                val remaining =
+                val minFromShown =
                     SkeletonTiming.MinVisibleMillis - shown.elapsedNow().inWholeMilliseconds
+                val minFromReady =
+                    readyAt?.let {
+                        SkeletonTiming.MinPostEntryMillis - it.elapsedNow().inWholeMilliseconds
+                    } ?: 0L
+                val remaining = maxOf(minFromShown, minFromReady)
                 if (remaining > 0) delay(remaining)
                 reveal.animateTo(1f, SkeletonTiming.SwapSpec)
             }

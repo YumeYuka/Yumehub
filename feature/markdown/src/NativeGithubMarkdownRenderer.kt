@@ -113,6 +113,8 @@ internal fun NativeMarkdownBoundContent(
     modifier: Modifier,
     actions: GithubMarkdownActions,
     isCurrentAccount: () -> Boolean,
+    webLayout: Boolean,
+    initialHeightPx: Int,
     visible: Boolean = true,
     viewport: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(),
@@ -132,9 +134,9 @@ internal fun NativeMarkdownBoundContent(
             onReady = onReady,
             onRenderFailure = onRenderFailure,
         )
-    val webLayout = remember(document.content) { needsWebMarkdownLayout(document.content) }
     if (webLayout) {
         MarkdownWebContent(
+            initialHeightPx = initialHeightPx,
             content = document.request.copy(scrollToAnchor = binding.scrollToAnchor),
             requested = state.request,
             allowInteraction = binding.allowsInteraction(),

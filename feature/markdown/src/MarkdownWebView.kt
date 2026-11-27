@@ -78,6 +78,48 @@ internal class MarkdownWebView(
     private var canScrollContentRight = false
     private var horizontalDirection = 0
 
+    private var confirmed = false
+    private var drawnWidth = 0
+    private var drawnHeight = 0
+    private var needsRebind = false
+
+    fun confirmVisualState(version: String) {
+        if (isCurrentContent(version)) confirmed = true
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        if (confirmed && mediaActive) {
+            drawnWidth = width
+            drawnHeight = height
+        }
+    }
+
+    fun canPark(expectedWidth: Int): Boolean {
+        if (released || broken || !ready || !confirmed || viewportScrolling || nativeCodeBlocks ||
+            drawnWidth != expectedWidth || width != drawnWidth || height != drawnHeight || drawnHeight <= 0
+        ) return false
+        val measured = (lastHeight ?: return false) * resources.displayMetrics.density
+        val applied = if (inlineReadme()) measured else measured.coerceAtMost(MarkdownMaxHeightPx.toDouble())
+        return abs(applied - drawnHeight) <= 1.0
+    }
+
+    fun canRestore(document: NativeMarkdownDocument, width: Int, height: Int): Boolean =
+        canPark(width) && drawnHeight == height && viewerLogin == document.viewerLogin &&
+            content == document.request && html == document.html
+
+    fun park() {
+        setMediaActive(false)
+        setHostResumed(false)
+        clearCallbacks()
+        // Invalidate already queued bridge/anchor callbacks, without replacing this DOM.
+        messageId = UUID.randomUUID().toString()
+        submittedId = messageId
+        needsRebind = true
+        requestedAnchor = null
+        deliveredAnchor = null
+    }
+
     fun initialize() {
         touchSlop = ViewConfiguration.get(context).scaledTouchSlop
         // 官方 unj.java 构造使用 alpha=1 的近透明底色：完全透明的 WebView 表面
@@ -244,6 +286,13 @@ internal class MarkdownWebView(
         this.onCodeBlocks = onCodeBlocks
         this.onViewportScroll = onViewportScroll
         bound = true
+        if (needsRebind) {
+            needsRebind = false
+            val id = messageId
+            evaluateJavascript("window.androidMarkdown.rebind(${JSONObject.quote(id)});") { result ->
+                if (active() && messageId == id && result != "true") onFailure()
+            }
+        }
         onViewportScroll(scrollX, scrollY)
     }
 
@@ -256,6 +305,8 @@ internal class MarkdownWebView(
         val changed = this.html != html || previous != next
         this.content = next
         if (changed) {
+            confirmed = false
+            drawnHeight = 0
             this.html = html
             messageId = UUID.randomUUID().toString()
             codeBlocks = emptyMap()
@@ -307,25 +358,15 @@ internal class MarkdownWebView(
         }
     }
 
-    /** AndroidView 离开当前绑定时立即失效，并清空 DOM，禁止回收宿主携带账号正文。 */
-    fun resetContent() {
+    private fun resetContent() {
         messageId = UUID.randomUUID().toString()
-        bound = false
+        clearCallbacks()
         content = null
         html = null
         requestedAnchor = null
         deliveredAnchor = null
         lastHeight = null
         visibility = INVISIBLE
-        isCurrent = { false }
-        actions = null
-        onHeight = {}
-        onAnchor = { _, _ -> }
-        onFailure = {}
-        onRendered = null
-        onLayoutReady = null
-        onCodeBlocks = { _, _, _ -> }
-        onViewportScroll = { _, _ -> }
         codeBlocks = emptyMap()
         if (ready && !released) {
             runCatching {
@@ -337,6 +378,19 @@ internal class MarkdownWebView(
         }
         runCatching { scrollTo(0, 0) }
         runCatching { setHostResumed(false) }
+    }
+
+    private fun clearCallbacks() {
+        bound = false
+        isCurrent = { false }
+        actions = null
+        onHeight = {}
+        onAnchor = { _, _ -> }
+        onFailure = {}
+        onRendered = null
+        onLayoutReady = null
+        onCodeBlocks = { _, _, _ -> }
+        onViewportScroll = { _, _ -> }
     }
 
     private fun active() = !released && !broken && bound && isCurrent()
@@ -553,6 +607,7 @@ internal class MarkdownWebView(
                         if (taskEnabled) {
                             val position = payload.optInt("taskPosition", -1)
                             if (position >= 0 && payload.opt("taskChecked") is Boolean) {
+                                confirmed = false // The DOM has an optimistic edit not proven by its source HTML.
                                 actions
                                     ?.invoke()
                                     ?.onTaskChanged
@@ -566,6 +621,7 @@ internal class MarkdownWebView(
                         if (suggestionEnabled) {
                             val id = payload.optString("suggestionId")
                             if (id.isNotEmpty()) {
+                                confirmed = false
                                 actions
                                     ?.invoke()
                                     ?.onCommitSuggestion

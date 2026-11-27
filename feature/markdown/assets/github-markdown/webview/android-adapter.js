@@ -187,6 +187,14 @@
     }, {capture:true, passive:true});
   }
   window.androidMarkdown = {
+    // Reattach the existing DOM under a new bridge generation. Media may have resized while parked.
+    rebind(id) {
+      if (!previousRender) return false;
+      currentId = window.github._id = id;
+      lastHeight = undefined;
+      scheduleMeasure();
+      return true;
+    },
     setViewport(value) {
       if (viewport === value) return;
       viewport = value;

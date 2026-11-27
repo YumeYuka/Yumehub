@@ -145,7 +145,7 @@ internal class MarkdownWebViewHost(context: Context) : FrameLayout(context) {
         visibleBounds.setEmpty()
     }
 
-    fun mount(create: () -> MarkdownWebView, onFailure: () -> Unit) {
+    fun mount(retained: MarkdownWebView?, create: () -> MarkdownWebView, onFailure: () -> Unit) {
         try {
             markdownView?.let { view ->
                 removeView(view)
@@ -153,9 +153,9 @@ internal class MarkdownWebViewHost(context: Context) : FrameLayout(context) {
                 markdownView = null
             }
             // 先保存完整构造的对象，再初始化 bridge / settings / 模板，便于中途失败后释放。
-            val view = create()
+            val view = retained ?: create()
             markdownView = view
-            view.initialize()
+            if (retained == null) view.initialize()
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         } catch (_: Throwable) {
             // provider 构造本身失败时没有可取得的实例；已有实例则执行完整释放。
@@ -166,12 +166,12 @@ internal class MarkdownWebViewHost(context: Context) : FrameLayout(context) {
         }
     }
 
-    fun release() {
+    fun release(park: (MarkdownWebView) -> Boolean) {
         if (released) return
         released = true
         discardCompositingLayer()
-        runCatching { removeAllViews() }
-        markdownView?.release()
+        removeAllViews()
+        markdownView?.let { if (!park(it)) it.release() }
         markdownView = null
     }
 }

@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component.placeholders
 
-import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -23,12 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntSize
-import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import kotlin.math.roundToInt
 import moe.yumeyuka.yumehub.ui.component.LocalReadingReceipt
@@ -93,7 +88,7 @@ class GithubDocumentGeometry {
     private var width = 0
     private var height = 0
 
-    internal fun heightFor(width: Int, environment: Any): Int =
+    fun heightFor(width: Int, environment: Any): Int =
         if (this.width == width && this.environment == environment) height else 0
 
     internal fun drawn(width: Int, height: Int, environment: Any) {
@@ -110,7 +105,8 @@ fun GithubLoadingOverlay(
     documentKey: Any,
     modifier: Modifier = Modifier,
     geometry: GithubDocumentGeometry? = null,
-    layoutKey: Any? = null,
+    layoutKey: Any,
+    reservedHeight: Int,
     layoutWidth: Int,
     visible: Boolean = true,
     onPresented: (() -> Unit)? = null,
@@ -122,27 +118,15 @@ fun GithubLoadingOverlay(
     DisposableEffect(receipt, owner) {
         onDispose { if (receipt != null && receipt.drawnBy === owner) receipt.drawnBy = null }
     }
-    val config = LocalConfiguration.current
-    val density = LocalDensity.current
-    val direction = LocalLayoutDirection.current
-    val font = GlasmioTheme.typography.bodyLarge
-    val environment =
-        remember(config, density, direction, font, layoutKey) {
-            listOf(Configuration(config), density, direction, font, layoutKey)
-        }
     val active = LocalGithubPageHost.current?.isCurrent != false
     val width = layoutWidth
-    val restored =
-        remember(documentKey, geometry, width, environment) {
-            geometry?.heightFor(width, environment) ?: 0
-        }
     var presented by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner, presented) { if (presented) onPresented?.invoke() }
     SkeletonSwap(
         loading = loading,
         modifier = modifier,
         contentPending = false,
-        reservedHeight = restored,
+        reservedHeight = reservedHeight,
         placeholder = placeholder,
     ) {
         Box(
@@ -154,7 +138,7 @@ fun GithubLoadingOverlay(
                         drawContent()
                         if (visible && size.width > 0f && size.height > 0f) {
                             if (active) {
-                                geometry?.drawn(width, size.height.roundToInt(), environment)
+                                geometry?.drawn(width, size.height.roundToInt(), layoutKey)
                                 if (!presented) presented = true
                             }
                             if (receipt != null && receipt.drawnBy !== owner)

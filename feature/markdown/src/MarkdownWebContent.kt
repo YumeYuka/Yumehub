@@ -53,6 +53,8 @@ internal fun MarkdownWebContent(
     modifier: Modifier,
     actions: GithubMarkdownActions,
     isCurrentAccount: () -> Boolean,
+    presentation: MarkdownPresentation? = null,
+    initialHeightPx: Int = 0,
     style: HtmlStyles? = null,
     onReady: (() -> Unit)? = null,
     viewportScrolling: Boolean = false,
@@ -76,9 +78,10 @@ internal fun MarkdownWebContent(
     val latestRequested = rememberUpdatedState(requested)
     val latestInteraction = rememberUpdatedState(allowInteraction)
     val latestAccount = rememberUpdatedState(isCurrentAccount)
-    // The outer slot restores only a previously drawn, layout-matched height. The mounted
-    // WebView always measures this revision itself before delivering its visual receipt.
-    var measuredHeightDp by remember(resourceRevision) { mutableStateOf(1f) }
+    // Height is a layout hint; only reuse of the same drawn DOM can bypass the visual callback.
+    var measuredHeightDp by remember(resourceRevision) {
+        mutableStateOf(if (initialHeightPx > 0) initialHeightPx / density else 1f)
+    }
     var webView by remember { mutableStateOf<MarkdownWebView?>(null) }
     var codeBlocks by
         remember(resourceRevision) { mutableStateOf(emptyList<MarkdownWebCodeBlock>()) }
@@ -161,6 +164,7 @@ internal fun MarkdownWebContent(
                                     currentHeightApplied &&
                                     !view.isLayoutRequested
                             ) {
+                                view.confirmVisualState(version)
                                 readyNotified = true
                                 latestReady.value?.invoke()
                             } else {
@@ -186,13 +190,15 @@ internal fun MarkdownWebContent(
     val suggestionEnabled = actions.onCommitSuggestion != null
     if (!webFailed && assets != null) {
         val mount: (MarkdownWebViewHost) -> Unit = { host ->
-            readyNotified = false
+            val retained = presentation?.consume()
+            readyNotified = retained != null
             layoutVersion = null
             measuredCodeHeights = emptyMap()
             codeLayoutReady = !nativeCodeBlocks
             codeVersion = null
             codeBlocks = emptyList()
             host.mount(
+                retained = retained,
                 create = {
                     MarkdownWebView(
                         context = host.context,
@@ -229,7 +235,7 @@ internal fun MarkdownWebContent(
                     factory = { context -> MarkdownWebViewHost(context).also(mount) },
                     onRelease = { host ->
                         if (webView === host.markdownView) webView = null
-                        host.release()
+                        host.release { view -> !webFailed && presentation?.park(view) == true }
                     },
                     update = { host ->
                         host.readmeHeightPx =
