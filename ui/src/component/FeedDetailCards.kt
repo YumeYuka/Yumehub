@@ -58,7 +58,7 @@ internal fun FeedWorkCard(
         title = title,
         body = write.body ?: write.confirmed?.body ?: work.body,
         open = open,
-        titleMaxLines = if (discussion) 3 else 2,
+        titleMaxLines = 2,
         compactSummary = mergedPullRequest,
         header = {
             RepositoryCardHeading(
@@ -123,7 +123,7 @@ private fun FeedDetailCard(
     open: (() -> Unit)?,
     header: @Composable () -> Unit,
     cover: (@Composable () -> Unit)? = null,
-    titleMaxLines: Int = 3,
+    titleMaxLines: Int = 2,
     compactSummary: Boolean = false,
 ) {
     GithubActivityCard(

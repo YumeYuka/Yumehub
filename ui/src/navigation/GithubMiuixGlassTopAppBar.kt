@@ -34,6 +34,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal fun GithubMiuixGlassTopAppBar(
     title: String,
     largeTitle: String,
+    largeTitleLoading: Boolean = false,
     backgroundColor: Color,
     scrollBehavior: ScrollBehavior,
     isContentScrolled: Boolean,
@@ -74,6 +75,7 @@ internal fun GithubMiuixGlassTopAppBar(
         GithubMiuixTopAppBarLayout(
             title = title,
             largeTitle = largeTitle,
+            largeTitleLoading = largeTitleLoading,
             largeTitleBlurRadius = 0.dp,
             titleColor = MiuixTheme.colorScheme.onSurface,
             modifier = contentModifier,

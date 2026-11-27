@@ -13,6 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,9 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.capsule.ContinuousRoundedRectangle
@@ -67,6 +75,8 @@ internal fun WorkInfoSheet(
     number: Int,
     login: String,
     item: CollaborationItemDto?,
+    titleEditable: Boolean = false,
+    onSubmitTitle: (String) -> Unit = {},
     onOpenWork: (String, String, CollaborationKind, Int) -> Unit,
     onOpenBaseBranch: (() -> Unit)?,
     onOpenIssueFields: () -> Unit,
@@ -128,6 +138,60 @@ internal fun WorkInfoSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item?.let { work ->
+                val titleField = rememberTextFieldState(work.title)
+                LaunchedEffect(work.title) {
+                    if (titleField.text.toString() != work.title) {
+                        titleField.setTextAndPlaceCursorAtEnd(work.title)
+                    }
+                }
+                val trimmedTitle = titleField.text.toString().trim()
+                val titleChanged = trimmedTitle.isNotEmpty() && trimmedTitle != work.title
+                val submitTitleChange = {
+                    if (titleEditable && !state.submitting && titleChanged) {
+                        onSubmitTitle(trimmedTitle)
+                    }
+                }
+                GithubSectionHeader(strings.EditTitle)
+                GlasmioGroupedList {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        BasicTextField(
+                            state = titleField,
+                            modifier = Modifier.weight(1f),
+                            enabled = titleEditable && !state.submitting,
+                            textStyle =
+                                GlasmioTheme.textStyles.body.copy(
+                                    color = GlasmioTheme.colors.content,
+                                    fontWeight = FontWeight.Medium,
+                                ),
+                            cursorBrush = SolidColor(GlasmioTheme.colors.accent),
+                            lineLimits =
+                                TextFieldLineLimits.MultiLine(
+                                    minHeightInLines = 1,
+                                    maxHeightInLines = 3,
+                                ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            onKeyboardAction = { submitTitleChange() },
+                        )
+                        if (titleChanged) {
+                            GlasmioIconButton(
+                                onClick = submitTitleChange,
+                                enabled = titleEditable && !state.submitting,
+                            ) {
+                                GithubIcon(
+                                    Lucide.Check,
+                                    contentDescription = strings.SaveChanges,
+                                    size = 18.dp,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             WorkInfoSections(
                 state,
                 viewModel,

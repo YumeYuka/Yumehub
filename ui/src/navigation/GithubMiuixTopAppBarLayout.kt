@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -67,6 +68,9 @@ import androidx.compose.ui.util.lerp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
+import moe.yumeyuka.yumehub.ui.component.skeleton.LocalSkeletonShimmerEnabled
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
@@ -88,6 +92,7 @@ internal fun GithubMiuixTopAppBarLayout(
     scrollBehavior: ScrollBehavior?,
     modifier: Modifier = Modifier,
     largeTitle: String = title,
+    largeTitleLoading: Boolean = false,
     largeTitleSubtitle: String? = null,
     largeTitleMaxLines: Int = 1,
     largeTitleStyle: TextStyle? = null,
@@ -138,7 +143,8 @@ internal fun GithubMiuixTopAppBarLayout(
         }
     val collapseState = scrollBehavior?.state
     val smallTitleAlpha = remember(collapseState) { Animatable(if (smallTitleVisible) 1f else 0f) }
-    val smallTitleTranslationY = remember(collapseState) { Animatable(if (smallTitleVisible) 0f else 20f) }
+    val smallTitleTranslationY =
+        remember(collapseState) { Animatable(if (smallTitleVisible) 0f else 20f) }
 
     LaunchedEffect(collapseState, smallTitleVisible) {
         if (smallTitleVisible) {
@@ -171,21 +177,21 @@ internal fun GithubMiuixTopAppBarLayout(
                     translationY = smallTitleTranslationY.value
                 },
             ) {
-                    Text(
-                        text = title,
-                        color = animatedTitleColor,
-                        style =
-                            MiuixTheme.textStyles.title3.copy(
-                                fontFamily = GlasmioTheme.typography.bodyLarge.fontFamily,
-                            ),
-                        fontSize = MiuixTheme.textStyles.title3.fontSize,
-                        fontWeight = FontWeight.Medium,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = false,
-                        modifier =
-                            Modifier.clipTopAppBarTitle(titleClip) { titleClip.titleOrigin }
-                                .padding(horizontal = titlePadding),
-                    )
+                Text(
+                    text = title,
+                    color = animatedTitleColor,
+                    style =
+                        MiuixTheme.textStyles.title3.copy(
+                            fontFamily = GlasmioTheme.typography.bodyLarge.fontFamily,
+                        ),
+                    fontSize = MiuixTheme.textStyles.title3.fontSize,
+                    fontWeight = FontWeight.Medium,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    modifier =
+                        Modifier.clipTopAppBarTitle(titleClip) { titleClip.titleOrigin }
+                            .padding(horizontal = titlePadding),
+                )
             }
             Box(
                 Modifier.layoutId("actionIcons").padding(end = actionIconPadding),
@@ -231,9 +237,21 @@ internal fun GithubMiuixTopAppBarLayout(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     largeTitleEyebrow?.invoke()
-                    Box(Modifier.fillMaxWidth()) {
-                        val baseTitleStyle =
-                            largeTitleStyle ?: GlasmioTheme.typography.headlineLarge
+                    val baseTitleStyle = largeTitleStyle ?: GlasmioTheme.typography.headlineLarge
+                    SkeletonSwap(
+                        loading = largeTitleLoading,
+                        modifier = Modifier.fillMaxWidth(),
+                        entrance = false,
+                        placeholder = {
+                            // 未知标题先保留两行，不让路由名代替真实标题闪一下。
+                            CompositionLocalProvider(LocalSkeletonShimmerEnabled provides false) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    TextLinePlaceholder(baseTitleStyle, fraction = 0.88f)
+                                    TextLinePlaceholder(baseTitleStyle, fraction = 0.52f)
+                                }
+                            }
+                        },
+                    ) {
                         if (largeTitleStyle != null && largeTitleMaxLines > 1) {
                             BoxWithConstraints(Modifier.fillMaxWidth()) {
                                 val measurer = rememberTextMeasurer()
@@ -486,13 +504,19 @@ private fun ExpandedTitleBlock(
     content: @Composable RowScope.() -> Unit,
 ) {
     Column(
-        modifier = modifier
-            .then(
-                if (onClick == null) Modifier
-                else Modifier.clickable(interactionSource = null, indication = null, onClick = onClick)
-            )
-            .padding(horizontal = titlePadding)
-            .padding(top = GithubLargeTitleTopPadding),
+        modifier =
+            modifier
+                .then(
+                    if (onClick == null) Modifier
+                    else
+                        Modifier.clickable(
+                            interactionSource = null,
+                            indication = null,
+                            onClick = onClick,
+                        ),
+                )
+                .padding(horizontal = titlePadding)
+                .padding(top = GithubLargeTitleTopPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(

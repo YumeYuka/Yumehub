@@ -27,6 +27,7 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryEntryRowsPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryHeaderPlaceholder
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
@@ -245,10 +246,11 @@ private fun RepositoryReadmeCard(
         onHeaderClick = if (overview && path != null) ({ onOpenSource(path) }) else null,
         header = { if (overview) RepositoryOverviewReadmeHeader() },
     ) {
-        when (preview) {
-            RepositoryLoad.Loading -> RepositoryReadmePlaceholder()
-            is RepositoryLoad.Error -> Unit
-            is RepositoryLoad.Ready -> {
+        SkeletonSwap(
+            loading = preview is RepositoryLoad.Loading,
+            placeholder = { RepositoryReadmePlaceholder() },
+        ) {
+            if (preview is RepositoryLoad.Ready) {
                 GithubMarkdown(
                     "",
                     Modifier.fillMaxWidth().readmePadding(),

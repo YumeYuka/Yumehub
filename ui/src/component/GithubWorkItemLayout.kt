@@ -16,13 +16,16 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 
 internal val GithubActivityAuthorAvatarSize = 34.dp
 
+/** 卡片统计行的统一最小高度：有无参与者头像堆叠，行高都一致。 */
+internal val GithubWorkItemMetaHeight = 24.dp
+
 @Composable
 internal fun GithubActivityCardSummary(
     title: String,
     bodyPreview: String?,
     titleStyle: TextStyle = githubWorkItemTitleStyle(),
     bodyStyle: TextStyle = GlasmioTheme.textStyles.footnote,
-    titleMaxLines: Int = 3,
+    titleMaxLines: Int = 2,
 ) {
     val colors = GlasmioTheme.colors
     Column(Modifier.fillMaxWidth()) {

@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component.placeholders
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -15,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
@@ -56,14 +54,7 @@ fun WorkHeaderPlaceholder() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WorkHeaderChipWidths.forEach { width ->
-            Spacer(
-                Modifier.width(width)
-                    .height(24.dp)
-                    .clip(CircleShape)
-                    .background(
-                        GlasmioTheme.colors.content.copy(alpha = PlaceholderTokens.ContentAlpha)
-                    ),
-            )
+            Spacer(Modifier.width(width).height(24.dp).placeholderFill(CircleShape))
         }
     }
 }

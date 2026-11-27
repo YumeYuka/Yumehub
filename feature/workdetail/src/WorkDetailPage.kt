@@ -170,7 +170,8 @@ fun WorkDetailPage(
     GithubPage(
         title = state.item?.title ?: title?.takeIf(String::isNotBlank) ?: routeTitle,
         smallTitle = routeTitle,
-        titleMaxLines = 3,
+        titleMaxLines = 2,
+        titleLoading = state.item == null && state.error == null,
         titleSuffix = "#$number",
         titleStyle =
             GlasmioTheme.typography.headlineLarge.copy(
@@ -178,6 +179,10 @@ fun WorkDetailPage(
                 lineHeight = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
             ),
+        titleOnClick =
+            if (host.navigationEnabled && state.item != null) {
+                { infoVisible = true }
+            } else null,
         back = true,
         listState = listState,
         itemSpacing = if (state.section == CollaborationSection.Files) 8.dp else 12.dp,
@@ -273,6 +278,12 @@ fun WorkDetailPage(
         number = number,
         login = login,
         item = state.item,
+        titleEditable =
+            host.navigationEnabled &&
+                state.item?.viewerCanEdit == true &&
+                !state.submitting &&
+                !state.unknownField("title"),
+        onSubmitTitle = viewModel::submitTitle,
         onOpenWork = onOpenWork,
         onOpenBaseBranch =
             if (canChangeBase) {

@@ -1627,6 +1627,14 @@ internal class CollaborationDetailViewModel(
         return true
     }
 
+    fun submitTitle(title: String) {
+        val state = uiState.value
+        if (state.item?.viewerCanEdit != true || state.submitting || state.unknownField("title")) {
+            return
+        }
+        updateTitleFromEditor(title)
+    }
+
     private fun updateTitleFromEditor(title: String) {
         val snapshot =
             confirmedDetailState.data?.takeIf(detail::accepts) ?: uiState.value.item ?: return

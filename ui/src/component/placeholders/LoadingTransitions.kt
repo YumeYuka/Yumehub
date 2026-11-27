@@ -1,13 +1,9 @@
 package moe.yumeyuka.yumehub.ui.component.placeholders
 
 import android.content.res.Configuration
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -15,25 +11,18 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -43,6 +32,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import kotlin.math.roundToInt
 import moe.yumeyuka.yumehub.ui.component.LocalReadingReceipt
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
@@ -51,21 +41,14 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 private val IosEaseOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
 private val IosEaseIn = CubicBezierEasing(0.42f, 0f, 1f, 1f)
 
-internal val GithubCardEnterSpec = tween<Float>(260, easing = IosEaseOut)
+internal val GithubCardEnterSpec = tween<Float>(360, easing = IosEaseOut)
 internal val GithubCardExitSpec = tween<Float>(200, easing = IosEaseIn)
 val GithubCardSizeSpec =
     spring<IntSize>(dampingRatio = 1f, stiffness = 320f, visibilityThreshold = IntSize(1, 1))
 private val CardContentEnterSpec = tween<Float>(300, easing = IosEaseOut)
 private val CardContentExitSpec = tween<Float>(200, delayMillis = 60, easing = IosEaseIn)
-private const val HandoffMillis = 300
 
-/** 占位保持不透明，直到正文完全接管后才消失；尺寸在交接期间平滑过渡。 */
-private val ContentHandoffSize = SizeTransform { _, _ -> GithubCardSizeSpec }
-
-/**
- * 占位和正文在同一槽位里交接。前进入场期间无论是否命中缓存都只组合占位；正文就绪后从占位 上方淡入，占位保持不透明到淡入结束，所以不会出现背景空帧；容器高度用
- * [GithubCardSizeSpec] 平滑变化，不突然跳动。卡片内部晚到字段仍由 [GithubCardField] 展开。
- */
+/** 卡片只在持续加载时显示骨架。正文就绪即交接；前进期间只组合占位，不提前挂载重内容。 */
 @Composable
 fun GithubLoadingContent(
     loading: Boolean,
@@ -73,29 +56,13 @@ fun GithubLoadingContent(
     placeholder: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val pending = loading || !LocalGithubRouteEntryReady.current
-    val animate = LocalGithubCardMotionEnabled.current
-    AnimatedContent(
-        targetState = pending,
+    SkeletonSwap(
+        loading = loading,
         modifier = modifier,
-        transitionSpec = {
-            if (!animate) {
-                (EnterTransition.None togetherWith ExitTransition.None).using(null)
-            } else {
-                (fadeIn(CardContentEnterSpec) togetherWith
-                        fadeOut(tween(0, delayMillis = HandoffMillis)))
-                    .using(ContentHandoffSize)
-                    .apply { targetContentZIndex = 1f }
-            }
-        },
-        label = "loading-content",
-    ) { isPending ->
-        if (isPending) {
-            Column(Modifier.clearAndSetSemantics {}) { placeholder() }
-        } else {
-            Column { content() }
-        }
-    }
+        contentPending = loading || !LocalGithubRouteEntryReady.current,
+        placeholder = placeholder,
+        content = content,
+    )
 }
 
 @Composable
@@ -136,7 +103,7 @@ class GithubDocumentGeometry {
     }
 }
 
-/** 文档正文先按自身高度测量；可画之前占位只占恢复高度或自身高度。正文画出来后占位在正文上方 淡出，容器高度随 [GithubCardSizeSpec] 过渡，骨架不移动，也不会露出空白帧。 */
+/** 文档正文先挂载，加载期间按缓存或骨架高度占位。渲染器可画后，正文与槽高同一拍交接。 */
 @Composable
 fun GithubLoadingOverlay(
     loading: Boolean,
@@ -169,64 +136,35 @@ fun GithubLoadingOverlay(
         remember(documentKey, geometry, width, environment) {
             geometry?.heightFor(width, environment) ?: 0
         }
-    val reveal = remember(documentKey, width, environment) { Animatable(if (loading) 0f else 1f) }
-    LaunchedEffect(loading) {
-        if (loading) reveal.snapTo(0f) else reveal.animateTo(1f, CardContentEnterSpec)
-    }
     var presented by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner, presented) { if (presented) onPresented?.invoke() }
-    val settled by remember(loading) { derivedStateOf { !loading && reveal.value >= 1f } }
-    Layout(
-        modifier = modifier.animateContentSize(GithubCardSizeSpec).clipToBounds(),
-        content = {
-            Box(
-                Modifier.then(
-                        if (loading || !visible) Modifier.clearAndSetSemantics {} else Modifier,
-                    )
-                    .drawWithContent {
-                        if (!loading) {
-                            drawContent()
-                            if (visible && size.width > 0f && size.height > 0f) {
-                                if (active) {
-                                    geometry?.drawn(width, size.height.roundToInt(), environment)
-                                    if (!presented) presented = true
-                                }
-                                if (receipt != null && receipt.drawnBy !== owner)
-                                    receipt.drawnBy = owner
-                            }
-                        }
-                    },
-                propagateMinConstraints = true,
-            ) {
-                content()
-            }
-            if (!settled) {
-                Box(
-                    Modifier.graphicsLayer { alpha = 1f - reveal.value }
-                        .clearAndSetSemantics {}
-                        .pointerInput(Unit) {
-                            // Hit-test shield for the pending document; the parent can still
-                            // scroll.
-                            awaitPointerEventScope { while (true) awaitPointerEvent() }
-                        },
-                ) {
-                    placeholder()
-                }
-            }
-        },
-    ) { children, limits ->
-        val body = children[0].measure(limits)
-        val skeleton = children.getOrNull(1)?.measure(limits)
-        val height =
-            if (loading) {
-                (restored.takeIf { it > 0 } ?: skeleton?.height ?: body.height).coerceIn(
-                    limits.minHeight,
-                    limits.maxHeight,
+    SkeletonSwap(
+        loading = loading,
+        modifier = modifier,
+        contentPending = false,
+        reservedHeight = restored,
+        placeholder = placeholder,
+    ) {
+        Box(
+            Modifier.then(
+                    if (loading || !visible) Modifier.clearAndSetSemantics {} else Modifier,
                 )
-            } else body.height
-        layout(maxOf(body.width, skeleton?.width ?: 0), height) {
-            body.placeRelative(0, 0)
-            skeleton?.placeRelative(0, 0)
+                .drawWithContent {
+                    if (!loading) {
+                        drawContent()
+                        if (visible && size.width > 0f && size.height > 0f) {
+                            if (active) {
+                                geometry?.drawn(width, size.height.roundToInt(), environment)
+                                if (!presented) presented = true
+                            }
+                            if (receipt != null && receipt.drawnBy !== owner)
+                                receipt.drawnBy = owner
+                        }
+                    }
+                },
+            propagateMinConstraints = true,
+        ) {
+            content()
         }
     }
 }

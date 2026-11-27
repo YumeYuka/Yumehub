@@ -37,13 +37,17 @@ import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardEnterSpec
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonShimmerHost
 import moe.yumeyuka.yumehub.ui.navigation.GithubPagingRevalidationBinding
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.GithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
+import moe.yumeyuka.yumehub.ui.navigation.rememberGithubSkeletonEntrance
 
 private val LocalPagingContentKey = staticCompositionLocalOf<Any?> { null }
 private val LocalPrimaryPagingItems = staticCompositionLocalOf<LazyPagingItems<*>?> { null }
@@ -127,13 +131,15 @@ fun <T : Any> GithubPagingContent(
                 GithubPagingRevalidationBinding(revalidation, it)
             },
     ) {
-        content(
-            GithubPagingPresentation(
-                items,
-                listState,
-                loading,
-            ),
-        )
+        SkeletonShimmerHost {
+            content(
+                GithubPagingPresentation(
+                    items,
+                    listState,
+                    loading,
+                ),
+            )
+        }
     }
 }
 
@@ -152,6 +158,7 @@ internal constructor(
     internal val live: Boolean,
     internal val drawHistory: PagingDrawHistory,
     internal val insertedKeys: Set<String>,
+    internal val entrance: GithubSkeletonEntrance,
 ) {
     val size: Int
         get() = keys.size
@@ -223,6 +230,7 @@ fun <T : Any> rememberGithubPagingSlots(
             refreshOwner,
             *refreshDomains.toTypedArray(),
             refreshOnFirstActivation = false,
+            refreshOnExpiry = false,
             pollWhileVisible = pollWhileVisible,
         ) {
             items.refresh()
@@ -243,6 +251,7 @@ fun <T : Any> rememberGithubPagingSlots(
     val emptyResult =
         !blocked && !showSkeleton && snapshot.isEmpty() && (hasResult || previous.value != null)
     val history = remember(frameKey, items) { PagingDrawHistory() }
+    val entrance = rememberGithubSkeletonEntrance(frameKey)
     val keySet = remember(keys) { keys.toSet() }
     val inserted =
         remember(history, keySet) {
@@ -251,7 +260,16 @@ fun <T : Any> rememberGithubPagingSlots(
     SideEffect { history.lastKeys = keySet }
     val live = !blocked && hasResult
     return remember(items, snapshot, keys, emptyResult, live, history, inserted) {
-        GithubPagingSlots(items, snapshot, keys, emptyResult, live, history, inserted)
+        GithubPagingSlots(
+            items,
+            snapshot,
+            keys,
+            emptyResult,
+            live,
+            history,
+            inserted,
+            entrance,
+        )
     }
 }
 
@@ -293,10 +311,11 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
             slots.items[index]
         }
         val item = slots.snapshot.getOrNull(index)
+        // 恢复不是入场：已呈现过的行直接绘制，交接只由槽内的卡片负责，不再叠整行淡入。
+        val history = slots.drawHistory
         val motion =
             if (item != null && slots.keys[index] in slots.insertedKeys) githubCardItemMotion()
             else Modifier
-        val history = slots.drawHistory
         val receipt =
             if (active && item != null && !history.hasDrawn)
                 Modifier.drawWithContent {
@@ -314,8 +333,10 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
                         progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
                     }
                 }
-        Box(motion.then(receipt).then(semantics)) {
-            itemContent(item, index, slots.keys.size)
+        CompositionLocalProvider(LocalGithubSkeletonEntrance provides slots.entrance) {
+            Box(motion.then(receipt).then(semantics)) {
+                itemContent(item, index, slots.keys.size)
+            }
         }
     }
     if (reading) {

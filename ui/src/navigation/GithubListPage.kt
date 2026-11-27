@@ -107,6 +107,7 @@ internal fun GithubListPage(
     topBarState: TopAppBarState? = null,
     modifier: Modifier = Modifier,
     showTitle: Boolean = true,
+    titleLoading: Boolean = false,
     smallTitle: String? = null,
     titleLeading: (@Composable () -> Unit)? = null,
     titleSubtitle: String? = null,
@@ -188,6 +189,7 @@ internal fun GithubListPage(
                     GithubTopBar(
                         title = smallTitle ?: if (showTitle) title else "",
                         largeTitle = if (showTitle) title else "",
+                        largeTitleLoading = titleLoading,
                         largeTitleLeading = titleLeading,
                         largeTitleSubtitle = titleSubtitle,
                         largeTitleMaxLines = titleMaxLines,

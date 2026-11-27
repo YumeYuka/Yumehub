@@ -63,6 +63,7 @@ fun GithubPage(
     title: String,
     back: Boolean = true,
     showTitle: Boolean = true,
+    titleLoading: Boolean = false,
     smallTitle: String? = null,
     titleLeading: (@Composable () -> Unit)? = null,
     titleSubtitle: String? = null,
@@ -124,6 +125,7 @@ fun GithubPage(
         GithubListPage(
             title = title,
             showTitle = showTitle,
+            titleLoading = titleLoading,
             smallTitle = smallTitle,
             titleLeading = titleLeading,
             titleSubtitle = titleSubtitle,

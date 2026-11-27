@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import moe.yumeyuka.yumehub.ui.component.skeleton.skeletonRow
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 
 /** 统一卡片宽度、内容边距与操作区，正文按类型和实际内容自然增高。 */
@@ -70,15 +71,12 @@ internal fun GithubActivityCardContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Box(
-                Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.CenterStart,
-            ) {
+            cover?.let { Box(Modifier.skeletonRow()) { it() } }
+            Box(Modifier.fillMaxWidth().skeletonRow(), contentAlignment = Alignment.CenterStart) {
                 header()
             }
-            summary?.let { it() }
-            cover?.invoke()
-            metadata?.let { it() }
+            summary?.let { Box(Modifier.skeletonRow()) { it() } }
+            metadata?.let { Box(Modifier.skeletonRow()) { it() } }
         }
         action?.let {
             Column(

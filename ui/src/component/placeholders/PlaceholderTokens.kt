@@ -7,6 +7,9 @@ object PlaceholderTokens {
     /** 骨架块相对内容色的透明度，浅色与深色主题共用。 */
     const val ContentAlpha = 0.08f
 
+    /** 扫光带的峰值透明度；与底色同为内容色，只靠透明度差形成一道柔光。 */
+    const val HighlightAlpha = 0.16f
+
     /** 行内色块圆角，与正文行高无关。 */
     val BlockCorner = 4.dp
 

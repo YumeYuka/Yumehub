@@ -27,21 +27,22 @@ import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseDetail
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
+import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
 import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
 import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
-import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
+import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseMetadataPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
@@ -99,14 +100,23 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
     val assetSlots =
         if (version != null && assets != null) {
             rememberGithubPagingSlots(
-                assets, "release-assets:${version.id}", autoRefresh = false,
-                accessDenied = (assetsRevalidation as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
+                assets,
+                "release-assets:${version.id}",
+                autoRefresh = false,
+                accessDenied =
+                    (assetsRevalidation as? RevalidationState.Failed)
+                        ?.error
+                        ?.invalidatesCachedContent() == true,
             ) {
                 it.id
             }
         } else null
-    val title = version?.title ?: state.selectedVersion?.title ?: route.tag ?: strings.Repository.Releases
-    val listState = LocalGithubPageState.current?.listState("release:${version?.id ?: state.selectedVersion?.id ?: route.tag.orEmpty()}")
+    val title =
+        version?.title ?: state.selectedVersion?.title ?: route.tag ?: strings.Repository.Releases
+    val listState =
+        LocalGithubPageState.current?.listState(
+            "release:${version?.id ?: state.selectedVersion?.id ?: route.tag.orEmpty()}",
+        )
     GithubLoadFailureToast(state.failure, strings.Release.LoadFailed)
     GithubLoadFailureToast(
         (assets?.loadState?.refresh as? LoadState.Error)
@@ -120,60 +130,81 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         listState = listState,
         itemSpacing = 0.dp,
         contentHeader = {
-            if (detail != null) ReleaseMetadata(detail, host.navigationEnabled, Modifier.padding(bottom = 12.dp))
-            else if (state.loading) ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp))
+            SkeletonSwap(
+                loading = detail == null,
+                placeholder = { ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp)) },
+            ) {
+                detail?.let {
+                    ReleaseMetadata(it, host.navigationEnabled, Modifier.padding(bottom = 12.dp))
+                }
+            }
         },
         actions = {
             GithubToolbarActions(
-                toolbarIcon(Lucide.RotateCcwClock, strings.Release.Timeline, host.navigationEnabled) {
+                toolbarIcon(
+                    Lucide.RotateCcwClock,
+                    strings.Release.Timeline,
+                    host.navigationEnabled,
+                ) {
                     if (host.navigationEnabled) showTimeline = true
                 },
             )
         },
     ) {
-        if (state.failure != null) item(key = "release-detail-error") {
-            GlasmioGroupedList {
-                GlasmioListRow(title = strings.Release.LoadFailed, detail = strings.Common.Retry, onClick = viewModel::retry)
+        if (state.failure != null)
+            item(key = "release-detail-error") {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = strings.Release.LoadFailed,
+                        detail = strings.Common.Retry,
+                        onClick = viewModel::retry,
+                    )
+                }
             }
-        }
-        if (detail == null && state.result != null && state.failure == null) item(key = "release-empty") {
-            GlasmioGroupedList { GlasmioListRow(title = strings.Release.Empty) }
-        }
+        if (detail == null && state.result != null && state.failure == null)
+            item(key = "release-empty") {
+                GlasmioGroupedList { GlasmioListRow(title = strings.Release.Empty) }
+            }
         if (detail != null || state.loading) {
             readingItem(key = "release-body") {
                 GithubReadingGroup(documentKey = detail?.html?.takeIf(String::isNotBlank)) {
-                    if (detail == null) {
-                        GithubMarkdownPlaceholder(Modifier.padding(16.dp), compact = true)
-                        return@GithubReadingGroup
-                    }
-                    when {
-                        detail.html.isNullOrBlank() ->
-                            Text(
-                                text = strings.Release.NoNotes,
-                                modifier = Modifier.padding(16.dp),
-                                style = GlasmioTheme.textStyles.body,
-                                color = GlasmioTheme.colors.secondaryContent,
-                            )
-                        else ->
-                            GithubMarkdown(
-                                text = "",
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                html = detail.html,
-                                nodeId = detail.version.id,
-                                pageUrl = detail.url,
-                                repositoryRootUrl = detail.repositoryUrl,
-                            )
-                    }
-                    if (detail.canReact || detail.reactions.isNotEmpty()) GithubReadingFooter {
-                        GithubReactionBar(
-                            subjectKey = detail.version.id,
-                            sourceReactions = detail.reactions,
-                            canReact = detail.canReact,
-                            enabled = host.navigationEnabled && !state.loading,
-                            updates = viewModel.reactionUpdates,
-                        ) { content, reacted ->
-                            viewModel.toggleReaction(detail.version.id, content, reacted)
+                    SkeletonSwap(
+                        loading = detail == null,
+                        placeholder = {
+                            GithubMarkdownPlaceholder(Modifier.padding(16.dp), compact = true)
+                        },
+                    ) {
+                        val value = detail ?: return@SkeletonSwap
+                        when {
+                            value.html.isNullOrBlank() ->
+                                Text(
+                                    text = strings.Release.NoNotes,
+                                    modifier = Modifier.padding(16.dp),
+                                    style = GlasmioTheme.textStyles.body,
+                                    color = GlasmioTheme.colors.secondaryContent,
+                                )
+                            else ->
+                                GithubMarkdown(
+                                    text = "",
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    html = value.html,
+                                    nodeId = value.version.id,
+                                    pageUrl = value.url,
+                                    repositoryRootUrl = value.repositoryUrl,
+                                )
                         }
+                        if (value.canReact || value.reactions.isNotEmpty())
+                            GithubReadingFooter {
+                                GithubReactionBar(
+                                    subjectKey = value.version.id,
+                                    sourceReactions = value.reactions,
+                                    canReact = value.canReact,
+                                    enabled = host.navigationEnabled && !state.loading,
+                                    updates = viewModel.reactionUpdates,
+                                ) { content, reacted ->
+                                    viewModel.toggleReaction(value.version.id, content, reacted)
+                                }
+                            }
                     }
                 }
             }

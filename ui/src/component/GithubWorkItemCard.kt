@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -33,14 +36,17 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
 
-/** 议题和拉取请求沿用讨论列表的作者、摘要与底部统计布局。 */
+/** 议题和拉取请求卡片尺寸固定：标题两行槽、统计行等高，骨架与正文等高交接。 */
 @Composable
 fun GithubWorkItemCard(
     item: CollaborationItemDto?,
     kind: CollaborationKind,
     onClick: (() -> Unit)? = null,
 ) {
-    GithubLoadingCard(loading = item == null, placeholder = { WorkItemSkeleton() }) {
+    GithubLoadingCard(
+        loading = item == null,
+        placeholder = { WorkItemSkeleton(showBodyPreview = false) },
+    ) {
         if (item != null) WorkItemContent(item, kind, onClick)
     }
 }
@@ -73,29 +79,20 @@ private fun WorkItemContent(
             }
         },
         summary = {
-            Column {
-                GithubActivityCardSummary(shown.title, shown.bodyPreview, titleMaxLines = 2)
-                GithubCardField(workMergeProgress(write.mergePhase)) {
-                    Text(
-                        it,
-                        Modifier.padding(top = 10.dp),
-                        style = GlasmioTheme.textStyles.caption1,
-                    )
-                }
-                GithubCardField(shown.subIssuesTotal?.takeIf { it > 0 }) { total ->
-                    GithubWorkItemMeta(
-                        Lucide.ListChecks,
-                        "${shown.subIssuesCompleted ?: 0}/$total",
-                        Modifier.padding(top = 10.dp),
-                    )
-                }
-            }
+            Text(
+                shown.title,
+                style = githubWorkItemTitleStyle(),
+                color = GlasmioTheme.colors.content,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         },
         metadata = {
             val comments = strings.WorkList.CommentsCount(item.commentsCount)
             val participants = item.participantsCount?.let(strings.WorkList.ParticipantsCount)
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().heightIn(min = GithubWorkItemMetaHeight),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -103,9 +100,25 @@ private fun WorkItemContent(
                     Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     GithubWorkItemMeta(Lucide.MessageSquare, comments)
                     GithubCardField(participants) { GithubWorkItemMeta(Lucide.UsersRound, it) }
+                    GithubCardField(shown.subIssuesTotal?.takeIf { it > 0 }) { total ->
+                        GithubWorkItemMeta(
+                            Lucide.ListChecks,
+                            "${shown.subIssuesCompleted ?: 0}/$total",
+                        )
+                    }
+                    GithubCardField(workMergeProgress(write.mergePhase)) {
+                        Text(
+                            it,
+                            style = GlasmioTheme.textStyles.caption1,
+                            color = GlasmioTheme.colors.secondaryContent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 GithubCardField(
                     item.participantAvatars.takeIf {
@@ -197,7 +210,7 @@ private fun GithubWorkItemMeta(icon: ImageVector, text: String, modifier: Modifi
 }
 
 @Composable
-internal fun WorkItemSkeleton() {
+internal fun WorkItemSkeleton(showBodyPreview: Boolean = true) {
     val styles = GlasmioTheme.textStyles
     Column(
         Modifier.fillMaxWidth().padding(16.dp),
@@ -208,7 +221,8 @@ internal fun WorkItemSkeleton() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AvatarPlaceholder(GithubActivityAuthorAvatarSize)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // 真实头部两行文本直接按 lineHeight 堆叠，没有额外间距；这里同样只占行槽。
+            Column(Modifier.weight(1f)) {
                 TextLinePlaceholder(styles.subheadline, fraction = 0.34f)
                 TextLinePlaceholder(styles.caption1, fraction = 0.5f)
             }
@@ -219,18 +233,25 @@ internal fun WorkItemSkeleton() {
                 corner = PlaceholderTokens.BlockCorner,
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column {
+            // 标题固定两行槽，骨架与正文等高。
             TextLinePlaceholder(githubWorkItemTitleStyle(), fraction = 0.76f)
-            TextLinePlaceholder(styles.footnote, fraction = 0.92f)
-            TextLinePlaceholder(styles.footnote, fraction = 0.58f)
+            TextLinePlaceholder(githubWorkItemTitleStyle(), fraction = 0.52f)
+            if (showBodyPreview) {
+                // 摘要正文与真实正文一样只在标题下留 4dp，行与行之间由 lineHeight 堆叠。
+                Spacer(Modifier.height(4.dp))
+                TextLinePlaceholder(styles.footnote, fraction = 0.92f)
+                TextLinePlaceholder(styles.footnote, fraction = 0.78f)
+                TextLinePlaceholder(styles.footnote, fraction = 0.58f)
+            }
         }
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().heightIn(min = GithubWorkItemMetaHeight),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextLinePlaceholder(styles.footnote, Modifier.width(112.dp))
-            AvatarPlaceholder(24.dp)
+            AvatarPlaceholder(GithubWorkItemMetaHeight)
         }
     }
 }

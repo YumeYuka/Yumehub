@@ -25,6 +25,7 @@ fun GithubRefreshEffect(
     owner: Any,
     vararg domains: DataDomain,
     refreshOnFirstActivation: Boolean = true,
+    refreshOnExpiry: Boolean = true,
     enabled: Boolean = true,
     pollWhileVisible: Boolean = false,
     onRefresh: () -> Unit,
@@ -43,7 +44,7 @@ fun GithubRefreshEffect(
     val refresh by rememberUpdatedState(onRefresh)
     val dependencies by rememberUpdatedState(domains.toSet())
     val refreshEnabled by rememberUpdatedState(enabled)
-    LaunchedEffect(owner, lifecycle, host, changes, pollWhileVisible) {
+    LaunchedEffect(owner, lifecycle, host, changes, pollWhileVisible, refreshOnExpiry) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             combine(
                     snapshotFlow { host?.isCurrent != false && refreshEnabled },
@@ -55,7 +56,14 @@ fun GithubRefreshEffect(
                 .collectLatest { (active, versions) ->
                     if (!active) return@collectLatest
                     do {
-                        if (gate.acquire(monotonicMillis(), versions, refreshOnFirstActivation)) {
+                        if (
+                            gate.acquire(
+                                monotonicMillis(),
+                                versions,
+                                refreshOnFirstActivation,
+                                refreshOnExpiry,
+                            )
+                        ) {
                             refresh()
                         }
                         if (pollWhileVisible) {
@@ -83,9 +91,17 @@ internal class PageRefreshGate {
         now: Long,
         current: Map<DataDomain, Long>,
         refreshInitially: Boolean = true,
+        refreshOnExpiry: Boolean = true,
     ): Boolean {
         val previous = checkedAt
-        if (millisUntilNextCheck(now) > 0L && current == versions) return false
+        if (current == versions) {
+            if (previous == null) {
+                checkedAt = now
+                versions = current.toMap()
+                return refreshInitially
+            }
+            if (!refreshOnExpiry || millisUntilNextCheck(now) > 0L) return false
+        }
         checkedAt = now
         versions = current.toMap()
         return previous != null || refreshInitially

@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.ui.component.placeholders
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
@@ -34,12 +32,7 @@ fun RepositoryCardPlaceholderContent(showCover: Boolean = false) {
                     Spacer(
                         Modifier.fillMaxWidth()
                             .aspectRatio(1.91f)
-                            .background(
-                                GlasmioTheme.colors.content.copy(
-                                    alpha = PlaceholderTokens.ContentAlpha,
-                                ),
-                                RepositoryCoverShape,
-                            ),
+                            .placeholderFill(RepositoryCoverShape),
                     )
                 }
             } else null,
@@ -139,10 +132,5 @@ private fun RepositoryEntryRowPlaceholder(showTopSeparator: Boolean) {
 /** 元信息按钮的紧凑占位。 */
 @Composable
 private fun PillPlaceholder(modifier: Modifier = Modifier) {
-    Spacer(
-        modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(GlasmioTheme.colors.content.copy(alpha = PlaceholderTokens.ContentAlpha)),
-    )
+    Spacer(modifier.height(28.dp).placeholderFill(RoundedCornerShape(14.dp)))
 }

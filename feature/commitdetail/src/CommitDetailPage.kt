@@ -35,6 +35,7 @@ import moe.yumeyuka.yumehub.ui.component.placeholders.CommitAuthorPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.navigation.*
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
@@ -110,10 +111,11 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
         if (!information) {
             if (readyDetail != null || !state.failed) {
                 readingItem(key = "commit-author") {
-                    if (readyDetail == null) {
-                        CommitAuthorPlaceholder()
-                    } else {
-                        val detail = readyDetail
+                    SkeletonSwap(
+                        loading = readyDetail == null,
+                        placeholder = { CommitAuthorPlaceholder() },
+                    ) {
+                        val detail = readyDetail ?: return@SkeletonSwap
                         GlasmioGroupedList {
                             GlasmioListRow(
                                 title = detail.author ?: strings.Workspaces.UnknownAuthor,

@@ -29,6 +29,7 @@ import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.placeholders.*
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
@@ -184,17 +185,21 @@ internal fun ProfileReadmeContent(profile: ProfileDto?) {
         "$repositoryUrl/blob/HEAD/${Uri.encode(path, "/")}"
     }
     GithubReadingGroup(documentKey = readme) {
-        if (profile == null) ReadmePlaceholder()
-        else if (readme != null)
-            GithubMarkdown(
-                text = "",
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                pageUrl = pageUrl,
-                repositoryRootUrl = repositoryUrl,
-                html = readme,
-                readme = true,
-                transparentBackground = true,
-            )
+        SkeletonSwap(
+            loading = profile == null,
+            placeholder = { ReadmePlaceholder() },
+        ) {
+            if (readme != null)
+                GithubMarkdown(
+                    text = "",
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    pageUrl = pageUrl,
+                    repositoryRootUrl = repositoryUrl,
+                    html = readme,
+                    readme = true,
+                    transparentBackground = true,
+                )
+        }
     }
 }
 

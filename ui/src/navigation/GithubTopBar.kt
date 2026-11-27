@@ -27,6 +27,7 @@ internal fun GithubTopBar(
     isContentScrolled: Boolean,
     modifier: Modifier = Modifier,
     largeTitle: String = title,
+    largeTitleLoading: Boolean = false,
     largeTitleLeading: (@Composable () -> Unit)? = null,
     largeTitleSubtitle: String? = null,
     largeTitleMaxLines: Int = 1,
@@ -48,6 +49,7 @@ internal fun GithubTopBar(
         GithubMiuixGlassTopAppBar(
             title = title,
             largeTitle = largeTitle,
+            largeTitleLoading = largeTitleLoading,
             largeTitleLeading = largeTitleLeading,
             largeTitleSubtitle = largeTitleSubtitle,
             largeTitleMaxLines = largeTitleMaxLines,

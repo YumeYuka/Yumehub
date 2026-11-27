@@ -143,10 +143,7 @@ private fun MarkdownPlaceholderCodeBlock() {
 @Composable
 private fun MarkdownPlaceholderBlock(modifier: Modifier, height: Dp) {
     Spacer(
-        modifier
-            .height(height)
-            .clip(RoundedCornerShape(PlaceholderTokens.BlockCorner))
-            .background(markdownPlaceholderColor()),
+        modifier.height(height).placeholderFill(RoundedCornerShape(PlaceholderTokens.BlockCorner)),
     )
 }
 

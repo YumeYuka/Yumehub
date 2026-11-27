@@ -36,23 +36,13 @@ internal fun WorkEditMenu(
     GlasmioMenu(
         expanded = expanded,
         onExpandedChange = { expanded = it },
-        itemCount = 3,
+        itemCount = 2,
         anchor = { open ->
             GlasmioIconButton(onClick = open, enabled = available) {
                 GithubIcon(Lucide.Pencil, contentDescription = strings.EditProperty)
             }
         },
     ) { backdrop, close ->
-        GlasmioMenuItem(
-            title = strings.EditTitle,
-            backdrop = backdrop,
-            enabled = available && item?.viewerCanEdit == true && !state.unknownField("title"),
-            icon = { GithubIcon(Lucide.Pencil, contentDescription = null, size = 20.dp) },
-            onClick = {
-                close()
-                viewModel.openTitleEditor()
-            },
-        )
         GlasmioMenuItem(
             title =
                 if (item?.locked == true) strings.UnlockConversation else strings.LockConversation,
