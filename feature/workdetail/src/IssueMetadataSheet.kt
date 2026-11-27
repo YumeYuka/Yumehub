@@ -70,19 +70,18 @@ internal fun IssueMetadataSheet(
                 !state.conflict &&
                 choices != null &&
                 selected.toSet() != choices.selected.toSet(),
+        loading = state.loading && choices == null && fields == null,
+        loadingPlaceholder = {
+            GlasmioGroupedList {
+                TextLinePlaceholder(
+                    GlasmioTheme.textStyles.body,
+                    Modifier.padding(16.dp),
+                    fraction = 0.55f,
+                )
+            }
+        },
     ) {
         if (panel == null) return@GithubSearchSelectionSheet
-        if (state.loading && choices == null && fields == null) {
-            item("loading") {
-                GlasmioGroupedList {
-                    TextLinePlaceholder(
-                        GlasmioTheme.textStyles.body,
-                        Modifier.padding(16.dp),
-                        fraction = 0.55f,
-                    )
-                }
-            }
-        }
         if (state.loadFailed || state.conflict || state.saveFailed || state.uncertain) {
             item("error") {
                 IssueMetadataError(

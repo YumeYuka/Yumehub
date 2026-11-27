@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -82,9 +83,16 @@ fun WorkspacesPage(
     val entries = (state.entries as? WorkspacesLoad.Ready)?.value.orEmpty()
     val entriesLoading =
         state.repository is WorkspacesLoad.Loading || state.entries is WorkspacesLoad.Loading
+    var activeRef by remember { mutableStateOf(state.ref) }
+    var branchEpoch by remember { mutableIntStateOf(0) }
+    val currentRef = state.ref
+    if (currentRef != null && currentRef != activeRef) {
+        if (activeRef != null) branchEpoch++
+        activeRef = currentRef
+    }
     val entrySlots =
-        remember(state.ref, state.path) {
-            GithubPagingSlotKeys("workspaces:${state.ref}:${state.path}")
+        remember(branchEpoch, state.path) {
+            GithubPagingSlotKeys("workspaces:$branchEpoch:${state.path}")
         }
     val entryKeys =
         remember(entrySlots, entries, entriesLoading) {

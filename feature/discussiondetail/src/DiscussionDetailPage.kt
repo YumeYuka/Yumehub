@@ -41,6 +41,7 @@ import moe.yumeyuka.yumehub.locale.GithubTxt
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.navigation.*
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
@@ -147,11 +148,15 @@ fun DiscussionDetailPage(
             }
         if (detail != null || !state.failed) {
             readingItem(key = "discussion-body") {
-                if (detail == null)
-                    GithubReadingGroup {
-                        GithubThreadContentPlaceholder(showTitle = route.parentId == null)
-                    }
-                else {
+                GithubLoadingContent(
+                    loading = detail == null,
+                    placeholder = {
+                        GithubReadingGroup {
+                            GithubThreadContentPlaceholder(showTitle = route.parentId == null)
+                        }
+                    },
+                ) {
+                    if (detail == null) return@GithubLoadingContent
                     val parent = detail.parent
                     if (parent != null)
                         DiscussionCommentCard(

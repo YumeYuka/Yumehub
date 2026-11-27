@@ -1,7 +1,5 @@
 package moe.yumeyuka.yumehub.feature.editor
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,6 +26,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubCodeTextEditor
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReadingTextPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
 import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
@@ -37,8 +36,6 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorBackdropSource
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorContentInsets
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorHeaderHeight
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-
-private val FileReadFade = tween<Float>(220)
 
 @Composable
 fun EditorPage(session: GithubEditorSession) {
@@ -167,28 +164,25 @@ internal fun EditorFileReadContent(
     content: @Composable () -> Unit,
 ) {
     val contentInsets = LocalGithubEditorContentInsets.current
-    Crossfade(
-        targetState = status,
+    GithubLoadingContent(
+        loading = status == GithubFileReadStatus.Loading,
         modifier = modifier,
-        animationSpec = FileReadFade,
-        label = "editor-file-read",
-    ) { displayedStatus ->
-        when (displayedStatus) {
-            GithubFileReadStatus.Loading ->
-                ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp))
+        placeholder = { ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp)) },
+    ) {
+        when (status) {
             is GithubFileReadStatus.Failed -> {
                 GlasmioGroupedList(Modifier.padding(contentInsets).padding(16.dp)) {
-                    GlasmioListRow(title = displayedStatus.message, systemName = null)
-                    displayedStatus.retry?.let { retry ->
+                    GlasmioListRow(title = status.message, systemName = null)
+                    status.retry?.let { retry ->
                         GlasmioListRow(
                             title = LocalGithubStrings.current.Common.Retry,
-                            enabled = status === displayedStatus,
                             onClick = retry,
                         )
                     }
                 }
             }
-            else -> if (showEditor) content() else Unit
+            null -> if (showEditor) content() else Unit
+            GithubFileReadStatus.Loading -> Unit
         }
     }
 }

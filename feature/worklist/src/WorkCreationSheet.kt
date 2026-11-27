@@ -446,14 +446,15 @@ internal fun WorkCreationSheet(
             assigneesVisible = false
         },
         enabled = !submitting,
+        loading = assigneePicker.loading && visibleAssignees.isEmpty(),
+        loadingPlaceholder = {
+            GlasmioGroupedList {
+                repeat(4) { index -> TitleRowPlaceholder(showTopSeparator = index > 0) }
+            }
+        },
     ) {
         when {
-            assigneePicker.loading && visibleAssignees.isEmpty() ->
-                item {
-                    GlasmioGroupedList {
-                        repeat(4) { index -> TitleRowPlaceholder(showTopSeparator = index > 0) }
-                    }
-                }
+            assigneePicker.loading && visibleAssignees.isEmpty() -> Unit
             assigneePicker.failed && visibleAssignees.isEmpty() ->
                 item {
                     GlasmioGroupedList {

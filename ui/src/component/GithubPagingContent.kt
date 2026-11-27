@@ -37,7 +37,6 @@ import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardEnterSpec
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonShimmerHost
 import moe.yumeyuka.yumehub.ui.navigation.GithubPagingRevalidationBinding
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.GithubSkeletonEntrance
@@ -131,15 +130,7 @@ fun <T : Any> GithubPagingContent(
                 GithubPagingRevalidationBinding(revalidation, it)
             },
     ) {
-        SkeletonShimmerHost {
-            content(
-                GithubPagingPresentation(
-                    items,
-                    listState,
-                    loading,
-                ),
-            )
-        }
+        content(GithubPagingPresentation(items, listState, loading))
     }
 }
 

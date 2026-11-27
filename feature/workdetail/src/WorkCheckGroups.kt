@@ -17,6 +17,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubWorkflowRow
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 
 @Composable
 internal fun WorkCheckGroups(
@@ -114,21 +115,29 @@ internal fun WorkCheckGroups(
                 }
             }
         }
-        when {
-            failure != null ->
-                GlasmioGroupedList {
-                    GlasmioListRow(title = strings.Common.Retry, onClick = pages::retry)
-                }
-            (loads.refresh is LoadState.Loading && snapshot.isEmpty()) ||
-                loads.append is LoadState.Loading ||
-                loads.prepend is LoadState.Loading -> GlasmioGroupedList { ListRowPlaceholder() }
-            groups.isNotEmpty() && !loads.append.endOfPaginationReached ->
-                GlasmioGroupedList {
-                    GlasmioListRow(
-                        title = strings.Activity.LoadMoreItems,
-                        onClick = { if (pages.itemCount > 0) pages[pages.itemCount - 1] },
-                    )
-                }
+        val loading =
+            failure == null &&
+                (loads.refresh is LoadState.Loading && snapshot.isEmpty() ||
+                    loads.append is LoadState.Loading ||
+                    loads.prepend is LoadState.Loading)
+        val hasMore = groups.isNotEmpty() && !loads.append.endOfPaginationReached
+        SkeletonSwap(
+            loading = loading,
+            placeholder = { GlasmioGroupedList { ListRowPlaceholder() } },
+        ) {
+            when {
+                failure != null ->
+                    GlasmioGroupedList {
+                        GlasmioListRow(title = strings.Common.Retry, onClick = pages::retry)
+                    }
+                hasMore ->
+                    GlasmioGroupedList {
+                        GlasmioListRow(
+                            title = strings.Activity.LoadMoreItems,
+                            onClick = { if (pages.itemCount > 0) pages[pages.itemCount - 1] },
+                        )
+                    }
+            }
         }
     }
 }

@@ -34,6 +34,7 @@ import moe.yumeyuka.yumehub.ui.component.RetainVisibleMarkdownCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingOverlay
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 /** One document slot for body cards, READMEs and retained editor previews, independent of backend. */
 @Composable
@@ -51,12 +52,18 @@ internal fun MarkdownSurface(
 ) {
     val page = LocalGithubPageHost.current
     val active = hostActive && page?.isCurrent != false
+    val routeReady = LocalGithubRouteEntryReady.current
     // A hidden editor preview keeps its DOM/scroll, but does not follow edits or fetch a draft.
     var lastVisible by remember { mutableStateOf(content) }
     if (visible && content != lastVisible) SideEffect { lastVisible = content }
     val request = if (visible) content else lastVisible
-    val state = rememberNativeMarkdownDocument(request, repository, isCurrentAccount,
-        requestEnabled = visible && active)
+    val state =
+        rememberNativeMarkdownDocument(
+            request,
+            repository,
+            isCurrentAccount,
+            requestEnabled = routeReady && visible && active,
+        )
     val strings = LocalGithubStrings.current
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -76,7 +83,10 @@ internal fun MarkdownSurface(
             var drawable by remember { mutableStateOf(false) }
             var renderFailed by remember { mutableStateOf(false) }
             val document = state.document
-            val style = if (native) rememberNativeMarkdownStyles(request.transparentBackground, state.revision) else null
+            val style =
+                if (native && routeReady)
+                    rememberNativeMarkdownStyles(request.transparentBackground, state.revision)
+                else null
             val failure = when {
                 renderFailed || style?.failed == true || state.failure == NativeMarkdownFailure.PARSE -> strings.Markdown.RenderingFailed
                 state.failure == NativeMarkdownFailure.FETCH -> if (viewport) strings.Markdown.PreviewLoadFailed else strings.Markdown.LoadFailed
@@ -85,7 +95,7 @@ internal fun MarkdownSurface(
             val bodyVisible = visible && active && inViewport && drawable && failure == null
             if (!viewport) RetainVisibleMarkdownCard(bodyVisible)
             GithubLoadingOverlay(
-                loading = !drawable && failure == null,
+                loading = !routeReady || !drawable && failure == null,
                 documentKey = state.revision,
                 layoutWidth = width,
                 layoutKey = native,
@@ -98,6 +108,7 @@ internal fun MarkdownSurface(
                     else GithubMarkdownPlaceholder(compact = true)
                 },
             ) {
+                if (!routeReady) return@GithubLoadingOverlay
                 if (failure != null) {
                     Box(Modifier.padding(contentPadding)) {
                         GlasmioListRow(

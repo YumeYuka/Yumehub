@@ -18,6 +18,7 @@ import io.github.yumeyucca.lucide.Search
 import io.github.yumeyucca.lucide.X
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -33,6 +34,8 @@ fun GithubSearchSelectionSheet(
     confirmEnabled: Boolean = true,
     showConfirm: Boolean = true,
     requestClose: Boolean = false,
+    loading: Boolean = false,
+    loadingPlaceholder: (@Composable () -> Unit)? = null,
     content: LazyListScope.(finishSelection: (() -> Unit) -> Unit) -> Unit,
 ) {
     val common = LocalGithubStrings.current.Common
@@ -131,18 +134,31 @@ fun GithubSearchSelectionSheet(
         Box(
             Modifier.fillMaxSize().padding(LocalGlasmioSheetContentPadding.current).padding(12.dp),
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = visible && enabled,
-                contentPadding =
-                    PaddingValues(
-                        bottom =
-                            if (searching) with(contentDensity) { toolbarHeight.toDp() + 12.dp }
-                            else 0.dp,
-                    ),
-            ) {
-                content(finish)
+            val results: @Composable () -> Unit = {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = visible && enabled,
+                    contentPadding =
+                        PaddingValues(
+                            bottom =
+                                if (searching) with(contentDensity) { toolbarHeight.toDp() + 12.dp }
+                                else 0.dp,
+                        ),
+                ) {
+                    content(finish)
+                }
+            }
+            if (loadingPlaceholder != null) {
+                SkeletonSwap(
+                    loading = loading,
+                    modifier = Modifier.fillMaxSize(),
+                    entrance = false,
+                    placeholder = loadingPlaceholder,
+                    content = results,
+                )
+            } else {
+                results()
             }
             if (searching)
                 GlasmioSearchToolbar(

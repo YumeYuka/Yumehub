@@ -1,24 +1,16 @@
 package moe.yumeyuka.yumehub.ui.component.skeleton
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.BlurEffect
@@ -48,8 +40,6 @@ object SkeletonTiming {
     internal val SwapSpec =
         spring(dampingRatio = 1.1787f, stiffness = 325f, visibilityThreshold = 0.001f)
     internal val MaxHeightTravel = 320.dp
-
-    val ShimmerSpec = tween<Float>(1600, easing = FastOutSlowInEasing)
 }
 
 private const val BodySlot = "skeleton-swap-body"
@@ -78,20 +68,21 @@ fun SkeletonSwap(
 ) {
     val routeReady = LocalGithubRouteEntryReady.current
     val animate = LocalGithubCardMotionEnabled.current
+    var hasSettledBody by remember { mutableStateOf(!loading && !contentPending && !entrance) }
     var entryPending by remember { mutableStateOf(entrance) }
     val entering = entryPending && (animate || !routeReady)
     var shownAt by remember { mutableStateOf<TimeMark?>(null) }
     val deferBody = contentPending || !routeReady && (entering || shownAt != null)
     val pending = loading || deferBody
     val waiting = pending || entering
-    val showSkeleton = entering || shownAt != null || !animate
+    val showSkeleton = entering || shownAt != null || !animate || !hasSettledBody
     val reveal = if (shownAt != null && animate) remember { Animatable(0f) } else null
 
-    LaunchedEffect(waiting, entering, animate) {
+    LaunchedEffect(waiting, entering, animate, hasSettledBody) {
         if (waiting) {
             reveal?.snapTo(0f)
             if (shownAt == null) {
-                if (animate && !entering) delay(SkeletonTiming.ShowDelayMillis)
+                if (animate && !entering && hasSettledBody) delay(SkeletonTiming.ShowDelayMillis)
                 shownAt = TimeSource.Monotonic.markNow()
             }
             if (entering) entryPending = false
@@ -104,6 +95,7 @@ fun SkeletonSwap(
                 reveal.animateTo(1f, SkeletonTiming.SwapSpec)
             }
             shownAt = null
+            hasSettledBody = true
         }
     }
 
@@ -129,9 +121,7 @@ fun SkeletonSwap(
                         .clearAndSetSemantics {},
                     propagateMinConstraints = true,
                 ) {
-                    CompositionLocalProvider(LocalSkeletonShimmerEnabled provides false) {
-                        placeholder()
-                    }
+                    placeholder()
                 }
             }
         },
@@ -188,37 +178,4 @@ fun SkeletonSwap(
             }
         }
     }
-}
-
-/** 扫光相位。宿主页面只建一个无限动画，占位块在绘制阶段读取同一相位，整屏只有一条光带。 */
-internal val LocalPlaceholderSweep = staticCompositionLocalOf<State<Float>?> { null }
-
-/** 关掉某个区域的扫光；列表骨架保持静态灰块，避免整屏光带在转场里抖动。 */
-val LocalSkeletonShimmerEnabled = staticCompositionLocalOf { true }
-
-/** 为下层所有占位提供共享扫光时钟；已有宿主时直接透传，不重复创建动画。 */
-@Composable
-internal fun SkeletonShimmerHost(content: @Composable () -> Unit) {
-    val parent = LocalPlaceholderSweep.current
-    if (
-        !LocalSkeletonShimmerEnabled.current ||
-            parent != null ||
-            !LocalGithubCardMotionEnabled.current
-    ) {
-        CompositionLocalProvider(LocalPlaceholderSweep provides parent, content = content)
-        return
-    }
-    val clock = rememberInfiniteTransition(label = "skeleton-shimmer")
-    val sweep =
-        clock.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = SkeletonTiming.ShimmerSpec,
-                    repeatMode = RepeatMode.Restart,
-                ),
-            label = "skeleton-sweep",
-        )
-    CompositionLocalProvider(LocalPlaceholderSweep provides sweep, content = content)
 }

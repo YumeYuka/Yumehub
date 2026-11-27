@@ -36,6 +36,7 @@ import moe.yumeyuka.yumehub.ui.component.githubDiffColors
 import moe.yumeyuka.yumehub.ui.component.highlightGithubTextMate
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDiffCodePlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
 import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
 import moe.yumeyuka.yumehub.ui.theme.githubLanguageColor
@@ -47,6 +48,16 @@ internal fun CodeResult(
     file: SearchCodeFile?,
     onOpenFile: (SearchCodeFile, Int?) -> Unit,
 ) {
+    GithubLoadingContent(
+        loading = file == null,
+        placeholder = { CodeResultBody(null, onOpenFile) },
+    ) {
+        if (file != null) CodeResultBody(file, onOpenFile)
+    }
+}
+
+@Composable
+private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, Int?) -> Unit) {
     val colors = GlasmioTheme.colors
     val styles = GlasmioTheme.textStyles
     val diffColors = remember(colors.isDark) { githubDiffColors(colors.isDark) }

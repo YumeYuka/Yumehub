@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -69,7 +68,6 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
-import moe.yumeyuka.yumehub.ui.component.skeleton.LocalSkeletonShimmerEnabled
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import top.yukonga.miuix.kmp.anim.folmeSpring
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
@@ -244,11 +242,9 @@ internal fun GithubMiuixTopAppBarLayout(
                         entrance = false,
                         placeholder = {
                             // 未知标题先保留两行，不让路由名代替真实标题闪一下。
-                            CompositionLocalProvider(LocalSkeletonShimmerEnabled provides false) {
-                                Column(Modifier.fillMaxWidth()) {
-                                    TextLinePlaceholder(baseTitleStyle, fraction = 0.88f)
-                                    TextLinePlaceholder(baseTitleStyle, fraction = 0.52f)
-                                }
+                            Column(Modifier.fillMaxWidth()) {
+                                TextLinePlaceholder(baseTitleStyle, fraction = 0.88f)
+                                TextLinePlaceholder(baseTitleStyle, fraction = 0.52f)
                             }
                         },
                     ) {

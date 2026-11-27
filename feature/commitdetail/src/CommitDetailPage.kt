@@ -150,9 +150,14 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                 readingItem(key = "commit-files-pending") { GithubDiffFileCard(null, expansions) }
             }
         } else {
-            if (readyDetail != null) {
-                val detail = readyDetail
-                item(key = "commit-information") {
+            item(key = "commit-information") {
+                SkeletonSwap(
+                    loading = readyDetail == null && !state.failed,
+                    placeholder = {
+                        GithubSection(strings.Activity.Details) { OrganizationRowPlaceholder() }
+                    },
+                ) {
+                    val detail = readyDetail ?: return@SkeletonSwap
                     GithubSection(strings.Activity.Details) {
                         GlasmioListRow(
                             title = strings.WorkDetail.Author,
@@ -197,10 +202,6 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
                             onClick = { copy(strings.Activity.CommitHash, detail.oid) },
                         )
                     }
-                }
-            } else if (!state.failed) {
-                item(key = "commit-information") {
-                    GithubSection(strings.Activity.Details) { OrganizationRowPlaceholder() }
                 }
             }
             commitLinks(

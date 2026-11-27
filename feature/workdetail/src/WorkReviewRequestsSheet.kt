@@ -68,16 +68,15 @@ internal fun WorkReviewRequestsSheet(
         confirmEnabled = editable && editor?.reviewRequestsChanged() == true,
         showConfirm = editor?.editable == true,
         requestClose = live == null && retained != null,
-    ) {
-        if (editor == null || shown == null || editor.loading) {
-            item("review-requests-loading") {
-                GlasmioGroupedList {
-                    repeat(3) {
-                        TextPlaceholder(Modifier.padding(16.dp), fraction = 0.45f)
-                    }
-                }
+        loading = editor == null || shown == null || editor.loading,
+        loadingPlaceholder = {
+            GlasmioGroupedList {
+                repeat(3) { TextPlaceholder(Modifier.padding(16.dp), fraction = 0.45f) }
             }
-        } else if (editor.failed || editor.needsReconcile) {
+        },
+    ) {
+        if (editor == null || shown == null || editor.loading) return@GithubSearchSelectionSheet
+        if (editor.failed || editor.needsReconcile) {
             item("review-requests-retry") {
                 var acknowledgeVisible by remember { mutableStateOf(false) }
                 GlasmioGroupedList {

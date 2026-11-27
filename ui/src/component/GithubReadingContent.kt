@@ -7,7 +7,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -21,13 +20,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
 
 internal val GithubReadingGroupShape: Shape
@@ -128,10 +124,6 @@ fun GithubMarkdown(
     onCommitSuggestion: ((suggestionId: String, previewHtml: String) -> Unit)? = null,
     onReady: (() -> Unit)? = null,
 ) {
-    if (!LocalGithubRouteEntryReady.current) {
-        GithubMarkdownPlaceholder(modifier.clearAndSetSemantics {}, compact = true)
-        return
-    }
     val renderer =
         requireNotNull(LocalGithubMarkdownRenderer.current) {
             "GithubMarkdown 必须由 app 注册官方 HTML 渲染模块"
@@ -180,13 +172,7 @@ fun GithubMarkdownPreview(
     // Do not create a renderer for an editor tab that has never been opened. Once opened,
     // retain the same mounted preview behind the editor and suspend its interactions.
     var visited by remember { mutableStateOf(false) }
-    if (!LocalGithubRouteEntryReady.current || (!visible && !visited)) {
-        if (visible)
-            GithubMarkdownPlaceholder(
-                modifier.padding(contentPadding).padding(16.dp).clearAndSetSemantics {},
-            )
-        return
-    }
+    if (!visible && !visited) return
     if (visible && !visited) SideEffect { visited = true }
     val renderer =
         requireNotNull(LocalGithubMarkdownRenderer.current) {

@@ -58,6 +58,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.githubLabelColor
 import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
@@ -283,20 +284,25 @@ private fun WorkInfoSections(
         ) {
             val fields = state.issueFields?.fields
             if (state.fieldsFailed) WorkSheetRetry(viewModel::retryFields)
-            if (fields == null) {
-                if (!state.fieldsFailed) WorkInfoRowPlaceholder()
-            } else if (fields.isEmpty()) {
-                GlasmioListRow(title = strings.NoIssueFieldValue, showDisclosure = false)
-            } else {
-                fields.forEachIndexed { index, field ->
-                    GlasmioListRow(
-                        title = field.name,
-                        detail =
-                            field.value?.let { field.displayValue(it) }
-                                ?: strings.NoIssueFieldValue,
-                        showTopSeparator = index > 0,
-                        showDisclosure = false,
-                    )
+            GithubLoadingContent(
+                loading = fields == null && !state.fieldsFailed,
+                placeholder = { WorkInfoRowPlaceholder() },
+            ) {
+                if (fields != null) {
+                    if (fields.isEmpty()) {
+                        GlasmioListRow(title = strings.NoIssueFieldValue, showDisclosure = false)
+                    } else {
+                        fields.forEachIndexed { index, field ->
+                            GlasmioListRow(
+                                title = field.name,
+                                detail =
+                                    field.value?.let { field.displayValue(it) }
+                                        ?: strings.NoIssueFieldValue,
+                                showTopSeparator = index > 0,
+                                showDisclosure = false,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -718,6 +724,13 @@ private fun WorkPropertySelectionSheet(
                 !live.needsReconcile &&
                 !state.submitting,
         requestClose = live == null && retained != null,
+        loading =
+            editor?.loading == true || editor == null && !(state.failed && state.value == null),
+        loadingPlaceholder = {
+            GlasmioGroupedList {
+                repeat(3) { index -> WorkInfoRowPlaceholder(showTopSeparator = index > 0) }
+            }
+        },
     ) {
         if (editor == null) {
             if (state.failed && state.value == null) {
@@ -729,14 +742,6 @@ private fun WorkPropertySelectionSheet(
                             showTopSeparator = false,
                             onClick = { viewModel?.retry() },
                         )
-                    }
-                }
-            } else {
-                item(key = "work-property-loading") {
-                    GlasmioGroupedList {
-                        repeat(3) { index ->
-                            WorkInfoRowPlaceholder(showTopSeparator = index > 0)
-                        }
                     }
                 }
             }
@@ -794,12 +799,7 @@ private fun WorkPropertySelectionSheet(
             return@GithubSearchSelectionSheet
         }
         when {
-            editor.loading ->
-                item(key = "work-property-loading") {
-                    GlasmioGroupedList {
-                        repeat(3) { index -> WorkInfoRowPlaceholder(showTopSeparator = index > 0) }
-                    }
-                }
+            editor.loading -> Unit
             else -> {
                 val query = editor.query.trim()
                 val options =
