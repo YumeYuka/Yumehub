@@ -1,5 +1,8 @@
 package moe.yumeyuka.yumehub.feature.workdetail
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,10 +16,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
 import java.io.IOException
 import kotlinx.serialization.SerializationException
@@ -48,16 +52,14 @@ internal fun WorkChecksSheet(
     val title = strings.WorkDetail.Checks
     val scroll = rememberScrollState()
     val contentPadding = 12.dp
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = title,
         // 分页检查使用固定停靠位置，不随占位、结果和重试行的高度改变。
         skipPartiallyExpanded = false,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -70,7 +72,6 @@ internal fun WorkChecksSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(contentPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -103,15 +104,13 @@ internal fun WorkReviewSheet(
     val editable = state.canReview && !busy
     val result = state.item?.viewerReviewLabel(review)
     val scroll = rememberScrollState()
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         fitContent = true,
         title = review.Review,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = review.Review,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -132,7 +131,6 @@ internal fun WorkReviewSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -247,15 +245,13 @@ internal fun WorkMergeSheet(
             state.mergePhase != WritePhase.UNCERTAIN &&
             (!editMessage || messageReady && headline.isNotBlank())
     val scroll = rememberScrollState()
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = strings.MergePullRequest,
         fitContent = true,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = strings.MergePullRequest,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -283,7 +279,6 @@ internal fun WorkMergeSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -300,20 +295,26 @@ internal fun WorkMergeSheet(
                     )
                 }
             }
-            if (editMessage) {
-                GithubCommitMessageFields(
-                    headline = headline,
-                    onHeadlineChange = { editedHeadline = it },
-                    body = body,
-                    onBodyChange = { editedBody = it },
-                    enabled = messageReady && !busy,
-                )
-                if (failed) {
-                    GlasmioGroupedList {
-                        GlasmioListRow(
-                            title = common.Retry,
-                            onClick = if (busy) null else ({ retry++ }),
-                        )
+            AnimatedVisibility(
+                visible = editMessage,
+                enter = expandVertically(expandFrom = Alignment.Top),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GithubCommitMessageFields(
+                        headline = headline,
+                        onHeadlineChange = { editedHeadline = it },
+                        body = body,
+                        onBodyChange = { editedBody = it },
+                        enabled = editMessage && messageReady && !busy,
+                    )
+                    if (failed) {
+                        GlasmioGroupedList {
+                            GlasmioListRow(
+                                title = common.Retry,
+                                onClick = if (busy) null else ({ retry++ }),
+                            )
+                        }
                     }
                 }
             }

@@ -7,7 +7,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
@@ -19,13 +18,25 @@ import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-enum class DiscoveryRoute : GithubRoute { Trending, Featured }
+enum class DiscoveryRoute : GithubRoute {
+    Trending,
+    Featured,
+}
 
 @Composable
-fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (RepositoryDto) -> Unit) {
-    val vm: DiscoveryViewModel = koinViewModel(key = "discovery:$account:$route", parameters = { parametersOf(account, route) })
+fun DiscoveryPage(
+    route: DiscoveryRoute,
+    account: String,
+    onOpenRepository: (RepositoryDto) -> Unit,
+) {
+    val vm: DiscoveryViewModel =
+        koinViewModel(
+            key = "discovery:$account:$route",
+            parameters = { parametersOf(account, route) },
+        )
     val filters by vm.filters.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
+    val filtered = query.isNotBlank() || filters != DiscoveryFilters.Default
     val languages by vm.languages.collectAsStateWithLifecycle()
     val pages = remember(vm, filters, query) { vm.repositoriesFor(filters, query) }
     val sourceKey = remember(vm, filters, query) { vm.sourceKey(filters, query) }
@@ -34,9 +45,10 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
     val title = if (trending) strings.Explore.Trending else strings.Explore.Featured
     var sheet by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
-    var input by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(query))
-    }
+    var input by
+        rememberSaveable(stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(TextFieldValue(query))
+        }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val closeSearch = {
@@ -51,7 +63,12 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
     }
     GithubBackHandler(enabled = searching && !sheet, onBack = closeSearch)
     GithubPageSearchLayout(
-        searching, input, { input = it }, vm::search, closeSearch, strings.MyRepositories.Search,
+        searching,
+        input,
+        { input = it },
+        vm::search,
+        closeSearch,
+        strings.MyRepositories.Search,
     ) {
         GithubPagingContent(
             pages,
@@ -60,23 +77,32 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
             onRetryRevalidation = { vm.retryRevalidation(sourceKey) },
         ) { paging ->
             val items = paging.items
-            val slots = rememberGithubPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
+            val slots =
+                rememberGithubPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
             GithubPage(
                 title = title,
                 listState = paging.listState,
                 itemSpacing = 12.dp,
                 actions = {
-                    GlasmioIconButton(onClick = { searching = true }) {
-                        GithubIcon(Lucide.Search, contentDescription = strings.MyRepositories.Search)
-                    }
-                    GlasmioIconButton(onClick = {
-                        focus.clearFocus(force = true)
-                        keyboard?.hide()
-                        vm.loadLanguages()
-                        sheet = true
-                    }) {
-                        GithubIcon(Lucide.ListFilter, contentDescription = strings.MyRepositories.Filter)
-                    }
+                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                        moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                            Lucide.Search,
+                            strings.MyRepositories.Search,
+                            key = "search",
+                        ) {
+                            searching = true
+                        },
+                        moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                            Lucide.ListFilter,
+                            strings.MyRepositories.Filter,
+                            key = "filter",
+                        ) {
+                            focus.clearFocus(force = true)
+                            keyboard?.hide()
+                            vm.loadLanguages()
+                            sheet = true
+                        },
+                    )
                 },
             ) {
                 githubPagingItems(slots, contentType = "repository") { repository ->
@@ -87,15 +113,23 @@ fun DiscoveryPage(route: DiscoveryRoute, account: String, onOpenRepository: (Rep
                     )
                 }
                 collaborationPagingStatus(
-                    slots, title,
-                    emptyMessage = strings.MyRepositories.EmptyFiltered,
-                    emptyIcon = if (trending) Lucide.Flame else Lucide.LayoutGrid,
+                    slots,
+                    title,
+                    emptyMessage = if (filtered) strings.MyRepositories.EmptyFiltered else strings.MyRepositories.Empty,
+                    emptyScene = if (filtered) EmptyScene.Search else EmptyScene.Inbox,
                 )
                 pageSearchClearance(searching)
             }
         }
     }
-    DiscoveryFiltersSheet(sheet, trending, filters, languages, vm::loadLanguages, { sheet = false }) {
+    DiscoveryFiltersSheet(
+        sheet,
+        trending,
+        filters,
+        languages,
+        vm::loadLanguages,
+        { sheet = false },
+    ) {
         vm.apply(it)
         sheet = false
     }

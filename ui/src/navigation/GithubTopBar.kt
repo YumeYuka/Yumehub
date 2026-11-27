@@ -41,6 +41,8 @@ internal fun GithubTopBar(
     navigation: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    val sharedHeader =
+        LocalGithubHeaderMotion.current != null && LocalGithubHeaderEntryKey.current != null
     CompositionLocalProvider(
         LocalGlassSurfaceBrightness provides 1f,
         LocalGlassSurfaceStyle provides GlassSurfaceStyle.Navigation,
@@ -65,20 +67,24 @@ internal fun GithubTopBar(
             modifier = modifier,
             contentModifier = contentModifier,
             navigationIcon = {
-                // 只补偿原按钮的 16dp 边距和 27dp 中心，不移动原生标题。
-                GlasmioToolbarActionGroup(
-                    modifier = Modifier.padding(start = 4.dp).offset(y = 1.dp),
-                    style = GlasmioToolbarActionStyle.Merged,
-                ) {
-                    navigation()
+                if (!sharedHeader) {
+                    // 只补偿原按钮的 16dp 边距和 27dp 中心，不移动原生标题。
+                    GlasmioToolbarActionGroup(
+                        modifier = Modifier.padding(start = 4.dp).offset(y = 1.dp),
+                        style = GlasmioToolbarActionStyle.Merged,
+                    ) {
+                        navigation()
+                    }
                 }
             },
             actions = {
-                GlasmioToolbarActionGroup(
-                    modifier = Modifier.padding(end = 4.dp).offset(y = 1.dp),
-                    style = GlasmioToolbarActionStyle.Merged,
-                    content = actions,
-                )
+                if (!sharedHeader) {
+                    GlasmioToolbarActionGroup(
+                        modifier = Modifier.padding(end = 4.dp).offset(y = 1.dp),
+                        style = GlasmioToolbarActionStyle.Merged,
+                        content = actions,
+                    )
+                }
             },
         )
     }

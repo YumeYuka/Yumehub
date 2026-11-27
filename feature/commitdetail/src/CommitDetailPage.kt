@@ -31,7 +31,6 @@ import moe.yumeyuka.yumehub.data.repository.*
 import moe.yumeyuka.yumehub.locale.GithubStrings
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.component.placeholders.CommitAuthorPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
@@ -79,13 +78,15 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
     val pullRequests = if (information) revision?.pullRequests?.collectRows { it.id } else null
     val readyDetail = state.detail
     GithubPage(
-        title = readyDetail?.title ?: route.oid.take(7),
+        // 标题来自提交正文：数据未到时走顶栏骨架，不再先闪一段短哈希再跳成两行标题。
+        title = readyDetail?.title ?: if (state.failed) route.oid.take(7) else "",
         titleMaxLines = 2,
+        titleLoading = readyDetail == null && !state.failed,
         titleStyle =
             GlasmioTheme.typography.headlineLarge.copy(
                 fontSize = 22.sp,
                 lineHeight = 32.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
             ),
         smallTitle = (readyDetail?.oid ?: route.oid).take(7),
         listState = listState,
@@ -111,12 +112,12 @@ fun CommitDetailPage(route: CommitDetailRoute, account: String) {
         if (!information) {
             if (readyDetail != null || !state.failed) {
                 readingItem(key = "commit-author") {
-                    SkeletonSwap(
-                        loading = readyDetail == null,
-                        placeholder = { CommitAuthorPlaceholder() },
-                    ) {
-                        val detail = readyDetail ?: return@SkeletonSwap
-                        GlasmioGroupedList {
+                    GlasmioGroupedList {
+                        SkeletonSwap(
+                            loading = readyDetail == null,
+                            placeholder = { GithubThreadContentPlaceholder() },
+                        ) {
+                            val detail = readyDetail ?: return@SkeletonSwap
                             GlasmioListRow(
                                 title = detail.author ?: strings.Workspaces.UnknownAuthor,
                                 subtitle = githubActivityTime(detail.committedDate),

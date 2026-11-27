@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.CancellationException
 import moe.yumeyuka.yumehub.data.repository.WorkflowInput
@@ -83,7 +84,7 @@ internal fun WorkflowDispatchSheet(
         }
         return
     }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = true,
         onDismissRequest = onClose,
         title = strings.Activity.RunWorkflow,
@@ -113,7 +114,6 @@ internal fun WorkflowDispatchSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

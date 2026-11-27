@@ -39,6 +39,7 @@ class RepositoryPagingSource(
                         snapshot.save(updated)
                         usesLocalSort || initial != updated.copy(updatedAt = initial.updatedAt)
                     }
+                    if (invalid) return LoadResult.Invalid()
                 }
             }
             val result =

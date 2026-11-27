@@ -46,7 +46,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedTableFooter
@@ -55,7 +55,6 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioPopUpButton
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.neoruaa.glasmio.ui.rememberGlasmioSheetState
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.CircleSlash
@@ -93,7 +92,7 @@ internal fun ProfileStatusSheet(
     LaunchedEffect(state) { if (state != null) displayed = state }
     val editor = state ?: displayed
     val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = true)
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.EditStatus,
@@ -158,7 +157,6 @@ private fun StatusEditorContent(
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize()
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(12.dp))

@@ -1,6 +1,10 @@
 package moe.yumeyuka.yumehub.feature.workspaces
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
@@ -35,19 +39,25 @@ import moe.yumeyuka.yumehub.data.repository.WorkspaceCommit
 import moe.yumeyuka.yumehub.data.repository.WorkspaceEntry
 import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspacePlaceholderRow
+import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.GithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
+import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -94,6 +104,7 @@ fun WorkspacesPage(
         remember(branchEpoch, state.path) {
             GithubPagingSlotKeys("workspaces:$branchEpoch:${state.path}")
         }
+    val directoryEntrance = remember(entrySlots) { GithubSkeletonEntrance() }
     val entryKeys =
         remember(entrySlots, entries, entriesLoading) {
             entrySlots.update(
@@ -173,6 +184,7 @@ fun WorkspacesPage(
             enabled = host.navigationEnabled,
             entries = entries,
             entryKeys = entryKeys,
+            directoryEntrance = directoryEntrance,
             onRetryEntries = viewModel::retry,
             onRetryCommit = { if (host.navigationEnabled) viewModel.retryCommit() },
             onOpenCommitHistory = {
@@ -209,15 +221,17 @@ private fun LazyListScope.workspacesScreen(
     enabled: Boolean,
     entries: List<WorkspaceEntry>,
     entryKeys: List<String>,
+    directoryEntrance: GithubSkeletonEntrance,
     onRetryEntries: () -> Unit,
     onRetryCommit: () -> Unit,
     onOpenCommitHistory: () -> Unit,
     onOpenDirectory: (String) -> Unit,
     onOpenFile: (String, String, String?) -> Unit,
 ) {
-    val directoryError = (state.repository as? WorkspacesLoad.Error)?.message
-        ?: (state.entries as? WorkspacesLoad.Error)?.message
-        ?: (state.entries as? WorkspacesLoad.Ready)?.refreshError
+    val directoryError =
+        (state.repository as? WorkspacesLoad.Error)?.message
+            ?: (state.entries as? WorkspacesLoad.Error)?.message
+            ?: (state.entries as? WorkspacesLoad.Ready)?.refreshError
     if (directoryError != null) {
         item(key = "workspace-directory-error") {
             GlasmioGroupedList { WorkspaceRetryRow(directoryError, onRetryEntries) }
@@ -236,15 +250,9 @@ private fun LazyListScope.workspacesScreen(
         }
     }
     if (entryKeys.isEmpty()) {
-        if (state.entries is WorkspacesLoad.Ready) {
+        if (state.entries is WorkspacesLoad.Ready && directoryError == null) {
             item(key = "workspaces-empty") {
-                GlasmioGroupedList {
-                    GlasmioListRow(
-                        title = strings.Empty,
-                        systemName = null,
-                        showTopSeparator = false,
-                    )
-                }
+                GithubEmptyState(scene = EmptyScene.Inbox, title = strings.Empty)
             }
         }
         return
@@ -258,35 +266,42 @@ private fun LazyListScope.workspacesScreen(
         val entry = entries.getOrNull(index)
         val top = if (index == 0) 26.dp else 0.dp
         val bottom = if (index == entryKeys.lastIndex) 26.dp else 0.dp
-        GlasmioGroupedList(
-            framed = false,
-            modifier =
-                Modifier.glasmioGroupedListBackground(
-                    ContinuousRoundedRectangle(
-                        topStart = top,
-                        topEnd = top,
-                        bottomStart = bottom,
-                        bottomEnd = bottom,
+        // 目录行按插入动画淡入，和列表页的卡片入场保持一致。
+        Box(githubCardItemMotion()) {
+            GlasmioGroupedList(
+                framed = false,
+                modifier =
+                    Modifier.glasmioGroupedListBackground(
+                        ContinuousRoundedRectangle(
+                            topStart = top,
+                            topEnd = top,
+                            bottomStart = bottom,
+                            bottomEnd = bottom,
+                        ),
                     ),
-                ),
-        ) {
-            GithubLoadingContent(
-                loading = entry == null,
-                placeholder = { WorkspacePlaceholderRow(showTopSeparator = index > 0) },
             ) {
-                if (entry != null) {
-                    WorkspaceRow(
-                        entry = entry,
-                        updatedAt =
-                            if (entry.directory) null
-                            else workspaceRelativeTime(state.updatedAt[entry.path], strings),
-                        enabled = enabled,
-                        showTopSeparator = index > 0,
-                        onClick = {
-                            if (entry.directory) onOpenDirectory(entry.path)
-                            else onOpenFile(entry.path, entry.name, entry.submoduleGitUrl)
-                        },
-                    )
+                SkeletonSwap(
+                    loading = entry == null,
+                    entrance = !directoryEntrance.presented,
+                    modifier =
+                        if (entry != null) Modifier.recordGithubSkeletonEntrance(directoryEntrance)
+                        else Modifier,
+                    placeholder = { WorkspacePlaceholderRow(showTopSeparator = index > 0) },
+                ) {
+                    if (entry != null) {
+                        WorkspaceRow(
+                            entry = entry,
+                            updatedAt =
+                                if (entry.directory) null
+                                else workspaceRelativeTime(state.updatedAt[entry.path], strings),
+                            enabled = enabled,
+                            showTopSeparator = index > 0,
+                            onClick = {
+                                if (entry.directory) onOpenDirectory(entry.path)
+                                else onOpenFile(entry.path, entry.name, entry.submoduleGitUrl)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -301,19 +316,24 @@ private fun CommitBlock(
     onRetry: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
-    GithubLoadingContent(
-        loading =
-            state.repository is WorkspacesLoad.Loading || state.commit is WorkspacesLoad.Loading,
-        placeholder = { WorkspaceCommitPlaceholder() },
-    ) {
-        when (val commit = state.commit) {
-            WorkspacesLoad.Loading -> Unit
+    val target = if (state.repository is WorkspacesLoad.Loading) WorkspacesLoad.Loading else state.commit
+    val firstEntrance = LocalGithubSkeletonEntrance.current?.presented == false
+    val transitionState = remember {
+        MutableTransitionState(if (firstEntrance) WorkspacesLoad.Loading else target)
+    }
+    transitionState.targetState = target
+    val transition = rememberTransition(transitionState, label = "workspace-commit")
+    transition.AnimatedContent(
+        contentKey = { load -> if (load is WorkspacesLoad.Ready) load.value?.oid else load },
+    ) { commit ->
+        when (commit) {
+            WorkspacesLoad.Loading -> WorkspaceCommitPlaceholder()
             is WorkspacesLoad.Error -> WorkspaceRetryRow(commit.message, onRetry)
             is WorkspacesLoad.Ready -> {
                 WorkspaceCommitCard(
                     commit = commit.value,
                     strings = strings,
-                    onClick = onOpenHistory.takeIf { enabled && commit.value?.oid != null },
+                    onClick = onOpenHistory.takeIf { enabled && commit.value?.oid != null && commit == target },
                 )
             }
         }
@@ -323,7 +343,11 @@ private fun CommitBlock(
 
 @Composable
 internal fun WorkspaceRetryRow(message: String, onRetry: () -> Unit) {
-    GlasmioListRow(title = message, detail = LocalGithubStrings.current.Common.Retry, onClick = onRetry)
+    GlasmioListRow(
+        title = message,
+        detail = LocalGithubStrings.current.Common.Retry,
+        onClick = onRetry,
+    )
 }
 
 @Composable

@@ -61,8 +61,8 @@ private class FeedPagingSource(
             loadPage(params)
         }
 
-    private suspend fun loadPage(params: LoadParams<Int>): LoadResult<Int, FeedEventDto> =
-        try {
+    private suspend fun loadPage(params: LoadParams<Int>): LoadResult<Int, FeedEventDto> {
+        return try {
             val initial =
                 if (params is LoadParams.Refresh) snapshot.initialPage(FeedPageSize) else null
             val result =
@@ -74,6 +74,7 @@ private class FeedPagingSource(
                             snapshot.save(updated)
                             initial != updated.copy(updatedAt = initial.updatedAt)
                         }
+                        if (invalid) return LoadResult.Invalid()
                     }
                     initial
                 } else {
@@ -102,6 +103,7 @@ private class FeedPagingSource(
             currentCoroutineContext().ensureActive()
             LoadResult.Error(error)
         }
+    }
 
     private suspend fun loadNetwork(key: Int?, force: Boolean): PagingSnapshotPage<FeedEventDto> {
         if (key == null) {

@@ -24,14 +24,13 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -75,7 +74,7 @@ internal fun RepositoryForkSheet(
             Toast.makeText(context, strings.ForkNameTaken(state.name), Toast.LENGTH_SHORT).show()
         }
     }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.ForkRepository,
@@ -137,7 +136,6 @@ internal fun RepositoryForkSheet(
             Column(
                 Modifier.fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(LocalGlasmioSheetContentPadding.current)
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {

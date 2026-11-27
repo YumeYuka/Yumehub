@@ -183,8 +183,8 @@ private class SearchPagingSource<T : Any>(
     private val seen = mutableMapOf<Any, Int>()
     private val cursors = mutableMapOf<Int, String?>(1 to null)
 
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ExploreResult> =
-        try {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ExploreResult> {
+        return try {
             val initial = if (params is LoadParams.Refresh) snapshot.initialPage(30) else null
             val page =
                 if (initial == null) {
@@ -198,6 +198,7 @@ private class SearchPagingSource<T : Any>(
                             snapshot.save(updated)
                             initial != updated.copy(updatedAt = initial.updatedAt)
                         }
+                        if (invalid) return LoadResult.Invalid()
                     }
                     initial
                 }
@@ -229,6 +230,7 @@ private class SearchPagingSource<T : Any>(
             currentCoroutineContext().ensureActive()
             LoadResult.Error(error)
         }
+    }
 
     private suspend fun network(
         start: Int,

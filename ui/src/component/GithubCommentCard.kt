@@ -17,20 +17,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.glass.glasmioMenuAnchor
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
+import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
 import io.github.yumeyucca.lucide.EllipsisVertical
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 
 private val CommentAvatarSize = 34.dp
+private val CommentMenuEndPadding = 4.dp
 
 @Composable
 private fun GithubCommentMenu(
@@ -61,15 +66,21 @@ private fun GithubCommentMenu(
             )
         }
         if (expanded) {
+            // Match the Release row's inset without moving the trigger or its morph source.
+            val rowInset = GlasmioListRowDefaults.horizontalPadding
+            val insetDelta = with(LocalDensity.current) {
+                (rowInset.roundToPx() - CommentMenuEndPadding.roundToPx()).toFloat()
+            }
+            val offsetX = if (LocalLayoutDirection.current == LayoutDirection.Ltr) -insetDelta else insetDelta
             GlasmioCascadingMenu(
-                anchorBounds = anchor.bounds,
+                anchorBounds = anchor.bounds?.translate(offsetX, 0f),
                 items = items,
                 title = strings.WorkDetail.CommentActions,
                 expandedDescription = strings.EditorMenu.Expanded,
                 collapsedDescription = strings.EditorMenu.Collapsed,
                 onDismiss = { expanded = false },
                 useAccentIcons = false,
-                morphFromAnchor = false,
+                menuAnchorState = anchor,
             )
         }
     }
@@ -91,7 +102,7 @@ fun GithubCommentAuthorHeader(
                     .padding(
                         start = 16.dp,
                         top = 16.dp,
-                        end = if (menuItems.isEmpty()) 16.dp else 4.dp,
+                        end = if (menuItems.isEmpty()) 16.dp else CommentMenuEndPadding,
                         bottom = 8.dp,
                     ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

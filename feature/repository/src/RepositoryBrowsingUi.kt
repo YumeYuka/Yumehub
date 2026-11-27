@@ -12,13 +12,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.GitBranch
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -89,7 +88,7 @@ private fun RepositoryRefField(
                 })
             else null,
     )
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = choosing && enabled,
         onDismissRequest = { choosing = false },
         title = label,
@@ -106,7 +105,7 @@ private fun RepositoryRefField(
         fitContent = true,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(LocalGlasmioSheetContentPadding.current).padding(16.dp),
+            Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             GlasmioTextField(

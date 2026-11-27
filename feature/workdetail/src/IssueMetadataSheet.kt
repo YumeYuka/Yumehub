@@ -11,13 +11,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -308,18 +308,16 @@ private fun IssueFieldValueSheet(
         field.kind == IssueFieldKind.SingleSelect || field.kind == IssueFieldKind.MultiSelect
     val valid = isChoice || text.isBlank() || value != null
     val scroll = rememberScrollState()
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         title = field.name,
         sheetState = sheet,
         fitContent = true,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         dismissOnBackPress = true,
         dismissOnClickOutside = true,
         onDismissRequest = onDismiss,
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = field.name,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -342,7 +340,6 @@ private fun IssueFieldValueSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

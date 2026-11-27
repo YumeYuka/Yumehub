@@ -18,8 +18,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.paging.LoadState
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
-import io.github.yumeyucca.lucide.Bell
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
@@ -29,10 +27,11 @@ import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.component.isEmptyStateNetworkFailure
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import org.koin.androidx.compose.koinViewModel
@@ -105,29 +104,40 @@ fun ExplorePage(
             },
             itemSpacing = 12.dp,
             actions = {
-                GlasmioIconButton(onClick = onOpenSearch) {
-                    GithubIcon(Lucide.Search, contentDescription = strings.Common.Search)
-                }
-                GlasmioIconButton(onClick = { filtersVisible = true }, enabled = options != null) {
-                    GithubIcon(
+                moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                    moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                        Lucide.Search,
+                        strings.Common.Search,
+                        key = "search",
+                        onClick = onOpenSearch,
+                    ),
+                    moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                         Lucide.ListFilter,
-                        contentDescription = strings.WorkList.SortAndFilter,
-                    )
-                }
+                        strings.WorkList.SortAndFilter,
+                        enabled = options != null,
+                        key = "filter",
+                    ) {
+                        filtersVisible = true
+                    },
+                )
             },
         ) {
             item(key = "explore-activity-spacing") { Spacer(Modifier.height(12.dp)) }
-            // The feed explicitly uses “No activity yet” for an unavailable first page.
-            val coldFailure =
-                slots.snapshot.isEmpty() && events.loadState.refresh is LoadState.Error
-            val showEmpty =
-                settingsFailed ||
-                    (options != null && (filters.isEmpty() || slots.isEmptyResult || coldFailure))
-            if (showEmpty) {
+            val coldFailure = (events.loadState.refresh as? LoadState.Error)?.error
+            val scene = when {
+                slots.snapshot.isNotEmpty() -> null
+                coldFailure?.isEmptyStateNetworkFailure() == true -> EmptyScene.Offline
+                options == null -> if (settingsFailed) EmptyScene.Inbox else null
+                filters.isEmpty() || slots.isEmptyResult || coldFailure != null ->
+                    if (filters.size < FeedFilter.entries.size) EmptyScene.Search else EmptyScene.Inbox
+                else -> null
+            }
+            if (scene != null) {
                 item(key = "explore-feed-empty") {
                     GithubEmptyState(
-                        icon = Lucide.Bell,
-                        title = strings.Explore.EmptyFeed,
+                        scene = scene,
+                        title = if (scene == EmptyScene.Offline) strings.Common.NoOfflineData else strings.Explore.EmptyFeed,
+                        description = if (scene == EmptyScene.Offline) strings.Repository.NetworkFailed else null,
                         modifier = Modifier.fillParentMaxHeight(),
                         verticalBias = -0.1f,
                     )

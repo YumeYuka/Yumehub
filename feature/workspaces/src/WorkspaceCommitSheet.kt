@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.GitCommitHorizontal
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -42,7 +43,7 @@ internal fun WorkspaceCommitSheet(
     var choosing by rememberSaveable(editor.id, visible) { mutableStateOf(false) }
     var reviewed by rememberSaveable(editor.id, editor.filePath, visible, baseChanged) { mutableStateOf(false) }
     val browser = rememberExternalUriHandler()
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible && !choosing && !editor.closeRequested,
         onDismissRequest = { if (!choosing) onDismiss() },
         dismissOnBackPress = true,
@@ -74,7 +75,6 @@ internal fun WorkspaceCommitSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

@@ -24,9 +24,11 @@ import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
 import moe.yumeyuka.yumehub.locale.GithubStrings_Notifications
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
+import moe.yumeyuka.yumehub.ui.component.isEmptyStateNetworkFailure
 
 internal fun LazyListScope.NotificationsScreen(
     strings: GithubStrings_Notifications,
@@ -77,13 +79,25 @@ internal fun LazyListScope.NotificationsScreen(
             onRetryAction,
         )
     }
-    state.loadError?.let { message ->
+    state.loadError?.let { error ->
+        val offline = !state.hasCachedContent && error.isEmptyStateNetworkFailure()
         notificationStatus(
             "notifications-load-error",
             retryLabel,
-            message,
+            if (offline) null else error.messageForUser(),
             onRetryLoad,
         )
+        if (offline) {
+            item(key = "notifications-offline") {
+                val labels = LocalGithubStrings.current
+                GithubEmptyState(
+                    scene = EmptyScene.Offline,
+                    title = labels.Common.NoOfflineData,
+                    description = labels.Repository.NetworkFailed,
+                    modifier = Modifier.fillParentMaxHeight(),
+                )
+            }
+        }
     }
     if (
         rowKeys.isEmpty() &&
@@ -96,12 +110,9 @@ internal fun LazyListScope.NotificationsScreen(
                 state.reasonFilter != NotificationReasonFilter.All
         item(key = "notifications-empty", contentType = "notifications-empty") {
             GithubEmptyState(
-                icon = Lucide.Bell,
+                scene = if (hasActiveFilters) EmptyScene.Search else EmptyScene.Done,
                 title = if (hasActiveFilters) strings.NoMatches else strings.Empty,
                 description = strings.EmptyHint.takeUnless { hasActiveFilters },
-                iconContainerSize = 50.dp,
-                iconSize = 26.dp,
-                iconContainerColor = GlasmioTheme.colors.systemGray5,
                 modifier =
                     if (hasActiveSearch && (state.hasMore || state.hasPrevious)) Modifier
                     else Modifier.fillParentMaxHeight(),

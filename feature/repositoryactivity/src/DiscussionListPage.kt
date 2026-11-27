@@ -9,8 +9,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
-import io.github.yumeyucca.lucide.Lucide
-import io.github.yumeyucca.lucide.MessagesSquare
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.serialization.json.Json
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionCreationDraft
@@ -22,7 +20,9 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.serializer
 import moe.yumeyuka.yumehub.core.model.CollaborationListFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationScopeFilter
+import moe.yumeyuka.yumehub.core.model.CollaborationStateFilter
 import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
+import moe.yumeyuka.yumehub.core.model.hasActiveCriteria
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationFilterOptions
 import moe.yumeyuka.yumehub.data.cache.CacheTag
 import moe.yumeyuka.yumehub.data.cache.DataDomain
@@ -33,6 +33,7 @@ import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubDiscussionCard
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
@@ -60,6 +61,7 @@ internal fun DiscussionListPage(
             parameters = { parametersOf(route, account) },
         )
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val filtered = filter.hasActiveCriteria(CollaborationStateFilter.Open, viewModel.scopes.first())
     val filterOptions by viewModel.options.collectAsStateWithLifecycle()
     val creationState by viewModel.creationState.collectAsStateWithLifecycle()
     val strings = LocalGithubStrings.current
@@ -125,8 +127,8 @@ internal fun DiscussionListPage(
             collaborationPagingStatus(
                 slots = slots,
                 title = strings.Repository.Discussions,
-                emptyMessage = strings.WorkList.EmptyDiscussions,
-                emptyIcon = Lucide.MessagesSquare,
+                emptyMessage = if (filtered) strings.EditorSearch.NoMatches else strings.WorkList.EmptyDiscussions,
+                emptyScene = if (filtered) EmptyScene.Search else EmptyScene.Inbox,
                 emptyVerticalBias = -0.2f,
             )
             pageSearchClearance(searching)

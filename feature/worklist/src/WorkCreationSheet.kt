@@ -3,7 +3,6 @@ package moe.yumeyuka.yumehub.feature.worklist
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -28,11 +27,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalDensity
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.Check
-import io.github.yumeyucca.lucide.GitBranch
+import io.github.yumeyucca.lucide.CornerDownRight
+import io.github.yumeyucca.lucide.Feather
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
@@ -48,6 +48,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubChoiceSheet
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.replaceFormText
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
@@ -90,8 +91,8 @@ internal fun WorkCreationSheet(
     val saved = creationState.draft
     val subject = remember(visible, ready) { TextFieldState(saved.title) }
     val body = remember(visible, ready) { TextFieldState(saved.body) }
-    val base = remember(visible, ready) { TextFieldState(saved.base) }
-    val head = remember(visible, ready) { TextFieldState(saved.head) }
+    var base by remember(visible, ready) { mutableStateOf(saved.base) }
+    var head by remember(visible, ready) { mutableStateOf(saved.head) }
     var issueTypeId by remember(visible, ready) { mutableStateOf(saved.issueTypeId) }
     var templateName by remember(visible, ready) { mutableStateOf(saved.issueTemplate) }
     val issueTemplate = issueTemplates.firstOrNull { it.name == templateName }
@@ -108,7 +109,7 @@ internal fun WorkCreationSheet(
     val submitting = creationState.submitting
     val uncertain = creationState.uncertain
     val failure = creationState.failed
-    fun draft() = WorkCreationDraft(subject.text.toString(), body.text.toString(), base.text.toString(), head.text.toString(),
+    fun draft() = WorkCreationDraft(subject.text.toString(), body.text.toString(), base, head,
         issueTypeId, milestoneId, labelIds, selectedAssignees, templateName)
     LaunchedEffect(visible, ready, submitting, uncertain) {
         if (visible && ready && !submitting && !uncertain) snapshotFlow { draft() }.collect(onDraftChange)
@@ -123,20 +124,18 @@ internal fun WorkCreationSheet(
         if (visible && kind == CollaborationKind.PullRequest) onBranchQueryChange("")
     }
     LaunchedEffect(visible, ready, branchPicker.defaultBranch) {
-        if (visible && ready && base.text.isBlank()) base.replaceFormText(branchPicker.defaultBranch.orEmpty())
+        if (visible && ready && base.isBlank()) base = branchPicker.defaultBranch.orEmpty()
     }
     val scroll = rememberScrollState()
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
         dismissOnClickOutside = true,
         fitContent = true,
         title = title,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -150,8 +149,7 @@ internal fun WorkCreationSheet(
                                 !uncertain &&
                                 subject.text.isNotBlank() &&
                                 (kind == CollaborationKind.Issue ||
-                                    base.text.isNotBlank() && head.text.isNotBlank() &&
-                                        !base.text.contentEquals(head.text)),
+                                    base.isNotBlank() && head.isNotBlank() && base != head),
                         onClick = {
                             onSubmit(draft())
                         },
@@ -165,7 +163,6 @@ internal fun WorkCreationSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -300,20 +297,26 @@ internal fun WorkCreationSheet(
                 }
             }
             if (kind == CollaborationKind.PullRequest) {
-                WorkCreationBranchField(
-                    work.BaseBranch,
-                    base,
-                    submitting,
-                    work.BaseBranch,
-                    { branchTarget = BranchTarget.Base },
-                )
-                WorkCreationBranchField(
-                    work.HeadBranch,
-                    head,
-                    submitting,
-                    work.HeadBranch,
-                    { branchTarget = BranchTarget.Head },
-                )
+                val editable = ready && !submitting && !uncertain
+                GithubSection(branchStrings.Branches) {
+                    GlasmioListRow(
+                        title = head.ifBlank { work.HeadBranch },
+                        leading = {
+                            GithubIcon(Lucide.Feather, contentDescription = work.HeadBranch, size = 20.dp)
+                        },
+                        showTopSeparator = false,
+                        enabled = editable,
+                        onClick = { branchTarget = BranchTarget.Head },
+                    )
+                    GlasmioListRow(
+                        title = base.ifBlank { work.BaseBranch },
+                        leading = {
+                            GithubIcon(Lucide.CornerDownRight, contentDescription = work.BaseBranch, size = 20.dp)
+                        },
+                        enabled = editable,
+                        onClick = { branchTarget = BranchTarget.Base },
+                    )
+                }
             }
             WorkCreationField(work.CreationBody, body, submitting || uncertain)
             if (submitting) {
@@ -367,14 +370,17 @@ internal fun WorkCreationSheet(
     }
     GithubChoiceSheet(
         visible = branchTarget != null,
-        title = branchStrings.Branches,
+        title = if (branchTarget == BranchTarget.Head) work.HeadBranch else work.BaseBranch,
         placeholder = branchStrings.BranchSearchPlaceholder,
-        choices = branchPicker.branches,
+        choices =
+            if (branchTarget == BranchTarget.Head && ':' in branchPicker.query)
+                listOf(branchPicker.query.trim()) + branchPicker.branches
+            else branchPicker.branches,
         query = branchPicker.query,
         selectedValue =
             when (branchTarget) {
-                BranchTarget.Base -> base.text.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
-                BranchTarget.Head -> head.text.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
+                BranchTarget.Base -> base.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
+                BranchTarget.Head -> head.takeIf { it.isNotBlank() }?.let { "refs/heads/$it" }
                 null -> null
             },
         loading = branchPicker.loading && branchPicker.branches.isEmpty(),
@@ -390,8 +396,8 @@ internal fun WorkCreationSheet(
         onSelect = { selected ->
             val branch = selected.removePrefix("refs/heads/")
             when (branchTarget) {
-                BranchTarget.Base -> base.replaceFormText(branch)
-                BranchTarget.Head -> head.replaceFormText(branch)
+                BranchTarget.Base -> base = branch
+                BranchTarget.Head -> head = branch
                 null -> Unit
             }
             branchTarget = null
@@ -531,54 +537,6 @@ private data class IssueCreationDraft(
 private enum class BranchTarget {
     Base,
     Head,
-}
-
-@Composable
-private fun WorkCreationBranchField(
-    label: String,
-    state: TextFieldState,
-    busy: Boolean,
-    branchPickerLabel: String,
-    onPickBranch: () -> Unit,
-) {
-    val colors = GlasmioTheme.colors
-    GlasmioGroupedList {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicTextField(
-                state = state,
-                modifier =
-                    Modifier.weight(1f).padding(vertical = 16.dp).heightIn(min = 24.dp).semantics {
-                        contentDescription = label
-                    },
-                enabled = !busy,
-                textStyle = GlasmioTheme.textStyles.body.copy(color = colors.content),
-                cursorBrush = SolidColor(colors.accent),
-                lineLimits = TextFieldLineLimits.SingleLine,
-                decorator = { inner ->
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                        if (state.text.isEmpty()) {
-                            Text(
-                                label,
-                                style = GlasmioTheme.textStyles.body,
-                                color = colors.tertiaryContent,
-                            )
-                        }
-                        inner()
-                    }
-                },
-            )
-            GlasmioIconButton(onClick = onPickBranch, enabled = !busy) {
-                GithubIcon(
-                    Lucide.GitBranch,
-                    contentDescription = branchPickerLabel,
-                    size = 20.dp,
-                )
-            }
-        }
-    }
 }
 
 @Composable

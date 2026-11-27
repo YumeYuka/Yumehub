@@ -26,7 +26,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
@@ -149,10 +151,10 @@ internal fun HomeFavoritesEditor(
                     }
                 pane.items.isEmpty() ->
                     item {
-                        val message =
-                            if (query.isEmpty()) strings.MyRepositories.Empty
-                            else strings.MyRepositories.EmptyFiltered
-                        GlasmioGroupedList { GlasmioListRow(title = message) }
+                        GithubEmptyState(
+                            scene = if (query.isBlank()) EmptyScene.Inbox else EmptyScene.Search,
+                            title = if (query.isBlank()) strings.MyRepositories.Empty else strings.MyRepositories.EmptyFiltered,
+                        )
                     }
             }
         }

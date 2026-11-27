@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RotateCcw
 import io.github.yumeyucca.lucide.X
@@ -27,7 +28,7 @@ internal fun WorkflowRerunSheet(
     var debug by remember { mutableStateOf(false) }
     var acknowledgeVisible by remember { mutableStateOf(false) }
     val sheet = rememberGlasmioSheetState(skipPartiallyExpanded = true)
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheet,
         fitContent = true,
@@ -56,7 +57,6 @@ internal fun WorkflowRerunSheet(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(LocalGlasmioSheetContentPadding.current)
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

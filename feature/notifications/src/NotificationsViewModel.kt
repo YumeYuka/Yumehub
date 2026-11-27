@@ -69,7 +69,7 @@ data class NotificationsUiState(
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = false,
     val hasPrevious: Boolean = false,
-    val loadError: String? = null,
+    val loadError: Exception? = null,
     val appendError: String? = null,
     val isProcessing: Boolean = false,
     val actionError: String? = null,
@@ -359,7 +359,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             current.selectedThreadIds.intersect(baseNotifications.mapNotNullTo(mutableSetOf()) { it.threadId } + current.pendingThreadIds)
         val stateWithValidRetry =
             if (selected == current.selectedThreadIds) current else current.clearSelectionRetry()
-        val error = (cached.error as? Exception)?.messageForUser()
+        val error = cached.error as? Exception
         val previews =
             notifications
                 .mapNotNull { notification ->
@@ -379,7 +379,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 hasMore = nextPage != null,
                 hasPrevious = loadedFromPage > 1,
                 loadError = error.takeUnless { appending || failedWindow != null },
-                appendError = if (failedWindow != null) current.appendError else error.takeIf { appending },
+                appendError = if (failedWindow != null) current.appendError else error.takeIf { appending }?.messageForUser(),
                 selectedThreadIds = selected,
                 uncertainThreadIds = pendingUncertainTargets.toSet(),
             )
@@ -531,18 +531,19 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
                 ThreadActionKind.MarkUndone -> GithubTxt.current.Notifications.MoveToInbox
             }
 
-    private fun Exception.messageForUser(): String =
-        when (this) {
-            is HttpException ->
-                when (code()) {
-                    401 -> GithubTxt.current.Notifications.SessionExpired
-                    403 -> GithubTxt.current.Notifications.RequestForbidden
-                    404 -> GithubTxt.current.Notifications.NotFound
-                    429 -> GithubTxt.current.Notifications.RateLimited
-                    else -> GithubTxt.current.Repository.HttpFailed(code())
-                }
-            is IOException -> GithubTxt.current.Repository.NetworkFailed
-            is SerializationException -> GithubTxt.current.Repository.ParseFailed
-            else -> GithubTxt.current.Notifications.RequestFailed
-        }
 }
+
+internal fun Exception.messageForUser(): String =
+    when (this) {
+        is HttpException ->
+            when (code()) {
+                401 -> GithubTxt.current.Notifications.SessionExpired
+                403 -> GithubTxt.current.Notifications.RequestForbidden
+                404 -> GithubTxt.current.Notifications.NotFound
+                429 -> GithubTxt.current.Notifications.RateLimited
+                else -> GithubTxt.current.Repository.HttpFailed(code())
+            }
+        is IOException -> GithubTxt.current.Repository.NetworkFailed
+        is SerializationException -> GithubTxt.current.Repository.ParseFailed
+        else -> GithubTxt.current.Notifications.RequestFailed
+    }

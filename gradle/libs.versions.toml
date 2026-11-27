@@ -22,7 +22,7 @@ coroutines = "1.11.0"
 serialization = "1.12.0"
 koin = "4.2.2"
 
-miuix = "0.9.5-ae3be934-SNAPSHOT"
+miuix = "0.9.5-e58b388f-SNAPSHOT"
 glasmio = "0.1.4"
 decompose = "3.5.0"
 lucide = "1.0.0-SNAPSHOT"

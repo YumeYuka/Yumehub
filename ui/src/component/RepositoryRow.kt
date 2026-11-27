@@ -63,8 +63,9 @@ fun RepositoryLoadingCard(
         modifier = modifier,
         placeholder = { RepositoryCardPlaceholderContent(showCover && showCoverPlaceholder) },
     ) {
-        if (repository != null)
+        if (repository != null) {
             RepositoryCardContent(repository, onClick, action, contributorsCount, showCover)
+        }
     }
 }
 

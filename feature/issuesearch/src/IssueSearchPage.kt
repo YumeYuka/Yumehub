@@ -7,8 +7,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
+import moe.yumeyuka.yumehub.core.model.hasActiveCriteria
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
@@ -31,6 +35,8 @@ fun IssueSearchPage(
           parameters = { parametersOf(login, kind) },
       )
   val filter by viewModel.filter.collectAsStateWithLifecycle()
+  val strings = LocalGithubStrings.current
+  val filtered = filter.hasActiveCriteria()
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter) { actions, searching ->
     GithubPagingContent(
@@ -56,6 +62,16 @@ fun IssueSearchPage(
           actions = actions,
       ) {
         IssueSearchScreen(kind, slots, onOpenWork, viewModel::card)
+        collaborationPagingStatus(
+            slots,
+            kind.title,
+            emptyMessage = when {
+                filtered -> strings.EditorSearch.NoMatches
+                kind == CollaborationKind.PullRequest -> strings.WorkList.EmptyPullRequests
+                else -> strings.WorkList.EmptyIssues
+            },
+            emptyScene = if (filtered) EmptyScene.Search else EmptyScene.Inbox,
+        )
         pageSearchClearance(searching)
       }
     }

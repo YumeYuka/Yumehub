@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -102,22 +101,32 @@ internal fun GithubEditorViewport(
                 contentModifier =
                     Modifier.onSizeChanged { barState.heightOffset = barState.heightOffsetLimit },
                 navigation = {
-                    Box(
-                        Modifier.onSizeChanged {
-                            navigationWidth = maxOf(reservedActionWidth, it.width)
-                        },
-                    ) {
-                        navigation()
+                    val sharedHeader =
+                        LocalGithubHeaderMotion.current != null &&
+                            LocalGithubHeaderEntryKey.current != null
+                    if (!sharedHeader) {
+                        Box(
+                            Modifier.onSizeChanged {
+                                navigationWidth = maxOf(reservedActionWidth, it.width)
+                            },
+                        ) {
+                            navigation()
+                        }
                     }
                 },
                 actions = {
-                    Row(
-                        Modifier.onSizeChanged {
-                            actionsWidth = maxOf(reservedActionWidth, it.width)
-                        },
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        actions()
+                    val sharedHeader =
+                        LocalGithubHeaderMotion.current != null &&
+                            LocalGithubHeaderEntryKey.current != null
+                    if (!sharedHeader) {
+                        Row(
+                            Modifier.onSizeChanged {
+                                actionsWidth = maxOf(reservedActionWidth, it.width)
+                            },
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            actions()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -128,7 +137,6 @@ internal fun GithubEditorViewport(
                         .statusBarsPadding()
                         .height(54.dp)
                         .padding(horizontal = titleSidePadding),
-                    contentAlignment = Alignment.Center,
                 ) {
                     titleContent()
                 }

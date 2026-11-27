@@ -9,7 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
 import io.github.yumeyucca.lucide.*
@@ -18,6 +18,8 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.MaxSavedAccounts
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 
 @Composable
@@ -29,17 +31,27 @@ internal fun ProfileAccountMenu(
     val strings = LocalGithubStrings.current.Profile
     val enabled = LocalGithubPageHost.current?.navigationEnabled == true
     var expanded by remember { mutableStateOf(false) }
+    val anchor = rememberGlasmioMenuAnchorState()
     val canAdd = accounts.size < MaxSavedAccounts
+    GithubToolbarActions(
+        toolbarIcon(
+            Lucide.Users,
+            strings.SwitchAccount,
+            enabled = enabled,
+            key = "accounts",
+            menuAnchor = anchor,
+        ) {
+            if (enabled) expanded = true
+        },
+    )
     GlasmioMenu(
         expanded = expanded && enabled,
         onExpandedChange = { expanded = it && enabled },
         itemCount = accounts.size + if (canAdd) 1 else 0,
         forceBelowAnchor = true,
-        anchor = { open ->
-            GlasmioIconButton(onClick = open, enabled = enabled) {
-                GithubIcon(Lucide.Users, contentDescription = strings.SwitchAccount)
-            }
-        },
+        menuAnchorState = anchor,
+        externalAnchorBounds = anchor.bounds,
+        anchor = {},
     ) { backdrop, close ->
         accounts.forEachIndexed { index, account ->
             GlasmioMenuItem(

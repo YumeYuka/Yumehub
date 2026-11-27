@@ -195,7 +195,7 @@ internal class GithubGraphQlFirstPageCache<T : Any>(
     val restore: suspend () -> PagingSnapshotPage<T>?,
     val save: (PagingSnapshotPage<T>) -> Unit,
     val revalidate:
-        (PagingSource<Int, T>, suspend () -> Pair<PagingSnapshotPage<T>, Boolean>) -> Unit,
+        suspend (PagingSource<Int, T>, suspend () -> Pair<PagingSnapshotPage<T>, Boolean>) -> Unit,
     val discardDenied: suspend (Throwable) -> Unit,
 )
 
@@ -254,6 +254,7 @@ internal class GithubGraphQlPagingSource<T : Any>(
                     val updated = requestPage(null, loader())
                     firstPage(updated) to (cached.boundaryInvalid || updated != result)
                 }
+                if (invalid) return@withLock LoadResult.Invalid()
             }
             LoadResult.Page(
                 items,

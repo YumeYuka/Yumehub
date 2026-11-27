@@ -6,12 +6,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -32,7 +31,7 @@ internal fun RepositoryListsSheet(
 ) {
     val strings = LocalGithubStrings.current
     val profile = strings.Profile
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = state.visible,
         onDismissRequest = onDismiss,
         title = profile.AddToList,
@@ -62,7 +61,6 @@ internal fun RepositoryListsSheet(
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             if (state.phase == WritePhase.PENDING)

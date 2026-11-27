@@ -95,12 +95,22 @@ internal fun WorkListActions(
 ) {
     val common = LocalGithubStrings.current.Common
     val strings = LocalGithubStrings.current.WorkList
-    GlasmioIconButton(onClick = onSearch, enabled = enabled) {
-        GithubIcon(Lucide.Search, contentDescription = common.Search)
-    }
-    GlasmioIconButton(onClick = onShowFilterSheet, enabled = enabled) {
-        GithubIcon(Lucide.ListFilter, contentDescription = strings.SortAndFilter)
-    }
+    GithubToolbarActions(
+        toolbarIcon(
+            Lucide.Search,
+            common.Search,
+            enabled = enabled,
+            key = "search",
+            onClick = onSearch,
+        ),
+        toolbarIcon(
+            Lucide.ListFilter,
+            strings.SortAndFilter,
+            enabled = enabled,
+            key = "filter",
+            onClick = onShowFilterSheet,
+        ),
+    )
 }
 
 private data class WorkListFilterChoice(

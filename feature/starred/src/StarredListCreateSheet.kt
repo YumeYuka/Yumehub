@@ -14,13 +14,12 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -45,7 +44,7 @@ internal fun StarredListCreateSheet(
     val profile = strings.Profile
     val common = strings.Common
     var acknowledgeVisible by remember { mutableStateOf(false) }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
@@ -72,7 +71,7 @@ internal fun StarredListCreateSheet(
         },
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(LocalGlasmioSheetContentPadding.current).padding(16.dp),
+            Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             GithubSection(profile.ListNameLabel) {

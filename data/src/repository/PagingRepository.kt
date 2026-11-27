@@ -260,7 +260,7 @@ internal class PagingEntry<T : Any>(
                     }
                 retired?.cancel()
                 synchronized(lock) {
-                    val context = PagingContext(this, version, generation, initial, !revalidated)
+                    val context = PagingContext(this, version, initial, !revalidated)
                     initial = false
                     revalidated = false
                     source(context).also { pagingSource ->
@@ -305,44 +305,38 @@ internal class PagingEntry<T : Any>(
             }
         }
 
-    fun startRevalidate(
+    suspend fun revalidate(
         expected: Long,
-        expectedGeneration: Job,
         source: PagingSource<*, *>,
         changed: suspend () -> Boolean,
-    ) {
-        val launched =
+    ): Throwable? {
+        synchronized(lock) {
+            ensureCurrent(expected)
+            if (source.invalid || !checkingSources.add(source)) return null
+            lastRevalidator = Triple(expected, source, changed)
+            state.updateRevalidation(RevalidationState.Checking)
+        }
+        try {
+            val diff = pageRead { changed() }
             synchronized(lock) {
-                if (version != expected || source.invalid || !checkingSources.add(source)) return
-                lastRevalidator = Triple(expected, source, changed)
-                state.updateRevalidation(RevalidationState.Checking)
-                true
-            }
-        if (!launched) return
-        CoroutineScope(scope.coroutineContext + expectedGeneration).launch {
-            try {
                 ensureCurrent(expected)
-                val diff = pageRead { changed() }
-                ensureCurrent(expected)
+                state.updateRevalidation(RevalidationState.Idle)
                 if (diff) revalidated(expected, source)
-                synchronized(lock) {
-                    checkingSources.remove(source)
-                    if (version == expected) state.updateRevalidation(RevalidationState.Idle)
-                }
-            } catch (error: CancellationException) {
-                synchronized(lock) {
-                    checkingSources.remove(source)
-                    if (version == expected) state.updateRevalidation(RevalidationState.Idle)
-                }
-                throw error
-            } catch (error: Exception) {
-                synchronized(lock) {
-                    checkingSources.remove(source)
-                    if (version == expected) {
-                        state.updateRevalidation(RevalidationState.Failed(error))
-                    }
-                }
             }
+            return null
+        } catch (error: CancellationException) {
+            synchronized(lock) {
+                if (version == expected) state.updateRevalidation(RevalidationState.Idle)
+            }
+            throw error
+        } catch (error: Exception) {
+            synchronized(lock) {
+                ensureCurrent(expected)
+                state.updateRevalidation(RevalidationState.Failed(error))
+            }
+            return error
+        } finally {
+            synchronized(lock) { checkingSources.remove(source) }
         }
     }
 
@@ -355,7 +349,9 @@ internal class PagingEntry<T : Any>(
                 Triple(expected, source, changed) to generation
             }
         val (triple, gen) = pending
-        startRevalidate(triple.first, gen, triple.second, triple.third)
+        CoroutineScope(scope.coroutineContext + gen).launch {
+            revalidate(triple.first, triple.second, triple.third)
+        }
     }
 
     /** 调用方已更换 [state] 的命名空间；这里取消旧 generation 与 source。 */
@@ -391,7 +387,6 @@ class PagingContext
 internal constructor(
     private val entry: PagingEntry<*>,
     private val version: Long,
-    private val generation: Job,
     val initialSnapshot: Boolean,
     val forceRefresh: Boolean,
 ) {
@@ -444,8 +439,10 @@ internal constructor(
     internal fun persistenceEnabled(): Boolean =
         entry.cache.persistenceEnabled(entry.account, entry.sessionGeneration)
 
-    fun revalidate(source: PagingSource<*, *>, changed: suspend () -> Boolean) {
-        entry.startRevalidate(version, generation, source, changed)
+    /** Keep the first load pending until the cached page is verified or its source is replaced. */
+    suspend fun revalidate(source: PagingSource<*, *>, changed: suspend () -> Boolean) {
+        val error = entry.revalidate(version, source, changed)
+        if (error != null && error.invalidatesCachedContent()) throw error
     }
 }
 

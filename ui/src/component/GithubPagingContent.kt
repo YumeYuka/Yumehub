@@ -91,10 +91,16 @@ fun <T : Any> GithubPagingContent(
         }
     // 恢复请求提交前再次离开组合时保留原锚点，不能用被空首帧夹到 0 的位置覆盖。
     val restorePending = remember(stateKey, listState) { mutableStateOf(anchor != null) }
+    val awaitingFirstPage = remember(stateKey, listState) { mutableStateOf(false) }
+    val previousFirst = remember(pageState, stateKey) {
+        mutableStateOf(pageState?.pagingFrame<T>(stateKey)?.firstOrNull())
+    }
     // 页面被覆盖后回来，分页重新收集首帧为空，LazyListState 会被夹到 0；离开时先记下真实位置。
     DisposableEffect(pageState, stateKey, listState) {
         onDispose {
-            if (!restorePending.value) pageState?.rememberScrollAnchor(stateKey, listState)
+            if (!restorePending.value && !awaitingFirstPage.value) {
+                pageState?.rememberScrollAnchor(stateKey, listState)
+            }
         }
     }
     val active = LocalGithubPageHost.current?.isCurrent != false
@@ -114,11 +120,28 @@ fun <T : Any> GithubPagingContent(
         !denied && !retained && items.itemCount == 0 && items.loadState.refresh is LoadState.Loading
     SideEffect {
         val pending = anchor
+        val first = items.itemSnapshotList.firstOrNull()
+        val headChanged = previousFirst.value != null && first != previousFirst.value
+        if (first != null) previousFirst.value = first
         if (restorePending.value && pending != null && !denied && items.itemCount > 0) {
             // 在测量前改写位置，缓存数据到达的那一帧就落在原处，不先闪一下顶部。
             listState.requestScrollToItem(pending.index, pending.offset)
             restorePending.value = false
             pageState?.clearScrollAnchor(stateKey, pending)
+        } else if (
+            active && !denied && first != null && headChanged &&
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        ) {
+            // Keep the viewport at the top, not on the entity that used to be first.
+            listState.requestScrollToItem(0)
+            awaitingFirstPage.value = false
+        } else if (!retained && pending == null) {
+            if (loading) awaitingFirstPage.value = true
+            else if (awaitingFirstPage.value && items.itemCount > 0) {
+                // 骨架可以滚动，但它的位置不是首屏正文的阅读位置。
+                listState.requestScrollToItem(0)
+                awaitingFirstPage.value = false
+            }
         }
     }
     CompositionLocalProvider(
@@ -306,7 +329,8 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
         // allocator so restoring this list does not replay the entrance.
         val history = slots.drawHistory
         val motion =
-            if (item != null && slots.keys[index] in slots.insertedKeys) githubCardItemMotion()
+            if (item != null && slots.entrance.presented && slots.keys[index] in slots.insertedKeys)
+                githubCardItemMotion()
             else Modifier
         val receipt =
             if (
@@ -332,7 +356,11 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
                         progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
                     }
                 }
-        CompositionLocalProvider(LocalGithubSkeletonEntrance provides slots.entrance) {
+        // 只有真正缺数据的骨架槽等页面入场。已有数据的行随页面滑入并立即可点，不因入场
+        // 结束而延迟组合，也不再用骨架层吞掉这段时间的点击。
+        CompositionLocalProvider(
+            LocalGithubSkeletonEntrance provides if (item == null) slots.entrance else null
+        ) {
             Box(motion.then(receipt).then(semantics)) {
                 itemContent(item, index, slots.keys.size)
             }

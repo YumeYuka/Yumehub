@@ -2,7 +2,6 @@ package moe.yumeyuka.yumehub.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -20,12 +19,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.*
 import java.text.DateFormat
 import java.util.Date
@@ -89,17 +87,21 @@ fun HomePage(
         title = strings.Title,
         back = false,
         actions = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlasmioIconButton(onClick = onOpenSearch) {
-                    GithubIcon(
-                        Lucide.Search,
-                        contentDescription = LocalGithubStrings.current.Common.Search,
-                    )
-                }
-                GlasmioIconButton(onClick = onEditWork) {
-                    GithubIcon(Lucide.Pencil, contentDescription = strings.EditHome)
-                }
-            }
+            val searchLabel = LocalGithubStrings.current.Common.Search
+            moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                    Lucide.Search,
+                    searchLabel,
+                    key = "search",
+                    onClick = onOpenSearch,
+                ),
+                moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                    Lucide.Pencil,
+                    strings.EditHome,
+                    key = "edit",
+                    onClick = onEditWork,
+                ),
+            )
         },
     ) {
         if (recoveryFailed) {
@@ -145,7 +147,11 @@ fun HomePage(
         item(key = "home-favorites") {
             GithubSection(strings.Favorites) {
                 if (state == HomeFavoritesState.Error || favorites?.refreshFailed == true) {
-                    GlasmioListRow(title = strings.FavoritesLoadFailed, detail = retry, onClick = viewModel::retry)
+                    GlasmioListRow(
+                        title = strings.FavoritesLoadFailed,
+                        detail = retry,
+                        onClick = viewModel::retry,
+                    )
                 }
                 GithubLoadingContent(
                     loading = state == HomeFavoritesState.Loading,
@@ -229,8 +235,9 @@ private fun PendingMutationsSheet(
 ) {
     val common = allStrings.Common
     val context = LocalContext.current
-    val timeFormat = remember(context) { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
-    GlasmioBottomSheet(
+    val timeFormat =
+        remember(context) { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         fitContent = true,
@@ -249,7 +256,6 @@ private fun PendingMutationsSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -260,8 +266,7 @@ private fun PendingMutationsSheet(
                         if (summary.startedAtMillis > 0L) {
                             timeFormat.format(Date(summary.startedAtMillis))
                         } else null
-                    val subtitle =
-                        listOfNotNull(summary.target, time).joinToString(" · ")
+                    val subtitle = listOfNotNull(summary.target, time).joinToString(" · ")
                     GlasmioListRow(
                         title = label,
                         subtitle = subtitle,

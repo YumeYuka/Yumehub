@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -14,10 +15,13 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.githubActivityTime
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
@@ -56,6 +60,15 @@ fun PullRequestCommitsPage(
             showTitle = false,
             itemSpacing = 12.dp,
         ) {
+            if (activityCommits.isEmpty()) {
+                item(key = "pr-commits-empty") {
+                    GithubEmptyState(
+                        scene = EmptyScene.Inbox,
+                        title = strings.Workspaces.NoCommitHistory,
+                        modifier = Modifier.fillParentMaxHeight(),
+                    )
+                }
+            }
             items(
                 count = activityCommits.size,
                 key = { activityCommits[it].id },
@@ -158,6 +171,13 @@ fun PullRequestCommitsPage(
                         }
                     }
                 }
+            if (head != null && state.error == null && pageError == null) {
+                collaborationPagingStatus(
+                    slots,
+                    strings.WorkDetail.Commits,
+                    emptyMessage = strings.Workspaces.NoCommitHistory,
+                )
+            }
             if (!state.loading && (missingHead || state.error != null || pageError != null)) {
                 item(key = "pr-commits-retry") {
                     GlasmioGroupedList {

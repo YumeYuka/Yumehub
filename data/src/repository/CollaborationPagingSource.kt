@@ -53,6 +53,7 @@ private class CollaborationPagingSource<T : Any, R : Any>(
                             snapshot.save(updated)
                             initial != updated.copy(updatedAt = initial.updatedAt)
                         }
+                        if (invalid) return LoadResult.Invalid()
                     }
                     return pageResult(initial)
                 }

@@ -161,6 +161,8 @@ internal fun GithubMiuixTopAppBarLayout(
             targetValue = titleColor,
             animationSpec = tween(durationMillis = 50),
         )
+    val headerMotion = LocalGithubHeaderMotion.current
+    val headerEntryKey = LocalGithubHeaderEntryKey.current
 
     Layout(
         {
@@ -378,6 +380,18 @@ internal fun GithubMiuixTopAppBarLayout(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
                 .pointerInput(Unit) { detectTapGestures { /* Consume click */ } },
     ) { measurables, constraints ->
+        val horizontalInsetPx = (navigationIconPadding + 4.dp).roundToPx()
+        val sharedLeadingWidth =
+            if (headerMotion != null && headerEntryKey != null) {
+                val measured = headerMotion.leadingWidthPx(headerEntryKey)
+                if (measured > 0) measured + horizontalInsetPx else 0
+            } else 0
+        val sharedTrailingWidth =
+            if (headerMotion != null && headerEntryKey != null) {
+                val measured = headerMotion.trailingWidthPx(headerEntryKey)
+                if (measured > 0) measured + horizontalInsetPx else 0
+            } else 0
+
         val navigationIconPlaceable =
             measurables
                 .fastFirst { it.layoutId == "navigationIcon" }
@@ -388,12 +402,16 @@ internal fun GithubMiuixTopAppBarLayout(
                 .fastFirst { it.layoutId == "actionIcons" }
                 .measure(constraints.copy(minWidth = 0, minHeight = 0))
 
+        val reservedLeadingWidth = maxOf(navigationIconPlaceable.width, sharedLeadingWidth)
+        val reservedTrailingWidth = maxOf(actionIconsPlaceable.width, sharedTrailingWidth)
+
         val maxTitleWidth =
             if (constraints.maxWidth == Constraints.Infinity) {
                 constraints.maxWidth
             } else {
-                (constraints.maxWidth - navigationIconPlaceable.width - actionIconsPlaceable.width)
-                    .coerceAtLeast(0)
+                (constraints.maxWidth - reservedLeadingWidth - reservedTrailingWidth).coerceAtLeast(
+                    0,
+                )
             }
         val titleMaxWidth =
             if (maxTitleWidth == Constraints.Infinity) {
@@ -401,7 +419,6 @@ internal fun GithubMiuixTopAppBarLayout(
             } else {
                 (maxTitleWidth * TITLE_WIDTH_FRACTION).fastRoundToInt()
             }
-
         val titlePlaceable =
             measurables
                 .fastFirst { it.layoutId == "title" }
@@ -440,6 +457,7 @@ internal fun GithubMiuixTopAppBarLayout(
             }
 
         val verticalCenter = collapsedHeight / 2
+        val titleY = verticalCenter - titlePlaceable.height / 2
         val smallTitleBottom = verticalCenter + titlePlaceable.height / 2
         val layoutHeight =
             maxOf(barHeight, smallTitleBottom) +
@@ -455,16 +473,15 @@ internal fun GithubMiuixTopAppBarLayout(
 
             // Title
             var baseX = (constraints.maxWidth - titlePlaceable.width) / 2
-            if (baseX < navigationIconPlaceable.width) {
-                baseX += (navigationIconPlaceable.width - baseX)
+            if (baseX < reservedLeadingWidth) {
+                baseX += (reservedLeadingWidth - baseX)
             } else if (
-                baseX + titlePlaceable.width > constraints.maxWidth - actionIconsPlaceable.width
+                baseX + titlePlaceable.width > constraints.maxWidth - reservedTrailingWidth
             ) {
                 baseX +=
-                    ((constraints.maxWidth - actionIconsPlaceable.width) -
+                    ((constraints.maxWidth - reservedTrailingWidth) -
                         (baseX + titlePlaceable.width))
             }
-            val titleY = verticalCenter - titlePlaceable.height / 2
             titleClip.titleOrigin =
                 IntOffset(
                     if (layoutDirection == LayoutDirection.Ltr) baseX

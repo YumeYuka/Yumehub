@@ -55,7 +55,10 @@ private const val MaxPredictiveBackPercent = 100f
 private val yumePageAnimator = fade(tween(300)) + slide(tween(400)) + scale(tween(500))
 
 private fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> =
-    stackAnimation(GithubRouteEntryAnimator)
+    // RouteChild already consumes pointer input on non-top pages, so the outgoing page cannot react.
+    // Decompose's full-screen overlay would also block the page that just arrived until every
+    // combined animator finishes (the 500 ms scale), which reads as dead taps after the slide.
+    stackAnimation(animator = GithubRouteEntryAnimator, disableInputDuringAnimation = false)
 
 private object GithubRouteEntryAnimator : StackAnimator {
     @Composable

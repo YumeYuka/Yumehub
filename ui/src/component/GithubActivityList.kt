@@ -36,6 +36,7 @@ fun GithubActivityListPage(
     row: (@Composable (RepositoryActivityEntry, (() -> Unit)?) -> Unit)? = null,
     toolbar: (@Composable (refresh: () -> Unit) -> Unit)? = null,
     locked: Boolean = false,
+    emptyScene: EmptyScene = EmptyScene.Inbox,
 ) {
     val strings = LocalGithubStrings.current.Activity
     val host = requireNotNull(LocalGithubPageHost.current)
@@ -102,7 +103,7 @@ fun GithubActivityListPage(
                     }
                 }
             }
-            collaborationPagingStatus(slots, title, emptyIcon = icon)
+            collaborationPagingStatus(slots, title, emptyScene = emptyScene)
         }
     }
 }

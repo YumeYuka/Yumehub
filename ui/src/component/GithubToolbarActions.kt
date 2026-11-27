@@ -9,7 +9,13 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
 /** 缺席的操作传 null;保留同一操作的身份,只有图标变化才替换前景。 */
 @Composable
 fun GithubToolbarActions(vararg actions: GlasmioHeaderAction?) {
-    GithubToolbarMorph(actions.filterNotNull())
+    val filtered = actions.filterNotNull()
+    val sink = moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderActionsSink.current
+    if (sink != null) {
+        sink(filtered)
+    } else {
+        GithubToolbarMorph(filtered)
+    }
 }
 
 fun toolbarIcon(

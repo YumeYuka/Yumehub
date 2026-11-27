@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -45,7 +45,6 @@ import io.github.neoruaa.glasmio.ui.GlasmioReorderableGroup
 import io.github.neoruaa.glasmio.ui.GlasmioSearchToolbar
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.locale.GithubStrings_Home
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
@@ -116,7 +115,7 @@ internal fun HomeWorkSheet(
             }
         GithubLoadFailureToast(edit.error, message)
     }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = dismiss,
         title = strings.EditHome,
@@ -191,7 +190,7 @@ internal fun HomeWorkSheet(
             favorites.finishSearch(apply = false)
         }
         GithubBackHandler(enabled = visible && showSearch, onBack = cancelSearch)
-        Box(Modifier.fillMaxSize().padding(LocalGlasmioSheetContentPadding.current)) {
+        Box(Modifier.fillMaxSize()) {
             stateHolder.SaveableStateProvider(screen) {
                 if (screen == HomeEditTab.Work) {
                     HomeWorkEditor(draft, strings, enabled, onChange)

@@ -133,14 +133,19 @@ fun SkeletonSwap(
                 }
             }
             if (hold) {
-                // 准备中的文档已排版但不可点。占位层拦截命中，列表仍可滚动。
+                // Only a still-waiting slot swallows pointers. Once the body is drawn the fading
+                // placeholder is decoration: taps must reach the real row.
                 Box(
                     Modifier.layoutId(PlaceholderSlot)
-                        .pointerInput(Unit) {
-                            awaitPointerEventScope {
-                                while (true) awaitPointerEvent()
-                            }
-                        }
+                        .then(
+                            if (waiting)
+                                Modifier.pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) awaitPointerEvent()
+                                    }
+                                }
+                            else Modifier,
+                        )
                         .clearAndSetSemantics {},
                     propagateMinConstraints = true,
                 ) {

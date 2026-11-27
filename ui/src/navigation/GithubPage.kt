@@ -1,5 +1,7 @@
 package moe.yumeyuka.yumehub.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -7,21 +9,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
+import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderGroup
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.yumeyucca.lucide.ChevronLeft
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 
 /**
- * 外壳向页面注入的环境：底部留白、返回动作、标签切换与列表状态上报。
- *
- * 返回与页面内跳转分开授权：[backEnabled] 表示「返回键可用」，要求有返回、在栈顶且未处于提交锁； [navigationEnabled]
- * 只表示「页面自身发起的跳转可用」，要求仍在栈顶但不看提交锁——事件回调 往往晚于锁释放的那次重组，两者共用开关会把这次跳转静默丢掉。
+ * 外壳向页面注入的环境：底部留白、返回动作、标签切换与列表状态上报。 返回与页面内跳转分开授权：[backEnabled] 表示「返回键可用」，要求有返回、在栈顶且未处于提交锁；
+ * [navigationEnabled] 只表示「页面自身发起的跳转可用」，要求仍在栈顶但不看提交锁——事件回调 往往晚于锁释放的那次重组，两者共用开关会把这次跳转静默丢掉。
  */
 @Stable
 class GithubPageHost(
@@ -79,6 +86,7 @@ fun GithubPage(
     locked: Boolean = false,
     leading: @Composable () -> Unit = {},
     actions: @Composable () -> Unit = {},
+    headerActions: List<GlasmioHeaderAction>? = null,
     editorContent: (@Composable () -> Unit)? = null,
     editorTitle: (@Composable () -> Unit)? = null,
     horizontalPadding: Dp = 12.dp,
@@ -101,6 +109,76 @@ fun GithubPage(
         }
     }
     DisposableEffect(host.onDispose) { onDispose { host.onDispose() } }
+
+    val headerMotion = LocalGithubHeaderMotion.current
+    val headerEntryKey = LocalGithubHeaderEntryKey.current
+    val sharedBackdrop =
+        if (headerMotion != null && headerEntryKey != null) {
+            LocalGithubPageBackdrop.current ?: rememberLayerBackdrop()
+        } else {
+            null
+        }
+    val latestLocked = rememberUpdatedState(locked)
+    val latestOnBack = rememberUpdatedState(onBack)
+    val latestHost = rememberUpdatedState(host)
+
+    val leadingGroup =
+        if (back && headerMotion != null && headerEntryKey != null) {
+            val backEnabled = !locked && host.backButtonEnabled
+            listOf(
+                GlasmioHeaderGroup(
+                    key = "navigation",
+                    actions =
+                        listOf(
+                            toolbarIcon(
+                                icon = Lucide.ChevronLeft,
+                                label = "返回",
+                                enabled = backEnabled,
+                                key = "navigation.back",
+                            ) {
+                                if (!latestLocked.value && latestHost.value.backEnabled) {
+                                    latestOnBack.value?.invoke() ?: latestHost.value.onBack()
+                                }
+                            },
+                        ),
+                ),
+            )
+        } else emptyList()
+
+    var collectedActions: List<GlasmioHeaderAction>? = null
+    if (headerMotion != null && headerEntryKey != null && headerActions == null) {
+        val sink: (List<GlasmioHeaderAction>) -> Unit = { collected ->
+            collectedActions = collected
+        }
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalGithubHeaderActionsSink provides sink,
+        ) {
+            Box(Modifier.size(0.dp)) {
+                actions()
+            }
+        }
+    }
+
+    val resolvedTrailingActions = headerActions ?: collectedActions.orEmpty()
+    val trailingGroups =
+        if (
+            headerMotion != null && headerEntryKey != null && resolvedTrailingActions.isNotEmpty()
+        ) {
+            listOf(GlasmioHeaderGroup(key = "primary", actions = resolvedTrailingActions))
+        } else emptyList()
+
+    if (headerMotion != null && headerEntryKey != null) {
+        val pageColors = GlasmioTheme.colors
+        val spec =
+            GithubHeaderSpec(
+                leading = leadingGroup,
+                trailing = trailingGroups,
+                backdrop = sharedBackdrop,
+                colors = pageColors,
+            )
+        SideEffect { headerMotion.updateSpec(headerEntryKey, spec) }
+    }
+
     val navigation: @Composable () -> Unit = {
         if (back) {
             GlasmioIconButton(
@@ -113,43 +191,50 @@ fun GithubPage(
             leading()
         }
     }
-    if (editorContent != null) {
-        GithubEditorViewport(
-            title = title,
-            navigation = navigation,
-            actions = actions,
-            content = editorContent,
-            titleContent = editorTitle,
-        )
-    } else {
-        GithubListPage(
-            title = title,
-            showTitle = showTitle,
-            titleLoading = titleLoading,
-            smallTitle = smallTitle,
-            titleLeading = titleLeading,
-            titleSubtitle = titleSubtitle,
-            titleMaxLines = titleMaxLines,
-            titleStyle = titleStyle,
-            titleSuffix = titleSuffix,
-            titleEyebrow = titleEyebrow,
-            titleTrailing = titleTrailing,
-            titleFooter = titleFooter,
-            titleOnClick = titleOnClick,
-            listState = pageState,
-            topBarState = if (showTitle) pageStateHolder?.topBarState(pageState) else null,
-            bottomPadding = host.bottomPadding,
-            navigation = navigation,
-            actions = {
-                host.shellActions()
-                actions()
-            },
-            content = content,
-            horizontalPadding = horizontalPadding,
-            itemSpacing = itemSpacing,
-            backgroundColor = backgroundColor,
-            contentHeader = contentHeader,
-            bottomContent = bottomContent,
-        )
+    val provideBackdrop = sharedBackdrop ?: LocalGithubPageBackdrop.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalGithubPageBackdrop provides provideBackdrop,
+    ) {
+        if (editorContent != null) {
+            GithubEditorViewport(
+                title = title,
+                navigation = navigation,
+                actions = actions,
+                content = editorContent,
+                titleContent = editorTitle,
+            )
+        } else {
+            GithubListPage(
+                title = title,
+                showTitle = showTitle,
+                titleLoading = titleLoading,
+                smallTitle = smallTitle,
+                titleLeading = titleLeading,
+                titleSubtitle = titleSubtitle,
+                titleMaxLines = titleMaxLines,
+                titleStyle = titleStyle,
+                titleSuffix = titleSuffix,
+                titleEyebrow = titleEyebrow,
+                titleTrailing = titleTrailing,
+                titleFooter = titleFooter,
+                titleOnClick = titleOnClick,
+                listState = pageState,
+                topBarState = if (showTitle) pageStateHolder?.topBarState(pageState) else null,
+                bottomPadding = host.bottomPadding,
+                navigation = navigation,
+                actions = {
+                    host.shellActions()
+                    if (headerMotion == null || headerEntryKey == null) {
+                        actions()
+                    }
+                },
+                horizontalPadding = horizontalPadding,
+                itemSpacing = itemSpacing,
+                backgroundColor = backgroundColor,
+                contentHeader = contentHeader,
+                bottomContent = bottomContent,
+                content = content,
+            )
+        }
     }
 }

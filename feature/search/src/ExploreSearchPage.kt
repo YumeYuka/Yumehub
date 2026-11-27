@@ -7,13 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
 import io.github.yumeyucca.lucide.*
@@ -24,6 +24,8 @@ import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
 import moe.yumeyuka.yumehub.locale.GithubStrings
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
@@ -114,18 +116,25 @@ fun ExploreSearchPage(
                 itemSpacing = 12.dp,
                 actions = {
                     var expanded by remember { mutableStateOf(false) }
+                    val anchor = io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState()
+                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                        moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                            Lucide.ListFilter,
+                            strings.Search.Filter,
+                            enabled = host.navigationEnabled,
+                            key = "filter",
+                            menuAnchor = anchor,
+                        ) {
+                            if (host.navigationEnabled) expanded = true
+                        },
+                    )
                     GlasmioMenu(
                         expanded = expanded,
                         onExpandedChange = { expanded = it },
                         itemCount = ExploreCategory.entries.size,
-                        anchor = { open ->
-                            GlasmioIconButton(onClick = open, enabled = host.navigationEnabled) {
-                                GithubIcon(
-                                    Lucide.ListFilter,
-                                    contentDescription = strings.Search.Filter,
-                                )
-                            }
-                        },
+                        menuAnchorState = anchor,
+                        externalAnchorBounds = anchor.bounds,
+                        anchor = {},
                     ) { backdrop, close ->
                         ExploreCategory.entries.forEach { choice ->
                             GlasmioMenuItem(
@@ -146,20 +155,30 @@ fun ExploreSearchPage(
                     }
                 },
             ) {
-                if (search.needsQuery) return@GithubPage
-                searchResultRows(
-                    slots,
-                    search.category,
-                    onOpenRepository,
-                    onOpenWork,
-                    onOpenUser,
-                    onOpenFile,
-                )
-                collaborationPagingStatus(
-                    slots, strings.Common.Search,
-                    emptyMessage = strings.EditorSearch.NoMatches,
-                    emptyIcon = Lucide.Search,
-                )
+                if (search.needsQuery) {
+                    item(key = "search-prompt") {
+                        GithubEmptyState(
+                            scene = EmptyScene.Search,
+                            title = strings.Search.Placeholder(search.category.label(strings)),
+                            modifier = Modifier.fillParentMaxHeight(),
+                        )
+                    }
+                } else {
+                    searchResultRows(
+                        slots,
+                        search.category,
+                        onOpenRepository,
+                        onOpenWork,
+                        onOpenUser,
+                        onOpenFile,
+                    )
+                    collaborationPagingStatus(
+                        slots,
+                        strings.Common.Search,
+                        emptyMessage = strings.EditorSearch.NoMatches,
+                        emptyScene = EmptyScene.Search,
+                    )
+                }
                 pageSearchClearance(visible = true)
             }
         }

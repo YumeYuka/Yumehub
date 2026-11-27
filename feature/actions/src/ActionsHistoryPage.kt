@@ -123,6 +123,7 @@ internal fun ActionsHistoryPage(
     GithubActivityListPage(
         title = strings.Repository.ActionsTitle,
         source = runs,
+        emptyScene = if (selected == null) EmptyScene.Inbox else EmptyScene.Search,
         subtitle = when (command?.phase) {
             WritePhase.PENDING -> "${selected?.name} · ${strings.Common.MutationPending}"
             WritePhase.UNCERTAIN -> "${selected?.name} · ${strings.Common.MutationUncertain}"

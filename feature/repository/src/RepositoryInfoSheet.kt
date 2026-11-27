@@ -12,12 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderScrollEdge
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioSheetToolbarButton
-import io.github.neoruaa.glasmio.ui.GlasmioSheetTopToolbar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
+import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -43,15 +41,13 @@ internal fun RepositoryInfoSheet(
     val info = strings.Repository
     val colors = GlasmioTheme.colors
     val listState = rememberLazyListState()
-    val edgeProgress = rememberGlasmioHeaderScrollEdge(listState)
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = info.RepositoryInfo,
         skipPartiallyExpanded = false,
-        topBarBlurProgress = edgeProgress,
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = info.RepositoryInfo,
                 navigation = {
                     GlasmioSheetToolbarButton(onClick = onDismiss) {
@@ -66,17 +62,10 @@ internal fun RepositoryInfoSheet(
             )
         },
     ) {
-        val sheetPadding = LocalGlasmioSheetContentPadding.current
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding =
-                PaddingValues(
-                    start = 12.dp,
-                    top = sheetPadding.calculateTopPadding() + 12.dp,
-                    end = 12.dp,
-                    bottom = sheetPadding.calculateBottomPadding() + 12.dp,
-                ),
+            contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             repository?.description?.takeIf(String::isNotBlank)?.let { description ->

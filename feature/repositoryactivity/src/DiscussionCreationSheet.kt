@@ -1,6 +1,5 @@
 package moe.yumeyuka.yumehub.feature.repositoryactivity
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +28,11 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
@@ -42,7 +40,6 @@ import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
 
 @Composable
 internal fun DiscussionCreationSheet(
@@ -74,7 +71,7 @@ internal fun DiscussionCreationSheet(
             androidx.compose.runtime.snapshotFlow { title.text.toString() }.collect(onTitleChange)
         }
     }
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
@@ -106,11 +103,10 @@ internal fun DiscussionCreationSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GlasmioGroupedList(Modifier.animateContentSize(GithubCardSizeSpec)) {
+            GlasmioGroupedList {
                 GlasmioListRow(
                     title = work.Category,
                     detail = if (optionsFailed) strings.Common.Retry else category?.name,

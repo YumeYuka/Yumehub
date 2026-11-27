@@ -31,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
@@ -89,7 +89,6 @@ internal fun WorkInfoSheet(
     val strings = LocalGithubStrings.current.WorkDetail
     val common = LocalGithubStrings.current.Common
     val scroll = rememberScrollState()
-    val fadeDistance = with(LocalDensity.current) { 56.dp.toPx() }
     val title =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
         else strings.IssueInformation
@@ -105,14 +104,13 @@ internal fun WorkInfoSheet(
     if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
     if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
     // 保存写回在后台继续，弹窗提交期间不再禁止关闭与交互。
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = title,
         skipPartiallyExpanded = false,
-        topBarBlurProgress = (scroll.value / fadeDistance).coerceIn(0f, 1f),
         topBar = {
-            GlasmioSheetTopToolbar(
+            GlasmioTopBar(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
@@ -135,7 +133,6 @@ internal fun WorkInfoSheet(
         Column(
             Modifier.fillMaxSize()
                 .verticalScroll(scroll)
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

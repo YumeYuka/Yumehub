@@ -5,24 +5,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
+import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
@@ -45,9 +44,12 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
     val creation by viewModel.creation.collectAsStateWithLifecycle()
     val selectedList by viewModel.selectedList.collectAsStateWithLifecycle()
     val search by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val changes = key(viewModel, selectedList?.id) {
-        remember { viewModel.membershipFor(selectedList) }.collectAsStateWithLifecycle(emptyMap()).value
-    }
+    val changes =
+        key(viewModel, selectedList?.id) {
+            remember { viewModel.membershipFor(selectedList) }
+                .collectAsStateWithLifecycle(emptyMap())
+                .value
+        }
     var searchVisible by remember(login) { mutableStateOf(false) }
     var searchInput by
         rememberSaveable(login, stateSaver = TextFieldValue.Saver) {
@@ -72,13 +74,24 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         onBack = dismissSearch,
     )
     GithubPageSearchLayout(
-        searchVisible, searchInput, { searchInput = it }, viewModel::search,
-        dismissSearch, strings.Profile.SearchStarred,
+        searchVisible,
+        searchInput,
+        { searchInput = it },
+        viewModel::search,
+        dismissSearch,
+        strings.Profile.SearchStarred,
     ) {
         GithubPagingContent(
-            source = remember(viewModel, selectedList, search) { viewModel.repositoriesFor(search, selectedList) },
-            contentKey = Triple(viewModel.account to login, selectedList?.id to selectedList?.slug, search),
-            revalidation = remember(viewModel, selectedList, search) { viewModel.revalidationFor(search, selectedList) },
+            source =
+                remember(viewModel, selectedList, search) {
+                    viewModel.repositoriesFor(search, selectedList)
+                },
+            contentKey =
+                Triple(viewModel.account to login, selectedList?.id to selectedList?.slug, search),
+            revalidation =
+                remember(viewModel, selectedList, search) {
+                    viewModel.revalidationFor(search, selectedList)
+                },
             onRetryRevalidation = { viewModel.retryRevalidation(search, selectedList) },
         ) { paging ->
             val repositories = paging.items
@@ -87,57 +100,75 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                     it.id?.toString() ?: it.fullName
                 }
             val loaded = slots.snapshot
-            val additions = remember(changes, loaded, search, selectedList) {
-                if (selectedList == null && search.isNotBlank() || changes.isEmpty()) emptyList() else {
-                    val present = loaded.mapNotNullTo(hashSetOf()) { it?.fullName?.lowercase() }
-                    changes.mapNotNull { (slug, change) -> change.repository?.takeIf { repo ->
-                        change.member == true && slug !in present && change.phase != moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED &&
-                            (search.isBlank() || repo.fullName.orEmpty().contains(search.trim(), true) || repo.description.orEmpty().contains(search.trim(), true))
-                    } }
+            val additions =
+                remember(changes, loaded, search, selectedList) {
+                    if (selectedList == null && search.isNotBlank() || changes.isEmpty())
+                        emptyList()
+                    else {
+                        val present = loaded.mapNotNullTo(hashSetOf()) { it?.fullName?.lowercase() }
+                        changes.mapNotNull { (slug, change) ->
+                            change.repository?.takeIf { repo ->
+                                change.member == true &&
+                                    slug !in present &&
+                                    change.phase !=
+                                        moe.yumeyuka.yumehub.data.cache.WritePhase.REJECTED &&
+                                    (search.isBlank() ||
+                                        repo.fullName.orEmpty().contains(search.trim(), true) ||
+                                        repo.description.orEmpty().contains(search.trim(), true))
+                            }
+                        }
+                    }
                 }
-            }
-        GithubPage(
-            title = selectedList?.name ?: strings.Profile.Starred,
-            listState = paging.listState,
-            itemSpacing = 12.dp,
-            actions = {
-                GlasmioIconButton(
-                    onClick = { searchVisible = true },
-                ) {
-                    GithubIcon(
-                        Lucide.Search,
-                        contentDescription = strings.Profile.SearchStarred,
+            GithubPage(
+                title = selectedList?.name ?: strings.Profile.Starred,
+                listState = paging.listState,
+                itemSpacing = 12.dp,
+                actions = {
+                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                        moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                            Lucide.Search,
+                            strings.Profile.SearchStarred,
+                            key = "search",
+                        ) {
+                            searchVisible = true
+                        },
+                        moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                            Lucide.ListFilter,
+                            strings.Profile.Lists,
+                            key = "filter",
+                        ) {
+                            focusManager.clearFocus(force = true)
+                            keyboard?.hide()
+                            listSearch = ""
+                            listsExpanded = true
+                        },
                     )
-                }
-                GlasmioIconButton(
-                    onClick = {
-                        focusManager.clearFocus(force = true)
-                        keyboard?.hide()
-                        listSearch = ""
-                        listsExpanded = true
-                    },
-                ) {
-                    GithubIcon(Lucide.ListFilter, contentDescription = strings.Profile.Lists)
-                }
-            },
-        ) {
-            additions.forEach { repo -> item(key = "star-change:${repo.fullName}") {
-                moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard(repo, onClick = { onOpenRepository(repo) }, showCover = false)
-            } }
-            StarredRepositoriesScreen(
-                slots,
-                onOpenRepository,
-                hasAdditions = additions.isNotEmpty(),
-                emptyText =
-                    if (search.isBlank())
-                        strings.Profile.CollectionEmpty(
-                            selectedList?.name ?: strings.Profile.Starred,
+                },
+            ) {
+                additions.forEach { repo ->
+                    item(key = "star-change:${repo.fullName}") {
+                        moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard(
+                            repo,
+                            onClick = { onOpenRepository(repo) },
+                            showCover = false,
                         )
-                    else strings.Profile.NoMatchingStarred,
-            )
-            pageSearchClearance(searchVisible)
+                    }
+                }
+                StarredRepositoriesScreen(
+                    slots,
+                    onOpenRepository,
+                    hasAdditions = additions.isNotEmpty(),
+                    emptyScene = if (search.isNotBlank()) EmptyScene.Search else EmptyScene.Inbox,
+                    emptyText =
+                        if (search.isBlank())
+                            strings.Profile.CollectionEmpty(
+                                selectedList?.name ?: strings.Profile.Starred,
+                            )
+                        else strings.Profile.NoMatchingStarred,
+                )
+                pageSearchClearance(searchVisible)
+            }
         }
-    }
     }
     StarredListSelectionSheet(
         visible = listsExpanded,

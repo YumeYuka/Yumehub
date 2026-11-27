@@ -54,3 +54,12 @@ data class CollaborationListFilter(
     val unlabeledOnly: Boolean = false,
     val unassignedOnly: Boolean = false,
 )
+
+/** Sorting changes the order, not which items can match. */
+fun CollaborationListFilter.hasActiveCriteria(
+    defaultState: CollaborationStateFilter = CollaborationStateFilter.All,
+    defaultScope: CollaborationScopeFilter = CollaborationScopeFilter.All,
+): Boolean =
+    state != defaultState || scope != defaultScope || searchQuery.isNotBlank() ||
+        draftOnly || unansweredOnly || label != null || category != null || milestone != null ||
+        issueType != null || review != CollaborationReviewFilter.Any || unlabeledOnly || unassignedOnly

@@ -29,7 +29,9 @@ import moe.yumeyuka.yumehub.data.repository.GithubReleaseDetail
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubAvatar
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
@@ -130,12 +132,14 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         listState = listState,
         itemSpacing = 0.dp,
         contentHeader = {
-            SkeletonSwap(
-                loading = detail == null,
-                placeholder = { ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp)) },
-            ) {
-                detail?.let {
-                    ReleaseMetadata(it, host.navigationEnabled, Modifier.padding(bottom = 12.dp))
+            if (detail != null || state.loading) {
+                SkeletonSwap(
+                    loading = detail == null,
+                    placeholder = { ReleaseMetadataPlaceholder(Modifier.padding(bottom = 12.dp)) },
+                ) {
+                    detail?.let {
+                        ReleaseMetadata(it, host.navigationEnabled, Modifier.padding(bottom = 12.dp))
+                    }
                 }
             }
         },
@@ -163,7 +167,11 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             }
         if (detail == null && state.result != null && state.failure == null)
             item(key = "release-empty") {
-                GlasmioGroupedList { GlasmioListRow(title = strings.Release.Empty) }
+                GithubEmptyState(
+                    scene = EmptyScene.Inbox,
+                    title = strings.Release.Empty,
+                    modifier = Modifier.fillParentMaxHeight(),
+                )
             }
         if (detail != null || state.loading) {
             readingItem(key = "release-body") {

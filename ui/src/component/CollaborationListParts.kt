@@ -2,9 +2,8 @@ package moe.yumeyuka.yumehub.ui.component
 
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import io.github.yumeyucca.lucide.FileText
-import io.github.yumeyucca.lucide.Lucide
+import androidx.paging.LoadState
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
@@ -16,19 +15,34 @@ fun LazyListScope.collaborationPagingStatus(
     title: String,
     emptyPlaceholder: Boolean = true,
     emptyMessage: String? = null,
-    emptyIcon: ImageVector = Lucide.FileText,
+    emptyScene: EmptyScene = EmptyScene.Inbox,
     emptyVerticalBias: Float = -0.1f,
 ) {
-    if (slots.isEmptyResult && emptyPlaceholder) {
+    val offline = slots.snapshot.isEmpty() &&
+        (slots.items.loadState.refresh as? LoadState.Error)?.error?.isEmptyStateNetworkFailure() == true
+    if ((slots.isEmptyResult || offline) && emptyPlaceholder) {
         item(key = "collaboration-page-empty") {
             GithubEmptyState(
-                icon = emptyIcon,
-                title = emptyMessage ?: "暂无$title",
+                scene = if (offline) EmptyScene.Offline else emptyScene,
+                title = if (offline) LocalGithubStrings.current.Repository.NetworkFailed
+                    else emptyMessage ?: "暂无$title",
                 modifier = Modifier.fillParentMaxHeight(),
                 verticalBias = emptyVerticalBias,
             )
         }
     }
+}
+
+fun Throwable.isEmptyStateNetworkFailure(): Boolean {
+    var error: Throwable? = this
+    while (error != null) {
+        when (error) {
+            is HttpException, is SerializationException, is kotlinx.coroutines.CancellationException -> return false
+            is IOException -> return true
+        }
+        error = error.cause
+    }
+    return false
 }
 
 /** 统一的错误文案映射，网络与 GitHub 状态码都归到这里。 */

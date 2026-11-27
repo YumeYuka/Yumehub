@@ -18,12 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioBottomSheet
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
-import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
 import io.github.yumeyucca.lucide.AtSign
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Clock
@@ -55,7 +54,7 @@ internal fun NotificationThreadSheet(
     SideEffect { if (notification != null) lastNotification = notification }
     val item = notification ?: lastNotification
     val id = item?.threadId
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = notification != null,
         onDismissRequest = onDismiss,
         title = strings.ThreadActions,
@@ -90,7 +89,6 @@ internal fun NotificationThreadSheet(
             Column(
                 Modifier.fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(LocalGlasmioSheetContentPadding.current)
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {

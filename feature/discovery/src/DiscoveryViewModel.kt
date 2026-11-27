@@ -19,7 +19,11 @@ val discoveryFeatureModule = module {
 internal data class DiscoveryFilters(
     val trending: TrendingFilter = TrendingFilter(),
     val recentlyUpdated: Boolean = false,
-)
+) {
+    companion object {
+        val Default = DiscoveryFilters()
+    }
+}
 
 internal sealed interface LanguageState {
     data object Loading : LanguageState
@@ -32,7 +36,7 @@ internal class DiscoveryViewModel(
     private val account: String,
     private val route: DiscoveryRoute,
 ) : ViewModel() {
-    private val mutableFilters = MutableStateFlow(DiscoveryFilters())
+    private val mutableFilters = MutableStateFlow(DiscoveryFilters.Default)
     val filters = mutableFilters.asStateFlow()
     private val mutableQuery = MutableStateFlow("")
     val query = mutableQuery.asStateFlow()

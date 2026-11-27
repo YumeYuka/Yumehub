@@ -25,6 +25,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import moe.yumeyuka.yumehub.data.api.dto.PullRequestFileDto
 import moe.yumeyuka.yumehub.data.api.dto.StructuredDiffUnavailableReason
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDiffFileHeaderPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
 
@@ -109,10 +110,11 @@ fun GithubDiffFileCard(
         ) {
             if (file != null) DisableSelection { GithubDiffFileHeader(file = file) }
         }
-        if (file != null && expanded) {
+        GithubCardField(file?.takeIf { expanded }) { shown ->
+            val patch = shown.structuredDiff
             Column(Modifier.fillMaxWidth()) {
                 DisableSelection {
-                    file.previousFilename?.let { previous ->
+                    shown.previousFilename?.let { previous ->
                         Text(
                             text = strings.PreviousPath(previous),
                             modifier =
@@ -123,11 +125,11 @@ fun GithubDiffFileCard(
                         )
                     }
                 }
-                if (diff == null || diff.unavailableReason != null) {
+                if (patch == null || patch.unavailableReason != null) {
                     DisableSelection {
                         Text(
                             text =
-                                when (diff?.unavailableReason) {
+                                when (patch?.unavailableReason) {
                                     StructuredDiffUnavailableReason.Binary -> strings.DiffBinary
                                     StructuredDiffUnavailableReason.LargeDiff ->
                                         strings.DiffTooLarge
@@ -148,9 +150,9 @@ fun GithubDiffFileCard(
                     }
                 } else {
                     GithubDiffViewer(
-                        diff = diff,
+                        diff = patch,
                         modifier = Modifier.fillMaxWidth(),
-                        language = githubCodeLanguageForFilename(file.filename),
+                        language = githubCodeLanguageForFilename(shown.filename),
                     )
                 }
                 footer()

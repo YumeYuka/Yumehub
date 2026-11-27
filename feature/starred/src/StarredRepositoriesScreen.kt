@@ -1,9 +1,8 @@
 package moe.yumeyuka.yumehub.feature.starred
 
 import androidx.compose.foundation.lazy.LazyListScope
-import io.github.yumeyucca.lucide.Lucide
-import io.github.yumeyucca.lucide.Star
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlots
 import moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
@@ -13,7 +12,8 @@ internal fun LazyListScope.StarredRepositoriesScreen(
     slots: GithubPagingSlots<RepositoryDto>,
     onOpenRepository: (RepositoryDto) -> Unit,
     hasAdditions: Boolean,
-    emptyText: String? = null,
+    emptyScene: EmptyScene,
+    emptyText: String,
 ) {
     githubPagingItems(slots, contentType = "repository") { repository ->
         RepositoryLoadingCard(
@@ -24,9 +24,9 @@ internal fun LazyListScope.StarredRepositoriesScreen(
     }
     collaborationPagingStatus(
         slots,
-        emptyText.orEmpty(),
+        title = emptyText,
         emptyPlaceholder = !hasAdditions,
         emptyMessage = emptyText,
-        emptyIcon = Lucide.Star,
+        emptyScene = emptyScene,
     )
 }

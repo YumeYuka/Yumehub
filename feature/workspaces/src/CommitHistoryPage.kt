@@ -11,13 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.FolderGit2
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.ui.component.EmptyScene
+import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
@@ -78,17 +78,19 @@ fun CommitHistoryPage(owner: String, name: String, ref: String) {
         listState = listState,
         itemSpacing = 12.dp,
         actions = {
-            GlasmioIconButton(
-                onClick = {
+            moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                    Lucide.FolderGit2,
+                    strings.SwitchBranch,
+                    enabled = host.navigationEnabled,
+                    key = "branch",
+                ) {
                     if (host.navigationEnabled) {
                         branchPickerVisible = true
                         viewModel.loadBranches()
                     }
                 },
-                enabled = host.navigationEnabled,
-            ) {
-                GithubIcon(Lucide.FolderGit2, contentDescription = strings.SwitchBranch)
-            }
+            )
         },
     ) {
         commitHistoryItems(state, commitKeys, strings, viewModel::retry, viewModel::loadMore) { oid
@@ -120,16 +122,14 @@ private fun LazyListScope.commitHistoryItems(
     onOpenCommit: (String) -> Unit,
 ) {
     when {
-        state.error != null && !state.hasSnapshot -> Unit
+        state.error != null && state.commits.isEmpty() -> Unit
         state.hasSnapshot && state.commits.isEmpty() ->
             item(key = "commit-history-empty") {
-                GlasmioGroupedList {
-                    GlasmioListRow(
-                        title = strings.NoCommitHistory,
-                        systemName = null,
-                        showTopSeparator = false,
-                    )
-                }
+                GithubEmptyState(
+                    scene = EmptyScene.Inbox,
+                    title = strings.NoCommitHistory,
+                    modifier = Modifier.fillParentMaxHeight(),
+                )
             }
         else ->
             commitKeys.forEachIndexed { index, key ->

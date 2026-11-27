@@ -30,7 +30,6 @@ import moe.yumeyuka.yumehub.ui.component.LocalReadingReceipt
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 // Apple UnitCurve curves: easeOut (0, 0, 0.58, 1) and easeIn (0.42, 0, 1, 1).
 private val IosEaseOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
@@ -43,7 +42,12 @@ val GithubCardSizeSpec =
 private val CardContentEnterSpec = tween<Float>(300, easing = IosEaseOut)
 private val CardContentExitSpec = tween<Float>(200, delayMillis = 60, easing = IosEaseIn)
 
-/** 首次显示时使用同一套骨架交接，页面滑动期间暂缓组合正文。 */
+/**
+ * 首次显示时使用同一套骨架交接。
+ *
+ * 只有数据未到才暂缓正文；路由入场结束不再是组合条件，缓存行随页面一起滑入并立即可点。
+ * 重内容（Markdown、diff、分页列表）各自在自己的渲染器里按入场状态决定挂载时机。
+ */
 @Composable
 fun GithubLoadingContent(
     loading: Boolean,
@@ -54,7 +58,7 @@ fun GithubLoadingContent(
     SkeletonSwap(
         loading = loading,
         modifier = modifier,
-        contentPending = loading || !LocalGithubRouteEntryReady.current,
+        contentPending = loading,
         placeholder = placeholder,
         content = content,
     )

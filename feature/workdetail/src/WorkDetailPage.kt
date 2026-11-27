@@ -23,6 +23,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.Info
 import io.github.yumeyucca.lucide.Lucide
+import io.github.yumeyucca.lucide.Pencil
 import kotlinx.coroutines.flow.collect
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
@@ -32,7 +33,6 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
@@ -220,18 +220,35 @@ fun WorkDetailPage(
                 )
         },
         actions = {
-            GlasmioIconButton(
-                onClick = {
+            var editExpanded by remember { mutableStateOf(false) }
+            val editAnchor = io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState()
+            val editAvailable = state.item != null && host.navigationEnabled && !state.submitting
+            moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                    Lucide.Info,
+                    strings.Information,
+                    enabled = host.navigationEnabled && state.item != null,
+                    key = "info",
+                ) {
                     if (host.navigationEnabled) infoVisible = true
                 },
-                enabled = host.navigationEnabled && state.item != null,
-            ) {
-                GithubIcon(Lucide.Info, contentDescription = strings.Information)
-            }
+                moe.yumeyuka.yumehub.ui.component.toolbarIcon(
+                    Lucide.Pencil,
+                    strings.EditProperty,
+                    enabled = editAvailable,
+                    key = "edit",
+                    menuAnchor = editAnchor,
+                ) {
+                    if (editAvailable) editExpanded = true
+                },
+            )
             WorkEditMenu(
-                state,
-                viewModel,
+                state = state,
+                viewModel = viewModel,
                 enabled = state.item != null && host.navigationEnabled,
+                expanded = editExpanded,
+                onExpandedChange = { editExpanded = it },
+                menuAnchor = editAnchor,
             )
         },
         bottomContent = {

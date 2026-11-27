@@ -25,23 +25,23 @@ internal fun WorkEditMenu(
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
     enabled: Boolean,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    menuAnchor: io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState,
 ) {
     val strings = LocalGithubStrings.current.WorkDetail
     val common = LocalGithubStrings.current.Common
     val item = state.item
     val isPullRequest = viewModel.kind == CollaborationKind.PullRequest
-    var expanded by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<String?>(null) }
     val available = enabled && !state.submitting
     GlasmioMenu(
         expanded = expanded,
-        onExpandedChange = { expanded = it },
+        onExpandedChange = onExpandedChange,
         itemCount = 2,
-        anchor = { open ->
-            GlasmioIconButton(onClick = open, enabled = available) {
-                GithubIcon(Lucide.Pencil, contentDescription = strings.EditProperty)
-            }
-        },
+        menuAnchorState = menuAnchor,
+        externalAnchorBounds = menuAnchor.bounds,
+        anchor = {},
     ) { backdrop, close ->
         GlasmioMenuItem(
             title =

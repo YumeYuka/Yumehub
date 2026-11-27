@@ -19,6 +19,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubDiffFileCard
 import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
 import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.githubPagingItems
 import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
 import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
@@ -100,6 +101,13 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
                 githubPagingItems(slots, contentType = "pr-diff-file", reading = true) { file ->
                     GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
                 }
+            }
+            if (head != null && state.error == null && pageError == null) {
+                collaborationPagingStatus(
+                    slots,
+                    strings.WorkDetail.Files,
+                    emptyMessage = strings.Profile.CollectionEmpty(strings.WorkDetail.Files),
+                )
             }
             if (!state.loading && (missingHead || state.error != null || pageError != null)) {
                 item(key = "pr-diff-retry") {

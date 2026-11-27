@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
@@ -69,7 +70,7 @@ internal fun RepositoryManagementSheet(
         }
     val failure = state.management?.error
     GithubLoadFailureToast(failure, failure.orEmpty())
-    GlasmioBottomSheet(
+    GithubBottomSheet(
         visible = state.management != null,
         onDismissRequest = onDismiss,
         title = title,
@@ -107,7 +108,6 @@ internal fun RepositoryManagementSheet(
         Column(
             Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(LocalGlasmioSheetContentPadding.current)
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
