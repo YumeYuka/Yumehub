@@ -45,9 +45,9 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.readingItems
-import moe.yumeyuka.yumehub.ui.navigation.rememberGithubSkeletonEntrance
 
 private val LocalPagingContentKey = staticCompositionLocalOf<Any?> { null }
 private val LocalPrimaryPagingItems = staticCompositionLocalOf<LazyPagingItems<*>?> { null }
@@ -251,7 +251,6 @@ fun <T : Any> rememberGithubPagingSlots(
     val emptyResult =
         !blocked && !showSkeleton && snapshot.isEmpty() && (hasResult || previous.value != null)
     val history = remember(frameKey, items) { PagingDrawHistory() }
-    val entrance = rememberGithubSkeletonEntrance(frameKey)
     val keySet = remember(keys) { keys.toSet() }
     val inserted =
         remember(history, keySet) {
@@ -259,7 +258,7 @@ fun <T : Any> rememberGithubPagingSlots(
         }
     SideEffect { history.lastKeys = keySet }
     val live = !blocked && hasResult
-    return remember(items, snapshot, keys, emptyResult, live, history, inserted) {
+    return remember(items, snapshot, keys, emptyResult, live, history, inserted, allocator) {
         GithubPagingSlots(
             items,
             snapshot,
@@ -268,7 +267,7 @@ fun <T : Any> rememberGithubPagingSlots(
             live,
             history,
             inserted,
-            entrance,
+            allocator.entrance,
         )
     }
 }
@@ -306,22 +305,31 @@ fun <T : Any> LazyListScope.githubPagingItemsIndexed(
 ) {
     val renderItem: @Composable LazyItemScope.(Int) -> Unit = { index ->
         val active = LocalGithubPageHost.current?.isCurrent != false
+        val entryReady = LocalGithubRouteEntryReady.current
         if (active && slots.live && index < slots.items.itemCount) {
             // A retained frame can be longer or differently ordered than Paging's live generation.
             slots.items[index]
         }
         val item = slots.snapshot.getOrNull(index)
-        // 恢复不是入场：已呈现过的行直接绘制，交接只由槽内的卡片负责，不再叠整行淡入。
+        // Ready cached rows and cold skeleton slots share the same entrance. Keep it with the
+        // allocator so restoring this list does not replay the entrance.
         val history = slots.drawHistory
         val motion =
             if (item != null && slots.keys[index] in slots.insertedKeys) githubCardItemMotion()
             else Modifier
         val receipt =
-            if (active && item != null && !history.hasDrawn)
+            if (
+                active &&
+                    entryReady &&
+                    item != null &&
+                    (!history.hasDrawn || !slots.entrance.presented)
+            )
                 Modifier.drawWithContent {
                     drawContent()
-                    if (!history.hasDrawn && size.width > 0f && size.height > 0f)
+                    if (size.width > 0f && size.height > 0f) {
                         history.hasDrawn = true
+                        slots.entrance.presented = true
+                    }
                 }
             else Modifier
         val semantics =

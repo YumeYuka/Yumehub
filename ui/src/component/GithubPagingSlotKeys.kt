@@ -1,7 +1,10 @@
 package moe.yumeyuka.yumehub.ui.component
 
+import moe.yumeyuka.yumehub.ui.navigation.GithubSkeletonEntrance
+
 /** 首屏骨架逐槽交给真实条目；追加占位交给首个新条目，其余项按业务 ID 跟随重排。 */
 class GithubPagingSlotKeys(private val prefix: String) {
+    internal val entrance = GithubSkeletonEntrance()
     private val aliases = mutableMapOf<String, String>()
     private var previousIds = emptySet<String>()
     private var pendingKey: String? = null

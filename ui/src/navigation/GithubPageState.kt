@@ -21,6 +21,7 @@ internal data class GithubScrollAnchor(val index: Int, val offset: Int)
 @Stable
 class GithubPageState {
     val listState = LazyListState()
+    val skeletonEntrance = GithubSkeletonEntrance()
     private val refreshGates = LinkedHashMap<Any, PageRefreshGate>()
 
     internal fun forgetPagingFrame(key: String) {

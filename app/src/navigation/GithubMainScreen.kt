@@ -28,6 +28,8 @@ import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
+import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 
 /** 主标签同属主根路由，按标签保存列表偏移。 */
 private class GithubMainPageStateViewModel : ViewModel() {
@@ -142,14 +144,19 @@ private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
         viewModel<GithubMainPageStateViewModel>(key = "main-tab-${tab.name}") {
             GithubMainPageStateViewModel()
         }
+    val entrance = state.pageState.skeletonEntrance
+    val animate = isActive && LocalGithubCardMotionEnabled.current
     CompositionLocalProvider(
         LocalLifecycleOwner provides lifecycleOwner,
         LocalNavigationEventDispatcherOwner provides dispatcherOwner,
-        LocalGithubCardMotionEnabled provides (isActive && LocalGithubCardMotionEnabled.current),
+        LocalGithubCardMotionEnabled provides animate,
         LocalGithubPageState provides state.pageState,
+        LocalGithubSkeletonEntrance provides entrance,
         LocalGithubPageBackdrop provides pageBackdrop,
         LocalBlurBackdrop provides pageBackdrop,
     ) {
-        GithubRouteContent(route = tab.rootRoute(), navigator = navigator)
+        Box(if (animate) Modifier.recordGithubSkeletonEntrance(entrance) else Modifier) {
+            GithubRouteContent(route = tab.rootRoute(), navigator = navigator)
+        }
     }
 }

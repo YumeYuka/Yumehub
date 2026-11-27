@@ -12,10 +12,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import moe.yumeyuka.yumehub.ui.component.skeleton.skeletonRow
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 
-/** 统一卡片宽度、内容边距与操作区，正文按类型和实际内容自然增高。 */
+internal val GithubActivityCardSpacing = 14.dp
+
+/** 统一卡片宽度、内容边距与操作区。可选封面的底部间距由封面内容提供。 */
 @Composable
 fun GithubActivityCard(
     header: @Composable () -> Unit,
@@ -65,22 +66,23 @@ internal fun GithubActivityCardContent(
                 else if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
             )
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        cover?.invoke()
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(GithubActivityCardSpacing),
         ) {
-            cover?.let { Box(Modifier.skeletonRow()) { it() } }
-            Box(Modifier.fillMaxWidth().skeletonRow(), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                 header()
             }
-            summary?.let { Box(Modifier.skeletonRow()) { it() } }
-            metadata?.let { Box(Modifier.skeletonRow()) { it() } }
+            summary?.invoke()
+            metadata?.invoke()
         }
         action?.let {
             Column(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                Modifier.fillMaxWidth()
+                    .padding(top = GithubActivityCardSpacing)
+                    .heightIn(min = 48.dp),
                 verticalArrangement = Arrangement.Center,
             ) {
                 it()

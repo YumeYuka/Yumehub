@@ -1,11 +1,9 @@
 package moe.yumeyuka.yumehub.ui.navigation
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 
 /** New forward entries defer heavy content until the moving page has settled. */
 val LocalGithubRouteEntryReady = compositionLocalOf { true }
@@ -22,12 +20,11 @@ class GithubSkeletonEntrance {
 /** 首帧组合的骨架参与入场交接；之后组合的行（滚动、追加）直接呈现。 */
 val LocalGithubSkeletonEntrance = staticCompositionLocalOf<GithubSkeletonEntrance?> { null }
 
-@Composable
-fun rememberGithubSkeletonEntrance(key: Any?): GithubSkeletonEntrance {
-    val entrance = remember(key) { GithubSkeletonEntrance() }
-    LaunchedEffect(entrance) {
-        withFrameNanos {}
-        entrance.presented = true
-    }
-    return entrance
-}
+/** Close entry after drawing, after lazy layouts have subcomposed their visible slots. */
+fun Modifier.recordGithubSkeletonEntrance(entrance: GithubSkeletonEntrance): Modifier =
+    if (entrance.presented) this
+    else
+        drawWithContent {
+            drawContent()
+            if (size.width > 0f && size.height > 0f) entrance.presented = true
+        }

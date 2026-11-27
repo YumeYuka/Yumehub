@@ -19,6 +19,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButtonDefaults
 import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
 import moe.yumeyuka.yumehub.ui.component.GithubActivityCardContent
+import moe.yumeyuka.yumehub.ui.component.GithubActivityCardSpacing
 import moe.yumeyuka.yumehub.ui.component.RepositoryCoverShape
 
 /** 卡片内部内容：18dp 头像、标题、两行描述与三个统计槽。 */
@@ -31,6 +32,7 @@ fun RepositoryCardPlaceholderContent(showCover: Boolean = false) {
                 {
                     Spacer(
                         Modifier.fillMaxWidth()
+                            .padding(bottom = GithubActivityCardSpacing)
                             .aspectRatio(1.91f)
                             .placeholderFill(RepositoryCoverShape),
                     )

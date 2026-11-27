@@ -2,6 +2,7 @@ package moe.yumeyuka.yumehub.ui.component
 
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -28,7 +29,12 @@ fun GithubRepositoryCover(
         AsyncImage(
             uri = trustedUrl,
             contentDescription = description,
-            modifier = modifier.fillMaxWidth().aspectRatio(1.91f).clip(RepositoryCoverShape),
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .padding(bottom = GithubActivityCardSpacing)
+                    .aspectRatio(1.91f)
+                    .clip(RepositoryCoverShape),
             contentScale = ContentScale.Crop,
         )
     }

@@ -48,7 +48,7 @@ val GithubCardSizeSpec =
 private val CardContentEnterSpec = tween<Float>(300, easing = IosEaseOut)
 private val CardContentExitSpec = tween<Float>(200, delayMillis = 60, easing = IosEaseIn)
 
-/** 卡片只在持续加载时显示骨架。正文就绪即交接；前进期间只组合占位，不提前挂载重内容。 */
+/** 首次显示时使用同一套骨架交接，页面滑动期间暂缓组合正文。 */
 @Composable
 fun GithubLoadingContent(
     loading: Boolean,

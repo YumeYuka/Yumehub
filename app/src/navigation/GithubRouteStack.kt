@@ -42,8 +42,9 @@ import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
-import moe.yumeyuka.yumehub.ui.navigation.rememberGithubSkeletonEntrance
+import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 
 /** 以条目引用区分每次入栈；路由参数相同的页面也拥有独立子组件和页面状态。 */
 internal class GithubRouteEntry(val route: GithubRoute)
@@ -101,7 +102,8 @@ internal class RouteChild(
                 "RouteChild 必须由提供 NavigationEventDispatcher 的宿主托管"
             }
         val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = top)
-        val entrance = rememberGithubSkeletonEntrance(Unit)
+        val entrance = pageState.skeletonEntrance
+        val entryReady = LocalGithubRouteEntryReady.current
         CompositionLocalProvider(
             LocalLifecycleOwner provides lifecycleOwner,
             LocalNavigationEventDispatcherOwner provides dispatcherOwner,
@@ -128,6 +130,10 @@ internal class RouteChild(
                     .background(GlasmioTheme.colors.groupedBackground)
                     .focusProperties { onEnter = { if (!top) cancelFocusChange() } }
                     .focusGroup()
+                    .then(
+                        if (top && entryReady) Modifier.recordGithubSkeletonEntrance(entrance)
+                        else Modifier,
+                    )
                     .then(input),
             ) {
                 if (route is MainTabsRoute) GithubMainScreen(navigator)

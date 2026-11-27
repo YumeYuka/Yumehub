@@ -1,12 +1,12 @@
 package moe.yumeyuka.yumehub.ui.component.skeleton
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,96 +21,45 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import kotlin.math.abs
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 
 /** 骨架交接的唯一时序与曲线；所有 Card、文档正文都从这里取参数。 */
 object SkeletonTiming {
-    // Only delay showing the skeleton, never delay showing ready content.
-    internal const val ShowDelayMillis = 100L
-    // 入场先出骨架再交接正文，与缓存无关；前进转场 300ms，恢复不留骨架。
-    internal const val MinShownMillis = 240L
-    internal const val RowStaggerMillis = 60
-    internal const val MaxStaggerRows = 5
-    internal val RevealSpec = tween<Float>(360, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))
-    internal val TextRise = 4.dp
+    internal const val ShowDelayMillis = 120L
+    internal const val MinVisibleMillis = 380L
+    internal const val BodyStartScale = 0.99f
+    internal val BodyBlur = 4.dp
+    internal val SkeletonBlur = 3.dp
+    // Interior's spring (260 stiffness, 34 damping, 0.8 mass), normalized to unit mass.
+    internal val SwapSpec =
+        spring(dampingRatio = 1.1787f, stiffness = 325f, visibilityThreshold = 0.001f)
     internal val MaxHeightTravel = 320.dp
 
-    val ShimmerSpec = tween<Float>(1600, easing = LinearEasing)
-}
-
-/** 一次交接的单一时钟：骨架淡出、槽高缓动与各行依次淡入共用，行相位只在布局和绘制阶段读取。 */
-private class SkeletonReveal {
-    private val clock = Animatable(0f)
-    private var rows = 0
-    private var stagger = 0f
-    private var span = 1f
-
-    /** 交接结束后组合的行直接呈现，不再挂图层。 */
-    var settled by mutableStateOf(false)
-        private set
-
-    val value: Float get() = clock.value
-
-    fun claim(): Int = minOf(rows++, SkeletonTiming.MaxStaggerRows - 1)
-
-    suspend fun snap() = clock.snapTo(0f)
-
-    suspend fun run() {
-        val spec = SkeletonTiming.RevealSpec
-        val last = minOf(rows.coerceAtLeast(1), SkeletonTiming.MaxStaggerRows) - 1
-        val duration = spec.durationMillis + last * SkeletonTiming.RowStaggerMillis
-        stagger = if (last == 0) 0f else SkeletonTiming.RowStaggerMillis.toFloat() / duration
-        span = spec.durationMillis.toFloat() / duration
-        clock.animateTo(1f, tween(duration, easing = LinearEasing))
-        settled = true
-    }
-
-    /** 首行的相位即整块正文的相位。 */
-    fun alphaFor(row: Int): Float {
-        val progress =
-            ((clock.value - minOf(row, SkeletonTiming.MaxStaggerRows - 1) * stagger) / span)
-                .coerceIn(0f, 1f)
-        return if (progress >= 1f) 1f else SkeletonTiming.RevealSpec.easing.transform(progress)
-    }
-}
-
-private val LocalSkeletonReveal = staticCompositionLocalOf<SkeletonReveal?> { null }
-
-/** 正文的一行：交接时按组合顺序依次淡入上浮。 */
-@Composable
-fun Modifier.skeletonRow(): Modifier {
-    val reveal = LocalSkeletonReveal.current ?: return this
-    if (reveal.settled) return this
-    val row = remember(reveal) { reveal.claim() }
-    val density = LocalDensity.current
-    val rise = with(density) { SkeletonTiming.TextRise.toPx() }
-    return graphicsLayer {
-        val alpha = reveal.alphaFor(row)
-        this.alpha = alpha
-        translationY = (1f - alpha) * rise
-    }
+    val ShimmerSpec = tween<Float>(1600, easing = FastOutSlowInEasing)
 }
 
 private const val BodySlot = "skeleton-swap-body"
 private const val PlaceholderSlot = "skeleton-swap-placeholder"
 
 /**
- * A shown skeleton hands off to the ready body on a single clock: fade the bones out, let the body
- * rise into its final position with its rows following one after another, and ease the slot height
- * without reflowing the text. Large height changes commit the ready height together with the fade.
+ * The static skeleton and body crossfade on one spring. Small height changes follow that same
+ * progress without reflowing the text.
  *
- * 首次呈现时不论数据是否已就绪都先出骨架再交接；返回恢复和滑动途中露出的相邻标签不算入场。
+ * 首次呈现时不论数据是否已就绪都先出骨架再交接。恢复和追加沿用已呈现的列表身份。
  *
  * @param loading Data is not ready; delay the skeleton only when actually waiting on data.
  * @param contentPending 正文是否暂缓组合（页面转场等）；为 true 时正文不组合，只留骨架。
@@ -127,55 +76,49 @@ fun SkeletonSwap(
     placeholder: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val pending = loading || contentPending
+    val routeReady = LocalGithubRouteEntryReady.current
     val animate = LocalGithubCardMotionEnabled.current
-    var presented by remember { mutableStateOf(!entrance || !animate && !pending) }
-    var skeletonShown by remember { mutableStateOf(!presented || pending && !animate) }
-    var ready by remember { mutableStateOf(!entrance) }
-    val reveal = remember { SkeletonReveal() }
+    var entryPending by remember { mutableStateOf(entrance) }
+    val entering = entryPending && (animate || !routeReady)
+    var shownAt by remember { mutableStateOf<TimeMark?>(null) }
+    val deferBody = contentPending || !routeReady && (entering || shownAt != null)
+    val pending = loading || deferBody
+    val waiting = pending || entering
+    val showSkeleton = entering || shownAt != null || !animate
+    val reveal = if (shownAt != null && animate) remember { Animatable(0f) } else null
 
-    LaunchedEffect(entrance) {
-        if (entrance) {
-            delay(SkeletonTiming.MinShownMillis)
-            ready = true
-        }
-    }
-    val waiting = pending || !presented
-    LaunchedEffect(pending, loading, animate, waiting, ready) {
-        when {
-            !animate -> {
-                reveal.snap()
-                skeletonShown = pending
-                if (!pending) presented = true
+    LaunchedEffect(waiting, entering, animate) {
+        if (waiting) {
+            reveal?.snapTo(0f)
+            if (shownAt == null) {
+                if (animate && !entering) delay(SkeletonTiming.ShowDelayMillis)
+                shownAt = TimeSource.Monotonic.markNow()
             }
-            waiting -> {
-                reveal.snap()
-                if (!skeletonShown) {
-                    if (loading) delay(SkeletonTiming.ShowDelayMillis)
-                    skeletonShown = true
-                }
+            if (entering) entryPending = false
+        } else {
+            val shown = shownAt ?: return@LaunchedEffect
+            if (reveal != null) {
+                val remaining =
+                    SkeletonTiming.MinVisibleMillis - shown.elapsedNow().inWholeMilliseconds
+                if (remaining > 0) delay(remaining)
+                reveal.animateTo(1f, SkeletonTiming.SwapSpec)
             }
-            skeletonShown -> {
-                reveal.run()
-                skeletonShown = false
-                presented = true
-            }
+            shownAt = null
         }
     }
 
-    val handoff = !waiting && skeletonShown
-    val showPlaceholder = skeletonShown || waiting && !animate
-    val hold = waiting || handoff
+    val handoff = reveal?.takeUnless { waiting }
+    val hold = waiting || handoff != null
     Layout(
         modifier = modifier.clipToBounds(),
         content = {
-            if (!contentPending) {
-                CompositionLocalProvider(LocalSkeletonReveal provides reveal) {
+            if (!deferBody) {
+                CompositionLocalProvider(LocalGithubSkeletonEntrance provides null) {
                     Column(Modifier.layoutId(BodySlot)) { content() }
                 }
             }
             if (hold) {
-                // 骨架在最上层接收触摸，透明正文不可点；祖先的滚动不受影响。
+                // 准备中的文档已排版但不可点。占位层拦截命中，列表仍可滚动。
                 Box(
                     Modifier.layoutId(PlaceholderSlot)
                         .pointerInput(Unit) {
@@ -186,7 +129,9 @@ fun SkeletonSwap(
                         .clearAndSetSemantics {},
                     propagateMinConstraints = true,
                 ) {
-                    if (showPlaceholder) SkeletonShimmerHost(placeholder) else placeholder()
+                    CompositionLocalProvider(LocalSkeletonShimmerEnabled provides false) {
+                        placeholder()
+                    }
                 }
             }
         },
@@ -200,33 +145,46 @@ fun SkeletonSwap(
                     ?: limits.minHeight)
                 .coerceIn(limits.minHeight, limits.maxHeight)
         val target = body?.height ?: reserved
-        val easeHeight =
-            handoff && abs(target - reserved) <= SkeletonTiming.MaxHeightTravel.roundToPx()
-        val height =
-            when {
-                waiting -> reserved
-                easeHeight && target != reserved -> lerp(reserved, target, reveal.value)
-                else -> target
-            }
+        val easeHeight = abs(target - reserved) <= SkeletonTiming.MaxHeightTravel.roundToPx()
         val width =
             if (waiting) maxOf(body?.width ?: 0, skeleton?.width ?: 0, limits.minWidth)
             else body?.width ?: skeleton?.width ?: limits.minWidth
-        val fade = if (handoff) reveal.alphaFor(0) else 0f
-        val rise = SkeletonTiming.TextRise.toPx()
+        val height =
+            when {
+                waiting -> reserved
+                handoff != null && easeHeight && target != reserved ->
+                    lerp(reserved, target, handoff.value.coerceIn(0f, 1f))
+                else -> target
+            }
+        val bodyBlur = SkeletonTiming.BodyBlur.toPx()
+        val skeletonBlur = SkeletonTiming.SkeletonBlur.toPx()
         layout(width, height) {
-            if (handoff) {
-                body?.placeRelativeWithLayer(0, 0) {
-                    alpha = fade
-                    translationY = (1f - fade) * rise
-                }
-            } else {
-                body?.placeRelative(0, 0)
+            val progress = handoff?.value?.coerceIn(0f, 1f) ?: 0f
+            when {
+                // Renderer readiness can depend on placement even before the document can draw.
+                waiting && loading -> body?.placeRelativeWithLayer(0, 0) { alpha = 0f }
+                handoff != null && progress > 0f ->
+                    body?.placeRelativeWithLayer(0, 0) {
+                        alpha = progress
+                        val scale = lerp(SkeletonTiming.BodyStartScale, 1f, progress)
+                        scaleX = scale
+                        scaleY = scale
+                        val radius = (1f - progress) * bodyBlur
+                        renderEffect =
+                            if (radius > 0.5f) BlurEffect(radius, radius, TileMode.Decal) else null
+                    }
+                !hold -> body?.placeRelative(0, 0)
             }
             if (waiting) {
-                if (showPlaceholder) skeleton?.placeRelative(0, 0)
+                if (showSkeleton) skeleton?.placeRelative(0, 0)
                 else skeleton?.placeRelativeWithLayer(0, 0) { alpha = 0f }
-            } else if (handoff) {
-                skeleton?.placeRelativeWithLayer(0, 0) { alpha = 1f - fade }
+            } else if (handoff != null && progress < 1f) {
+                skeleton?.placeRelativeWithLayer(0, 0) {
+                    alpha = 1f - progress
+                    val radius = progress * skeletonBlur
+                    renderEffect =
+                        if (radius > 0.5f) BlurEffect(radius, radius, TileMode.Decal) else null
+                }
             }
         }
     }
