@@ -18,7 +18,8 @@ public final class LoaderApplication extends Application {
         }
         PayloadInstaller.Installation installation = PayloadInstaller.install(
                 base.getApplicationInfo(),
-                base.getClassLoader()
+                base.getClassLoader(),
+                RuntimeBootstrap.currentLoadedApk()
         );
         original = ApplicationBridge.create(
                 base,

@@ -72,6 +72,25 @@ class ApkPacker(
     }
 
     internal fun writePayload(input: File, output: File) {
+        val dexPayload =
+            ZipFile(input).use { zip ->
+                zip.entries()
+                    .asSequence()
+                    .filter { !it.isDirectory && DEX_NAME.matches(it.name) }
+                    .sortedBy(ZipEntry::getName)
+                    .map { entry ->
+                        val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                        PayloadEntry(
+                            assetName = "${PayloadFormat.ROOT}/dex/${entry.name}.xz",
+                            outputName = entry.name,
+                            originalSize = bytes.size.toLong(),
+                            sha256 = sha256(bytes),
+                            compressed = compress(bytes),
+                        )
+                    }
+                    .toList()
+            }
+        check(dexPayload.isNotEmpty()) { "No classes*.dex found in $input" }
         val nativePayload =
             ZipFile(input).use { zip ->
                 zip.entries()
@@ -85,14 +104,10 @@ class ApkPacker(
         check(nativePayload.distinctBy { it.abi to it.outputName }.size == nativePayload.size) {
             "Duplicate native library payload entries found in $input"
         }
-        val metadata = metadata(payloadId(nativePayload), nativePayload)
+        val payloadId = payloadId(dexPayload, nativePayload)
+        val metadata = metadata(payloadId, dexPayload, nativePayload)
 
         ZipFile(input).use { source ->
-            val dexCount = source.entries().asSequence().count { DEX_NAME.matches(it.name) }
-            check(dexCount > 0 && source.getEntry("classes.dex") != null) { "No primary DEX in $input" }
-            // Keep the application DEX names and checksums used by ART's baseline profile.
-            val bootstrapDex = "classes${dexCount + 1}.dex"
-            check(source.getEntry(bootstrapDex) == null) { "Non-contiguous DEX entries in $input" }
             ZipOutputStream(output.outputStream().buffered()).use { target ->
                 source
                     .entries()
@@ -103,7 +118,8 @@ class ApkPacker(
                         val bytes = source.getInputStream(entry).use { it.readBytes() }
                         target.put(bytes, entry.name, entry.method == ZipEntry.STORED)
                     }
-                target.put(loaderDex.readBytes(), bootstrapDex, stored = true)
+                target.put(loaderDex.readBytes(), "classes.dex", stored = false)
+                dexPayload.forEach { target.put(it.compressed, it.assetName, stored = true) }
                 nativePayload.forEach { target.put(it.compressed, it.assetName, stored = true) }
                 target.put(metadata, PayloadFormat.METADATA, stored = true)
             }
@@ -112,6 +128,7 @@ class ApkPacker(
 
     private fun metadata(
         payloadId: String,
+        dexEntries: List<PayloadEntry>,
         nativeEntries: List<NativePayloadEntry>,
     ): ByteArray =
         ByteArrayOutputStream().use { bytes ->
@@ -121,6 +138,13 @@ class ApkPacker(
                 output.writeUTF(payloadId)
                 output.writeUTF(originalApplication)
                 output.writeUTF(originalComponentFactory)
+                output.writeInt(dexEntries.size)
+                dexEntries.forEach { entry ->
+                    output.writeUTF(entry.assetName)
+                    output.writeUTF(entry.outputName)
+                    output.writeLong(entry.originalSize)
+                    output.write(entry.sha256)
+                }
                 output.writeInt(nativeEntries.size)
                 nativeEntries.forEach { entry ->
                     output.writeUTF(entry.abi)
@@ -134,9 +158,14 @@ class ApkPacker(
         }
 
     private fun payloadId(
+        dexEntries: List<PayloadEntry>,
         nativeEntries: List<NativePayloadEntry>,
     ): String {
         val digest = MessageDigest.getInstance("SHA-256")
+        dexEntries.forEach { entry ->
+            digest.update(entry.outputName.toByteArray(Charsets.UTF_8))
+            digest.update(entry.sha256)
+        }
         nativeEntries.forEach { entry ->
             digest.update(entry.abi.toByteArray(Charsets.UTF_8))
             digest.update(entry.outputName.toByteArray(Charsets.UTF_8))
@@ -180,7 +209,8 @@ class ApkPacker(
         }
 
     private fun shouldDrop(name: String): Boolean =
-        (NATIVE_LIBRARY.matches(name) && !BOOTSTRAP_LIBRARY.matches(name)) ||
+        DEX_NAME.matches(name) ||
+            (NATIVE_LIBRARY.matches(name) && !BOOTSTRAP_LIBRARY.matches(name)) ||
             name.startsWith("${PayloadFormat.ROOT}/") ||
             shouldStripReleaseMetadata(name)
 
@@ -262,6 +292,14 @@ class ApkPacker(
     private fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+    private data class PayloadEntry(
+        val assetName: String,
+        val outputName: String,
+        val originalSize: Long,
+        val sha256: ByteArray,
+        val compressed: ByteArray,
+    )
 
     private data class NativePayloadEntry(
         val abi: String,

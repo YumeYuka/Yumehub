@@ -11,7 +11,7 @@
 
 package com.github.yumeyucca.yumebox.loader;
 
-/** Runtime bridge for native libraries extracted on demand. */
+/** Runtime bridge exposed by the bootstrap DEX to code loaded from the compressed payload. */
 public final class PayloadRuntime {
     private PayloadRuntime() {
     }

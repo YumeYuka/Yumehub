@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import dalvik.system.BaseDexClassLoader;
+import dalvik.system.PathClassLoader;
 
 final class PayloadInstaller {
     private static final String CACHE_MARKER = ".complete";
@@ -26,7 +26,7 @@ final class PayloadInstaller {
         }
     }
 
-    static Installation install(ApplicationInfo appInfo, ClassLoader classLoader) {
+    static Installation install(ApplicationInfo appInfo, ClassLoader parentLoader, Object loadedApk) {
         Installation current = installedPayload;
         if (current != null) {
             return current;
@@ -43,6 +43,9 @@ final class PayloadInstaller {
                 try (RandomAccessFile lockFile = new RandomAccessFile(new File(root, "install.lock"), "rw");
                      java.nio.channels.FileLock ignored = lockFile.getChannel().lock()) {
                     File payloadDir = safeChild(root, metadata.id, "payload id");
+                    File dexDir = new File(payloadDir, "dex");
+                    ensureDirectory(dexDir);
+
                     List<PayloadMetadata.NativeEntry> nativeEntries = selectNativeEntries(metadata.nativeEntries);
                     List<PayloadMetadata.NativeEntry> eagerNativeEntries = new ArrayList<>();
                     for (PayloadMetadata.NativeEntry entry : nativeEntries) {
@@ -57,13 +60,22 @@ final class PayloadInstaller {
                     }
                     File completeMarker = new File(payloadDir, CACHE_MARKER);
                     boolean cacheComplete = hasCompleteMarker(completeMarker, metadata.id)
-                            && hasExpectedPayloadFiles(eagerNativeEntries, nativeDir);
+                            && hasExpectedPayloadFiles(metadata.dexEntries, dexDir, eagerNativeEntries, nativeDir);
                     if (completeMarker.exists() && !cacheComplete && !completeMarker.delete()) {
                         throw new IOException("Unable to invalidate incomplete payload cache: " + completeMarker);
                     }
 
                     long archive = cacheComplete ? 0 : NativePayloadExtractor.openArchive(apk.getName());
+                    List<File> dexFiles = new ArrayList<>(metadata.dexEntries.size());
                     try {
+                        for (PayloadMetadata.DexEntry entry : metadata.dexEntries) {
+                            File target = safeChild(dexDir, entry.outputName(), "dex output name");
+                            if (!cacheComplete && !isValid(target, entry.size(), entry.sha256())) {
+                                extract(archive, entry.assetName(), entry.size(), entry.sha256(), target);
+                            }
+                            makeReadOnly(target);
+                            dexFiles.add(target);
+                        }
                         if (!eagerNativeEntries.isEmpty()) {
                             for (PayloadMetadata.NativeEntry entry : eagerNativeEntries) {
                                 File target = safeChild(nativeDir, entry.outputName(), "native output name");
@@ -81,14 +93,15 @@ final class PayloadInstaller {
                     if (!cacheComplete) {
                         publishCompleteMarker(payloadDir, metadata.id, completeMarker);
                     }
-                    if (nativeDir != null) {
-                        // Keep the package class loader and its ART-compiled code.
-                        ReflectionAccess.findMethod(BaseDexClassLoader.class, "addNativePath", java.util.Collection.class)
-                                .invoke(classLoader, java.util.Collections.singletonList(nativeDir.getAbsolutePath()));
-                    }
+                    ClassLoader payloadLoader = createPayloadLoader(
+                            parentLoader,
+                            dexFiles,
+                            nativeDir
+                    );
+                    RuntimeBootstrap.installClassLoader(loadedApk, payloadLoader);
                     installedPayload = new Installation(
                             metadata,
-                            classLoader,
+                            payloadLoader,
                             nativeDir,
                             appInfo.sourceDir,
                             nativeEntries
@@ -109,6 +122,27 @@ final class PayloadInstaller {
         try (java.io.InputStream input = apk.getInputStream(entry)) {
             return PayloadMetadata.read(input);
         }
+    }
+
+    private static ClassLoader createPayloadLoader(
+            ClassLoader parentLoader,
+            List<File> dexFiles,
+            File nativeDir
+    ) {
+        StringBuilder dexPath = new StringBuilder();
+        for (File file : dexFiles) {
+            if (dexPath.length() != 0) {
+                dexPath.append(File.pathSeparatorChar);
+            }
+            dexPath.append(file.getAbsolutePath());
+        }
+        PathClassLoader payloadLoader = new PathClassLoader(
+                dexPath.toString(),
+                nativeDir == null ? null : nativeDir.getAbsolutePath(),
+                parentLoader
+        );
+        Thread.currentThread().setContextClassLoader(payloadLoader);
+        return payloadLoader;
     }
 
     private static void extract(
@@ -161,10 +195,17 @@ final class PayloadInstaller {
     }
 
     private static boolean hasExpectedPayloadFiles(
+            List<PayloadMetadata.DexEntry> dexEntries,
+            File dexDir,
             List<PayloadMetadata.NativeEntry> nativeEntries,
             File nativeDir
     ) {
         try {
+            for (PayloadMetadata.DexEntry entry : dexEntries) {
+                if (!hasExpectedSize(safeChild(dexDir, entry.outputName(), "dex output name"), entry.size())) {
+                    return false;
+                }
+            }
             for (PayloadMetadata.NativeEntry entry : nativeEntries) {
                 if (!hasExpectedSize(safeChild(nativeDir, entry.outputName(), "native output name"), entry.size())) {
                     return false;

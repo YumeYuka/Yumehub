@@ -40,6 +40,14 @@ final class ReflectionAccess {
         field.set(target, value);
     }
 
+    static void setIfPresent(Object target, String name, Object value) {
+        try {
+            set(target, name, value);
+        } catch (ReflectiveOperationException ignored) {
+            // Field is not present on every supported Android version.
+        }
+    }
+
     static Object invokeStatic(Class<?> type, String name, Class<?>[] parameters, Object... args)
             throws ReflectiveOperationException {
         Method method = type.getDeclaredMethod(name, parameters);
