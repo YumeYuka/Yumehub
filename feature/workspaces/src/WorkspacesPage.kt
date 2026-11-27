@@ -2,14 +2,21 @@ package moe.yumeyuka.yumehub.feature.workspaces
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.rememberTransition
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,13 +25,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
-import io.github.neoruaa.glasmio.ui.glasmioGroupedListBackground
 import io.github.yumeyucca.lucide.ExternalLink
 import io.github.yumeyucca.lucide.File
 import io.github.yumeyucca.lucide.Folder
@@ -43,9 +51,9 @@ import moe.yumeyuka.yumehub.ui.component.EmptyScene
 import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
+import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
+import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspacePlaceholderRow
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
@@ -53,11 +61,9 @@ import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
-import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -88,11 +94,7 @@ fun WorkspacesPage(
     val context = LocalContext.current
     val latestStrings by rememberUpdatedState(strings)
     val latestContext by rememberUpdatedState(context)
-    val listState = LocalGithubPageState.current?.listState("workspaces:${state.ref}:${state.path}")
     var branchPickerVisible by rememberSaveable { mutableStateOf(false) }
-    val entries = (state.entries as? WorkspacesLoad.Ready)?.value.orEmpty()
-    val entriesLoading =
-        state.repository is WorkspacesLoad.Loading || state.entries is WorkspacesLoad.Loading
     var activeRef by remember { mutableStateOf(state.ref) }
     var branchEpoch by remember { mutableIntStateOf(0) }
     val currentRef = state.ref
@@ -100,19 +102,6 @@ fun WorkspacesPage(
         if (activeRef != null) branchEpoch++
         activeRef = currentRef
     }
-    val entrySlots =
-        remember(branchEpoch, state.path) {
-            GithubPagingSlotKeys("workspaces:$branchEpoch:${state.path}")
-        }
-    val directoryEntrance = remember(entrySlots) { GithubSkeletonEntrance() }
-    val entryKeys =
-        remember(entrySlots, entries, entriesLoading) {
-            entrySlots.update(
-                entries.map(WorkspaceEntry::path),
-                loading = false,
-                initialLoading = entriesLoading,
-            )
-        }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -138,7 +127,6 @@ fun WorkspacesPage(
     GithubPage(
         title = strings.Title,
         onBack = { if (!viewModel.navigateUp()) host.onBack() },
-        listState = listState,
         itemSpacing = 0.dp,
         actions = {
             val failed =
@@ -182,9 +170,7 @@ fun WorkspacesPage(
             state = state,
             strings = strings,
             enabled = host.navigationEnabled,
-            entries = entries,
-            entryKeys = entryKeys,
-            directoryEntrance = directoryEntrance,
+            branchEpoch = branchEpoch,
             onRetryEntries = viewModel::retry,
             onRetryCommit = { if (host.navigationEnabled) viewModel.retryCommit() },
             onOpenCommitHistory = {
@@ -219,9 +205,7 @@ private fun LazyListScope.workspacesScreen(
     state: WorkspacesUiState,
     strings: GithubStrings_Workspaces,
     enabled: Boolean,
-    entries: List<WorkspaceEntry>,
-    entryKeys: List<String>,
-    directoryEntrance: GithubSkeletonEntrance,
+    branchEpoch: Int,
     onRetryEntries: () -> Unit,
     onRetryCommit: () -> Unit,
     onOpenCommitHistory: () -> Unit,
@@ -249,58 +233,55 @@ private fun LazyListScope.workspacesScreen(
             )
         }
     }
-    if (entryKeys.isEmpty()) {
-        if (state.entries is WorkspacesLoad.Ready && directoryError == null) {
-            item(key = "workspaces-empty") {
-                GithubEmptyState(scene = EmptyScene.Inbox, title = strings.Empty)
-            }
-        }
-        return
-    }
-    // 每行独立布局和命中测试，不让整张长目录共用一个裁剪层。
-    items(
-        count = entryKeys.size,
-        key = { entryKeys[it] },
-        contentType = { "workspaces-entry" },
-    ) { index ->
-        val entry = entries.getOrNull(index)
-        val top = if (index == 0) 26.dp else 0.dp
-        val bottom = if (index == entryKeys.lastIndex) 26.dp else 0.dp
-        // 目录行按插入动画淡入，和列表页的卡片入场保持一致。
-        Box(githubCardItemMotion()) {
-            GlasmioGroupedList(
-                framed = false,
-                modifier =
-                    Modifier.glasmioGroupedListBackground(
-                        ContinuousRoundedRectangle(
-                            topStart = top,
-                            topEnd = top,
-                            bottomStart = bottom,
-                            bottomEnd = bottom,
-                        ),
-                    ),
+    item(key = "workspaces-directory") {
+        val density = LocalDensity.current
+        val viewportHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
+        // Sample the displayed frame on navigation, including an interrupted resize.
+        val frameHeight = remember { intArrayOf(0) }
+        GlasmioGroupedList {
+            Column(
+                Modifier.onSizeChanged { frameHeight[0] = it.height }
+                    .animateContentSize(GithubCardSizeSpec)
             ) {
-                SkeletonSwap(
-                    loading = entry == null,
-                    entrance = !directoryEntrance.presented,
-                    modifier =
-                        if (entry != null) Modifier.recordGithubSkeletonEntrance(directoryEntrance)
-                        else Modifier,
-                    placeholder = { WorkspacePlaceholderRow(showTopSeparator = index > 0) },
-                ) {
-                    if (entry != null) {
-                        WorkspaceRow(
-                            entry = entry,
-                            updatedAt =
-                                if (entry.directory) null
-                                else workspaceRelativeTime(state.updatedAt[entry.path], strings),
-                            enabled = enabled,
-                            showTopSeparator = index > 0,
-                            onClick = {
-                                if (entry.directory) onOpenDirectory(entry.path)
-                                else onOpenFile(entry.path, entry.name, entry.submoduleGitUrl)
-                            },
-                        )
+                key(branchEpoch, state.path) {
+                    val heldHeight = remember { frameHeight[0] }
+                    val rowHeight = PlaceholderTokens.ListRowHeight
+                    val placeholderHeight = with(density) {
+                        if (heldHeight > 0) heldHeight.toDp() else rowHeight * 4
+                    }.coerceAtMost(viewportHeight)
+                    val ready = state.entries as? WorkspacesLoad.Ready
+                    SkeletonSwap(
+                        loading = state.entries is WorkspacesLoad.Loading,
+                        entrance = true,
+                        placeholder = {
+                            Column(Modifier.height(placeholderHeight)) {
+                                repeat(kotlin.math.ceil(placeholderHeight / rowHeight).toInt()) {
+                                    WorkspacePlaceholderRow(showTopSeparator = it > 0)
+                                }
+                            }
+                        },
+                    ) {
+                        if (ready != null && ready.value.isNotEmpty()) {
+                            val scroll = LocalGithubPageState.current
+                                ?.listState("workspaces-tree:${state.ref}:${state.path}")
+                                ?: rememberLazyListState()
+                            LazyColumn(Modifier.heightIn(max = viewportHeight), state = scroll) {
+                                itemsIndexed(ready.value, key = { _, entry -> entry.path }) { index, entry ->
+                                    WorkspaceRow(
+                                        entry = entry,
+                                        updatedAt = if (entry.directory) null else workspaceRelativeTime(state.updatedAt[entry.path], strings),
+                                        enabled = enabled,
+                                        showTopSeparator = index > 0,
+                                        onClick = {
+                                            if (entry.directory) onOpenDirectory(entry.path)
+                                            else onOpenFile(entry.path, entry.name, entry.submoduleGitUrl)
+                                        },
+                                    )
+                                }
+                            }
+                        } else if (ready != null && directoryError == null) {
+                            GithubEmptyState(scene = EmptyScene.Inbox, title = strings.Empty)
+                        }
                     }
                 }
             }
