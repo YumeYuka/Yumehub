@@ -1,23 +1,19 @@
 package moe.yumeyuka.yumehub.navigation
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.ViewModel
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -28,28 +24,40 @@ import com.arkivanov.decompose.childContext
 import com.arkivanov.decompose.extensions.compose.stack.animation.Direction
 import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
 import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimator
+import com.arkivanov.decompose.extensions.compose.stack.animation.fade
+import com.arkivanov.decompose.extensions.compose.stack.animation.plus
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.PredictiveBackAnimatable
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.androidPredictiveBackAnimatableV1
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
+import com.arkivanov.decompose.extensions.compose.stack.animation.scale
+import com.arkivanov.decompose.extensions.compose.stack.animation.slide
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.backhandler.BackEvent
 import com.arkivanov.essenty.backhandler.BackHandler
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.glass.trackBackdropPosition
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.ui.component.LocalGithubEditorFocusReady
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.GithubHeaderMotionController
+import moe.yumeyuka.yumehub.ui.navigation.GithubNavigationHeaderOverlay
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderMotion
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
 
 private const val MinPredictiveBackPercent = 1f
 private const val MaxPredictiveBackPercent = 100f
 
-/** 页面在绘制层滑动，避免每帧重新测量顶栏和列表。 */
-internal fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> =
-    stackAnimation(animator = RouteEntryAnimator)
+// Same Decompose composition as YumeYucca/YumeBox, AppNavContainer.kt (4a6bb76).
+private val yumePageAnimator = fade(tween(300)) + slide(tween(400)) + scale(tween(500))
 
-private object RouteEntryAnimator : StackAnimator {
-    private val slideSpec = tween<Float>(300, easing = FastOutSlowInEasing)
+private fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> =
+    stackAnimation(GithubRouteEntryAnimator)
 
+private object GithubRouteEntryAnimator : StackAnimator {
     @Composable
     override fun invoke(
         direction: Direction,
@@ -57,76 +65,66 @@ private object RouteEntryAnimator : StackAnimator {
         onFinished: () -> Unit,
         content: @Composable (Modifier) -> Unit,
     ) {
-        val remaining = remember(direction, isInitial) { Animatable(if (isInitial) 0f else 1f) }
-        var finished by remember(remaining) { mutableStateOf(isInitial) }
-        val currentOnFinished by rememberUpdatedState(onFinished)
+        var finished by remember(direction, isInitial) { mutableStateOf(isInitial) }
         val entering = direction == Direction.ENTER_FRONT || direction == Direction.ENTER_BACK
-        val axis = if (LocalLayoutDirection.current == LayoutDirection.Ltr) 1f else -1f
-        LaunchedEffect(remaining) {
-            if (!isInitial) remaining.animateTo(0f, slideSpec)
+        yumePageAnimator(direction, isInitial, {
             finished = true
-            currentOnFinished()
-        }
-        CompositionLocalProvider(
-            LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
-            LocalGithubCardMotionEnabled provides (entering && finished),
-            LocalGithubEditorFocusReady provides (entering && finished),
-        ) {
-            content(
-                Modifier.graphicsLayer {
-                    val value = remaining.value
-                    val fraction = when (direction) {
-                        Direction.ENTER_FRONT -> value
-                        Direction.ENTER_BACK -> -value
-                        Direction.EXIT_FRONT -> 1f - value
-                        Direction.EXIT_BACK -> value - 1f
-                    }
-                    translationX = size.width * fraction * axis
-                },
-            )
+            onFinished()
+        }) { modifier ->
+            CompositionLocalProvider(
+                LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
+                LocalGithubCardMotionEnabled provides (entering && finished),
+                LocalGithubEditorFocusReady provides (entering && finished),
+            ) {
+                content(modifier)
+            }
         }
     }
 }
 
-/** 预测返回沿用 YumeBox 的 androidPredictiveBackAnimatableV1，[amplitude] 按手势事件实时缩放进度。 */
 @OptIn(ExperimentalDecomposeApi::class)
 private fun githubPredictiveBackAnimation(
     backHandler: BackHandler,
     onBack: () -> Unit,
     amplitude: () -> Float,
+    headerMotion: GithubHeaderMotionController,
+    headerKey: (GithubRouteEntry) -> Any,
 ): StackAnimation<GithubRouteEntry, RouteChild> =
     predictiveBackAnimation(
         backHandler = backHandler,
         fallbackAnimation = githubStackAnimation(),
-        selector = { event, _, _ ->
-            ScaledPredictiveBackAnimatable(
-                delegate = androidPredictiveBackAnimatableV1(event.scaled(amplitude())),
-                amplitude = amplitude,
-            )
+        selector = { event, exit, enter ->
+            val initial = event.scaled(amplitude())
+            val motion = androidPredictiveBackAnimatableV1(initial)
+            val from = headerKey(exit.configuration)
+            val to = headerKey(enter.configuration)
+            headerMotion.beginTracking(from, to)
+            headerMotion.gesture(initial.progress)
+            object : PredictiveBackAnimatable by motion {
+                override suspend fun animate(event: BackEvent) {
+                    val next = event.scaled(amplitude())
+                    headerMotion.gesture(next.progress)
+                    motion.animate(next)
+                }
+
+                override suspend fun finish() {
+                    headerMotion.phase(GlasmioNavigationPhase.Settling)
+                    motion.finish()
+                    headerMotion.finish(to)
+                }
+
+                override suspend fun cancel() {
+                    headerMotion.phase(GlasmioNavigationPhase.Canceling)
+                    motion.cancel()
+                    headerMotion.finish(from)
+                }
+            }
         },
         onBack = onBack,
     )
 
-@OptIn(ExperimentalDecomposeApi::class)
-private class ScaledPredictiveBackAnimatable(
-    private val delegate: PredictiveBackAnimatable,
-    private val amplitude: () -> Float,
-) : PredictiveBackAnimatable {
-    override val exitModifier: Modifier
-        get() = delegate.exitModifier
-
-    override val enterModifier: Modifier
-        get() = delegate.enterModifier
-
-    override suspend fun animate(event: BackEvent) = delegate.animate(event.scaled(amplitude()))
-
-    override suspend fun finish() = delegate.finish()
-
-    override suspend fun cancel() = delegate.cancel()
-}
-
 private fun BackEvent.scaled(amplitude: Float): BackEvent =
-    copy(progress = (progress * amplitude.coerceIn(0.01f, 1f)).coerceIn(0f, 1f))
+    if (amplitude == 1f) this else copy(progress = progress * amplitude)
 
 /**
  * 持有唯一的导航栈、主标签和发往它们的全部命令。
@@ -163,7 +161,8 @@ internal class GithubAppNavigationComponent(
     private var sessionLogin: String? = null
     private var session: GithubNavigationSession? = null
 
-    val navigationSessionId: String? get() = session?.navigationSessionId
+    val navigationSessionId: String?
+        get() = session?.navigationSessionId
 
     var pendingLink by mutableStateOf<String?>(null)
         private set
@@ -223,7 +222,8 @@ internal class GithubAppNavigationComponent(
         if (previousSession != null) pendingLink = null
         this.session = session
         sessionLogin = login
-        // The initial route is already an empty MainTabsRoute; avoid replacing it from the first ViewModel factory.
+        // The initial route is already an empty MainTabsRoute; avoid replacing it from the first
+        // ViewModel factory.
         if (previousSession != null || accountChanged) resetStacks()
     }
 
@@ -272,13 +272,19 @@ internal fun GithubNavContainer(
     modifier: Modifier = Modifier,
 ) {
     val commitBack = remember(component) { component::navigateBack }
+    val initialKey = remember(component) { component.routeStack.value.value.active.configuration }
+    val headerMotion = remember(component) { GithubHeaderMotionController(initialKey) }
     val animation =
-        remember(component) {
+        remember(component, headerMotion) {
             if (component.predictiveBackEnabledAtLaunch) {
                 githubPredictiveBackAnimation(
                     backHandler = component.componentContext.backHandler,
                     onBack = commitBack,
                     amplitude = { component.predictiveBackAmplitude },
+                    headerMotion = headerMotion,
+                    headerKey = { entry ->
+                        if (entry.route is MainTabsRoute) component.mainTab else entry
+                    },
                 )
             } else {
                 githubStackAnimation()
@@ -294,12 +300,30 @@ internal fun GithubNavContainer(
             "GithubNavContainer 必须由提供 NavigationEventDispatcher 的 Activity 托管"
         }
     val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = !locked)
-    CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides dispatcherOwner) {
-        GithubRouteStackHost(
-            stack = component.routeStack,
-            animation = animation,
-            modifier = modifier,
-        )
+    CompositionLocalProvider(
+        LocalNavigationEventDispatcherOwner provides dispatcherOwner,
+        LocalGithubHeaderMotion provides headerMotion,
+    ) {
+        val navBackdrop = if (GlasmioTheme.appearance.usesBackdrop) rememberLayerBackdrop() else null
+        Box(modifier.fillMaxSize()) {
+            Box(
+                Modifier.fillMaxSize()
+                    .then(
+                        if (navBackdrop == null) Modifier
+                        else Modifier.layerBackdrop(navBackdrop, reuseContent = true)
+                            .trackBackdropPosition(navBackdrop),
+                    )
+                    .background(GlasmioTheme.colors.groupedBackground),
+            ) {
+                GithubRouteStackHost(
+                    stack = component.routeStack,
+                    animation = animation,
+                    headerMotion = headerMotion,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            GithubNavigationHeaderOverlay(motion = headerMotion, backdrop = navBackdrop)
+        }
     }
 }
 

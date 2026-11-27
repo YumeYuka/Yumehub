@@ -26,6 +26,7 @@ import moe.yumeyuka.yumehub.feature.profile.ProfileRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderEntryKey
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
@@ -154,6 +155,7 @@ private fun GithubMainTabPage(tab: GithubTab, navigator: GithubNavigator) {
         LocalGithubSkeletonEntrance provides entrance,
         LocalGithubPageBackdrop provides pageBackdrop,
         LocalBlurBackdrop provides pageBackdrop,
+        LocalGithubHeaderEntryKey provides tab,
     ) {
         Box(if (animate) Modifier.recordGithubSkeletonEntrance(entrance) else Modifier) {
             GithubRouteContent(route = tab.rootRoute(), navigator = navigator)

@@ -18,7 +18,7 @@ enum class ThemeMode {
 const val DefaultAccentColorArgb: Int = 0xFF3FB950.toInt()
 
 /** Predictive back amplitude, as a percentage of the full gesture distance. */
-const val DefaultPredictiveBackProgress: Float = 50f
+const val DefaultPredictiveBackProgress: Float = 100f
 const val MinPredictiveBackProgress: Float = 1f
 const val MaxPredictiveBackProgress: Float = 100f
 

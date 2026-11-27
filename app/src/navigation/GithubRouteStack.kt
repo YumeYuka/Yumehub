@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -36,10 +39,14 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationOperation
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import moe.yumeyuka.yumehub.feature.editor.EditorRoute
+import moe.yumeyuka.yumehub.ui.navigation.GithubHeaderMotionController
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderEntryKey
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
@@ -74,6 +81,10 @@ internal class RouteChild(
 
     val pageState = GithubPageState()
 
+    // 出栈先销毁 Decompose 子组件，退场页面在最后一帧后才离开组合。
+    private var destroyed = false
+    private var mounted = 0
+
     /**
      * 是否为栈顶配置。只由 [routeStack] 的栈观察者写入，页面按需订阅自己的归属，不必订阅整条栈。
      *
@@ -84,13 +95,21 @@ internal class RouteChild(
     init {
         lifecycle.doOnDestroy {
             isTop = false
+            destroyed = true
             if (route is EditorRoute) route.session.dispose()
-            viewModelStore.clear()
+            if (mounted == 0) viewModelStore.clear()
         }
     }
 
     @Composable
     fun Content() {
+        DisposableEffect(this) {
+            mounted++
+            onDispose {
+                mounted--
+                if (destroyed && mounted == 0) viewModelStore.clear()
+            }
+        }
         val top = isTop
         // 非栈顶（被覆盖、退场中、预测返回露出的下层）降低生命周期并停用页面级返回处理。
         val lifecycleOwner =
@@ -104,6 +123,7 @@ internal class RouteChild(
         val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = top)
         val entrance = pageState.skeletonEntrance
         val entryReady = LocalGithubRouteEntryReady.current
+        val entryKey: Any? = if (route is MainTabsRoute) null else LocalGithubHeaderEntryKey.current
         CompositionLocalProvider(
             LocalLifecycleOwner provides lifecycleOwner,
             LocalNavigationEventDispatcherOwner provides dispatcherOwner,
@@ -112,6 +132,7 @@ internal class RouteChild(
             LocalGithubCardMotionEnabled provides (top && LocalGithubCardMotionEnabled.current),
             LocalGithubPageState provides pageState,
             LocalGithubSkeletonEntrance provides entrance,
+            LocalGithubHeaderEntryKey provides entryKey,
         ) {
             val input =
                 if (top) Modifier
@@ -179,13 +200,49 @@ internal fun GithubNavigator.routeStack(
 internal fun GithubRouteStackHost(
     stack: GithubRouteStack,
     animation: StackAnimation<GithubRouteEntry, RouteChild>,
+    headerMotion: GithubHeaderMotionController? = null,
     modifier: Modifier = Modifier,
 ) {
     val childStack by stack.value.subscribeAsState()
+    val activeConfig = childStack.active.configuration
+    val activeKey: Any =
+        if (activeConfig.route is MainTabsRoute) {
+            LocalGithubShellArgs.current.component.mainTab
+        } else {
+            activeConfig
+        }
+    if (headerMotion != null) {
+        val depthRef = remember { intArrayOf(childStack.items.size) }
+        val prevKeyRef = remember { arrayOf<Any>(activeKey) }
+        LaunchedEffect(activeKey, childStack.items.size) {
+            val prevKey = prevKeyRef[0]
+            val prevDepth = depthRef[0]
+            val nextDepth = childStack.items.size
+            if (prevKey != activeKey) {
+                val operation =
+                    when {
+                        prevKey is GithubTab && activeKey is GithubTab ->
+                            GlasmioNavigationOperation.Tab
+                        nextDepth < prevDepth -> GlasmioNavigationOperation.Pop
+                        else -> GlasmioNavigationOperation.Push
+                    }
+                if (headerMotion.frame.value.phase == GlasmioNavigationPhase.Idle) {
+                    headerMotion.beginNavigation(prevKey, activeKey, operation)
+                }
+                headerMotion.finish(activeKey)
+            }
+            prevKeyRef[0] = activeKey
+            depthRef[0] = nextDepth
+        }
+    }
     // 内容 lambda 不能捕获任何外壳状态：预测返回以它为 key 记住 movableContent，实例一变整棵页面树就会重建。
     // 页面需要的环境都经 CompositionLocal 读取。
     Children(stack = childStack, modifier = modifier.fillMaxSize(), animation = animation) { child
         ->
-        child.instance.Content()
+        val childKey: Any? =
+            if (child.configuration.route is MainTabsRoute) null else child.configuration
+        CompositionLocalProvider(LocalGithubHeaderEntryKey provides childKey) {
+            child.instance.Content()
+        }
     }
 }
