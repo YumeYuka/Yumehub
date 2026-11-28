@@ -18,10 +18,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.shapes.Capsule
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.glass.GlassSurface
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import io.github.neoruaa.glasmio.ui.LocalGlasmioSidebarPressReset
 import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
@@ -111,12 +113,14 @@ private fun ProfileActionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    GlasmioButton(
+    GlassSurface(
         onClick = onClick,
         modifier = modifier.heightIn(min = 58.dp),
+        shape = Capsule(),
+        pressResetKey = LocalGlasmioSidebarPressReset.current,
     ) {
         Column(
-            Modifier.padding(vertical = 8.dp),
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -125,6 +129,7 @@ private fun ProfileActionButton(
                 label,
                 style = GlasmioTheme.textStyles.footnote.copy(fontSize = 12.sp),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
