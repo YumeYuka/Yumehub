@@ -52,7 +52,7 @@ internal fun WorkDetailToolbar(
             !state.loading &&
             !state.commentUncertain &&
             (state.canComment || state.commentDraft.isNotEmpty())
-    val subscribed = state.desiredSubscription ?: (state.subscription?.subscribed == true)
+    val subscriptionState = state.desiredSubscription ?: state.subscription?.state
     val showMerge = kind == CollaborationKind.PullRequest && state.item?.state == "open"
     val canMerge =
         state.item?.canMerge() == true &&
@@ -75,13 +75,12 @@ internal fun WorkDetailToolbar(
             size = 48.dp,
         ) {
             GithubIcon(
-                if (subscribed) Lucide.BellOff else Lucide.Bell,
+                if (subscriptionState == "IGNORED") Lucide.BellOff else Lucide.Bell,
                 contentDescription =
                     when {
                         state.subscriptionError != null && !state.subscriptionUpdating ->
                             strings.SubscriptionFailed
-                        subscribed -> strings.Unsubscribe
-                        else -> strings.Subscribe
+                        else -> strings.NotificationSettings
                     },
             )
         }

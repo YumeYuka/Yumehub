@@ -47,11 +47,12 @@ class WorkItemSubscriptionRepository(
         return resource.await(force) { read(session, id) }.also { checkSession(session) }
     }
 
-    suspend fun setSubscribed(
+    suspend fun setSubscription(
         account: String,
         id: String,
-        subscribed: Boolean,
+        state: String,
     ): WorkItemSubscription {
+        require(state in setOf("SUBSCRIBED", "UNSUBSCRIBED", "IGNORED"))
         val session = session(account)
         val resource =
             cache.resource(
@@ -62,31 +63,24 @@ class WorkItemSubscriptionRepository(
             )
         val current = read(session, id)
         if (!current.canSubscribe) throw MutationRejectedException("Subscription unavailable")
-        val next =
-            when {
-                subscribed -> "SUBSCRIBED"
-                current.inherited || current.state == "IGNORED" -> "IGNORED"
-                else -> "UNSUBSCRIBED"
-            }
         val data =
             execute(
                 session,
                 SubscriptionMutation,
                 buildJsonObject {
                     put("id", id)
-                    put("state", next)
+                    put("state", state)
                 },
                 write = true,
             )
         val result =
             (data["updateSubscription"] as? JsonObject)?.get("subscribable") as? JsonObject
                 ?: throw WorkItemSubscriptionException()
-        if (result.text("id") != id || result.text("viewerSubscription") != next) {
+        if (result.text("id") != id || result.text("viewerSubscription") != state) {
             throw WorkItemSubscriptionException()
         }
-        val confirmed = current.copy(state = next)
+        val confirmed = current.copy(state = state)
         synchronized(tokens.responseCacheSession.lock) {
-            checkSession(session)
             resource.update(confirmed)
             cache.changes(account).publish(DataDomain.Work, DataDomain.Notifications)
         }

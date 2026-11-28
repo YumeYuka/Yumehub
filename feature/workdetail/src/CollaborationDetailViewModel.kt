@@ -164,7 +164,7 @@ internal data class CollaborationDetailUiState(
     val uncertainOperations: List<PendingMutationSummary> = emptyList(),
     val subscription: WorkItemSubscription? = null,
     val subscriptionError: String? = null,
-    val desiredSubscription: Boolean? = null,
+    val desiredSubscription: String? = null,
     val subscriptionUpdating: Boolean = false,
     val notificationDone: Boolean = false,
     val titleEditorOpen: Boolean = false,
@@ -259,7 +259,7 @@ internal class CollaborationDetailViewModel(
     private fun closeStateKey() = detail.keys.state
 
     private fun subscriptionKey(subjectId: String) =
-        MutationKey(MutationKind.WORK_SUBSCRIPTION, subjectId, Boolean.serializer())
+        MutationKey(MutationKind.WORK_SUBSCRIPTION, subjectId, String.serializer())
 
     private fun reactionKey(subjectId: String) =
         MutationKey(
@@ -905,13 +905,7 @@ internal class CollaborationDetailViewModel(
                     val baseSub = confirmedSubscription ?: current.subscription
                     val updatedSub =
                         if (projected != null && baseSub != null) {
-                            baseSub.copy(
-                                state =
-                                    if (projected) "SUBSCRIBED"
-                                    else if (baseSub.inherited || baseSub.state == "IGNORED")
-                                        "IGNORED"
-                                    else "UNSUBSCRIBED",
-                            )
+                            baseSub.copy(state = projected)
                         } else baseSub
                     current.copy(
                         subscription = updatedSub,
@@ -947,21 +941,18 @@ internal class CollaborationDetailViewModel(
                 val stamp = coord.beginRead(subscriptionKey(id))
                 val loaded = subscriptions.load(viewerLogin, id, force)
                 confirmedSubscription = loaded
-                coord.publishConfirmed(subscriptionKey(id), stamp, loaded.subscribed)
+                coord.publishConfirmed(subscriptionKey(id), stamp, loaded.state)
                 if (generation == subscriptionGeneration) {
                     val slot = coord.current(subscriptionKey(id))
                     val effective = slot.visible
                     val shown =
                         if (effective != null) {
-                            loaded.copy(
-                                state =
-                                    if (effective) "SUBSCRIBED"
-                                    else if (loaded.inherited || loaded.state == "IGNORED")
-                                        "IGNORED"
-                                    else "UNSUBSCRIBED",
-                            )
+                            loaded.copy(state = effective)
                         } else loaded
-                    mutableUiState.update { it.copy(subscription = shown) }
+                    mutableUiState.update { current ->
+                        if (generation == subscriptionGeneration) current.copy(subscription = shown)
+                        else current
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -975,7 +966,8 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun toggleSubscription() {
+    fun updateSubscription(targetState: String) {
+        require(targetState in setOf("SUBSCRIBED", "UNSUBSCRIBED", "IGNORED"))
         val state = uiState.value
         val subjectId = state.item?.nodeId?.takeIf(String::isNotBlank) ?: return
         if (state.subscription?.canSubscribe == false) return
@@ -1005,7 +997,7 @@ internal class CollaborationDetailViewModel(
                             .load(viewerLogin, subjectId, force = state.subscriptionError != null)
                             .also {
                                 confirmedSubscription = it
-                                coord.publishConfirmed(key, stamp, it.subscribed)
+                                coord.publishConfirmed(key, stamp, it.state)
                             }
                     } catch (error: CancellationException) {
                         throw error
@@ -1021,22 +1013,23 @@ internal class CollaborationDetailViewModel(
                 mutableUiState.update { it.copy(subscription = confirmed) }
                 return@launch
             }
-            val currentSubscribed = coord.current(key).visible ?: confirmed.subscribed
+            val currentState = coord.current(key).visible ?: confirmed.state
+            if (currentState == targetState) return@launch
             val accepted =
                 coord.submit(
                     key = key,
-                    confirmed = confirmed.subscribed,
-                    desired = !currentSubscribed,
+                    confirmed = confirmed.state,
+                    desired = targetState,
                     tags = detail.mutationTags,
                     send = { desired ->
-                        val updated = subscriptions.setSubscribed(viewerLogin, subjectId, desired)
+                        val updated = subscriptions.setSubscription(viewerLogin, subjectId, desired)
                         confirmedSubscription = updated
-                        updated.subscribed
+                        updated.state
                     },
                     readBack = {
                         val reloaded = subscriptions.load(viewerLogin, subjectId, force = true)
                         confirmedSubscription = reloaded
-                        reloaded.subscribed
+                        reloaded.state
                     },
                 )
             if (!accepted) {

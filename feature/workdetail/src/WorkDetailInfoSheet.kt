@@ -18,10 +18,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import io.github.yumeyucca.lucide.*
+import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
@@ -315,6 +320,98 @@ internal fun WorkMergeSheet(
                                 onClick = if (busy) null else ({ retry++ }),
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun WorkSubscriptionSheet(
+    visible: Boolean,
+    state: CollaborationDetailUiState,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onRetry: () -> Unit,
+) {
+    val strings = LocalGithubStrings.current.WorkDetail
+    val common = LocalGithubStrings.current.Common
+    val colors = GlasmioTheme.colors
+    val subscriptionState = state.desiredSubscription ?: state.subscription?.state
+    val canSelect =
+        state.subscription != null &&
+            state.subscription.canSubscribe &&
+            !state.subscriptionUpdating
+    val options =
+        listOf(
+            Triple("SUBSCRIBED", strings.SubscribeAll, strings.SubscribeAllDescription),
+            Triple(
+                "UNSUBSCRIBED",
+                strings.SubscribeParticipating,
+                strings.SubscribeParticipatingDescription,
+            ),
+            Triple("IGNORED", strings.SubscribeIgnoring, strings.SubscribeIgnoringDescription),
+        )
+    GithubBottomSheet(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        title = strings.NotificationSettings,
+        fitContent = true,
+        topBar = {
+            GlasmioTopBar(
+                title = strings.NotificationSettings,
+                navigation = {
+                    GlasmioIconButton(onClick = onDismiss) {
+                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                    }
+                },
+            )
+        },
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (state.subscription == null && state.subscriptionError != null) {
+                GlasmioGroupedList {
+                    GlasmioListRow(
+                        title = strings.SubscriptionFailed,
+                        showTopSeparator = false,
+                        onClick = onRetry,
+                    )
+                }
+            } else {
+                GlasmioGroupedList {
+                    options.forEachIndexed { index, (value, title, description) ->
+                        val selected = subscriptionState == value
+                        GlasmioListRow(
+                            title = title,
+                            subtitle = description,
+                            enabled = canSelect,
+                            modifier =
+                                Modifier.semantics {
+                                    role = Role.RadioButton
+                                    this.selected = selected
+                                },
+                            showTopSeparator = index > 0,
+                            showDisclosure = false,
+                            onClick = {
+                                onSelect(value)
+                                onDismiss()
+                            },
+                            trailing = {
+                                if (selected) {
+                                    GithubIcon(
+                                        Lucide.Check,
+                                        contentDescription = null,
+                                        tint = colors.accent,
+                                    )
+                                }
+                            },
+                        )
                     }
                 }
             }

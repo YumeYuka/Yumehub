@@ -25,6 +25,13 @@ public data class GithubStrings_WorkDetail(
     val ConfirmDoneMessage: String,
     val Subscribe: String,
     val Unsubscribe: String,
+    val NotificationSettings: String,
+    val SubscribeAll: String,
+    val SubscribeAllDescription: String,
+    val SubscribeParticipating: String,
+    val SubscribeParticipatingDescription: String,
+    val SubscribeIgnoring: String,
+    val SubscribeIgnoringDescription: String,
     val SubscriptionFailed: String,
     val NotificationUnavailable: String,
     val Discussion: String,
@@ -204,6 +211,13 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         ConfirmDoneMessage = "仅将通知标为完成，不会关闭议题或关闭、合并拉取请求。",
         Subscribe = "订阅此工作项",
         Unsubscribe = "取消订阅此工作项",
+        NotificationSettings = "通知设置",
+        SubscribeAll = "接收所有通知",
+        SubscribeAllDescription = "接收此工作项的所有活动通知",
+        SubscribeParticipating = "使用仓库通知设置",
+        SubscribeParticipatingDescription = "不单独订阅或静音；通知仍遵循仓库的 Watch 设置。",
+        SubscribeIgnoring = "忽略",
+        SubscribeIgnoringDescription = "永不接收此工作项的通知",
         SubscriptionFailed = "订阅状态加载失败，点击重试",
         NotificationUnavailable = "未能定位待完成的通知，请从通知列表打开后重试",
         Discussion = "讨论",
@@ -215,8 +229,7 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
             when (kind) {
                 "Closed" -> "关闭了此工作项"
                 "Reopened" -> "重新打开了此工作项"
-                "RenamedTitle" ->
-                    eventDetail?.let { "将标题改为「$it」" } ?: "重命名了标题"
+                "RenamedTitle" -> eventDetail?.let { "将标题改为「$it」" } ?: "重命名了标题"
                 "Labeled" -> eventSubject?.let { "添加标签：$it" } ?: "添加了标签"
                 "Unlabeled" -> eventSubject?.let { "移除标签：$it" } ?: "移除了标签"
                 "Assigned" -> eventSubject?.let { "指派给 $it" } ?: "指派了负责人"
@@ -243,8 +256,7 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
                         else -> "更改了基本分支"
                     }
                 "MarkedAsDuplicate" -> eventSubject?.let { "标记为 $it 的重复项" } ?: "标记为重复项"
-                "DeploymentEnvironmentChanged" ->
-                    eventSubject?.let { "更新了部署环境 $it" } ?: "更新了部署环境"
+                "DeploymentEnvironmentChanged" -> eventSubject?.let { "更新了部署环境 $it" } ?: "更新了部署环境"
                 "AutoMergeEnabled" -> "启用了自动合并"
                 "AutoMergeDisabled" -> "关闭了自动合并"
                 "AutoRebaseEnabled" -> "启用了自动变基"
@@ -418,13 +430,11 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
         LoadFailed = "Unable to load details",
         RecoveryTitle = "Verify submission",
         SubmissionUncertain = "Submission result is uncertain",
-        RecoveryMessage =
-            "Refresh or check GitHub before posting again. Your draft has been kept.",
+        RecoveryMessage = "Refresh or check GitHub before posting again. Your draft has been kept.",
         Acknowledged = "Verified",
         NoDescription = "No description",
         NoBody = "No content",
-        NoChecksCommit =
-            "Checks are unavailable because GitHub did not provide a head commit.",
+        NoChecksCommit = "Checks are unavailable because GitHub did not provide a head commit.",
         CommitStatuses = "Commit statuses",
         PreviousChecks = "Load previous checks",
         RevisionChanged = "This pull request has changed. Tap to reload.",
@@ -478,6 +488,14 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
             "Only the notification is completed. The issue or pull request will not be closed or merged.",
         Subscribe = "Subscribe to this work item",
         Unsubscribe = "Unsubscribe from this work item",
+        NotificationSettings = "Notification settings",
+        SubscribeAll = "All activity",
+        SubscribeAllDescription = "Receive notifications for all activity on this item",
+        SubscribeParticipating = "Use repository settings",
+        SubscribeParticipatingDescription =
+            "No item-specific subscription or mute; notifications still follow repository Watch settings.",
+        SubscribeIgnoring = "Ignore",
+        SubscribeIgnoringDescription = "Never receive notifications for this item",
         SubscriptionFailed = "Unable to load subscription. Tap to retry",
         NotificationUnavailable =
             "The pending notification could not be located. Open it from Notifications and retry.",
@@ -493,40 +511,32 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 "RenamedTitle" ->
                     eventDetail?.let { "renamed the title to \"$it\"" } ?: "renamed the title"
                 "Labeled" -> eventSubject?.let { "added label: $it" } ?: "added a label"
-                "Unlabeled" ->
-                    eventSubject?.let { "removed label: $it" } ?: "removed a label"
+                "Unlabeled" -> eventSubject?.let { "removed label: $it" } ?: "removed a label"
                 "Assigned" -> eventSubject?.let { "assigned to $it" } ?: "assigned someone"
-                "Unassigned" ->
-                    eventSubject?.let { "unassigned $it" } ?: "removed an assignee"
+                "Unassigned" -> eventSubject?.let { "unassigned $it" } ?: "removed an assignee"
                 "Locked" -> "locked the conversation"
                 "Unlocked" -> "unlocked the conversation"
-                "Milestoned" ->
-                    eventSubject?.let { "set milestone: $it" } ?: "set a milestone"
+                "Milestoned" -> eventSubject?.let { "set milestone: $it" } ?: "set a milestone"
                 "Demilestoned" ->
                     eventSubject?.let { "removed milestone: $it" } ?: "removed a milestone"
                 "CrossReferenced" ->
                     eventSubject?.let { "referenced $it" } ?: "referenced this item"
-                "Referenced" ->
-                    eventSubject?.let { "referenced $it" } ?: "referenced a commit"
-                "HeadRefDeleted" ->
-                    eventSubject?.let { "deleted branch $it" } ?: "deleted a branch"
+                "Referenced" -> eventSubject?.let { "referenced $it" } ?: "referenced a commit"
+                "HeadRefDeleted" -> eventSubject?.let { "deleted branch $it" } ?: "deleted a branch"
                 "HeadRefRestored" ->
                     eventSubject?.let { "restored branch $it" } ?: "restored a branch"
                 "ReviewRequested" ->
-                    eventSubject?.let { "requested a review from $it" }
-                        ?: "requested a review"
+                    eventSubject?.let { "requested a review from $it" } ?: "requested a review"
                 "ReviewRequestRemoved" ->
                     eventSubject?.let { "removed the review request for $it" }
                         ?: "removed a review request"
                 "ReviewDismissed" ->
-                    eventSubject?.let { "dismissed the review by $it" }
-                        ?: "dismissed a review"
+                    eventSubject?.let { "dismissed the review by $it" } ?: "dismissed a review"
                 "ReadyForReview" -> "marked as ready for review"
                 "ConvertedToDraft" -> "converted to draft"
                 "CommentDeleted" ->
                     eventSubject?.let { "deleted a comment by $it" } ?: "deleted a comment"
-                "Deployed" ->
-                    eventSubject?.let { "deployed $it" } ?: "deployed an environment"
+                "Deployed" -> eventSubject?.let { "deployed $it" } ?: "deployed an environment"
                 "BaseRefChanged" ->
                     when {
                         eventSubject != null && eventDetail != null ->
@@ -534,11 +544,9 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                         else -> "changed the base branch"
                     }
                 "MarkedAsDuplicate" ->
-                    eventSubject?.let { "marked as a duplicate of $it" }
-                        ?: "marked as a duplicate"
+                    eventSubject?.let { "marked as a duplicate of $it" } ?: "marked as a duplicate"
                 "DeploymentEnvironmentChanged" ->
-                    eventSubject?.let { "updated $it" }
-                        ?: "updated the deployment environment"
+                    eventSubject?.let { "updated $it" } ?: "updated the deployment environment"
                 "AutoMergeEnabled" -> "enabled auto-merge"
                 "AutoMergeDisabled" -> "disabled auto-merge"
                 "AutoRebaseEnabled" -> "enabled auto-rebase"
@@ -547,8 +555,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 "AddedToMergeQueue" -> "added to the merge queue"
                 "RemovedFromMergeQueue" -> "removed from the merge queue"
                 "Connected" -> eventSubject?.let { "connected $it" } ?: "connected an item"
-                "Disconnected" ->
-                    eventSubject?.let { "disconnected $it" } ?: "disconnected an item"
+                "Disconnected" -> eventSubject?.let { "disconnected $it" } ?: "disconnected an item"
                 "AutomaticBaseChanged" ->
                     when {
                         eventSubject != null && eventDetail != null ->
@@ -557,8 +564,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                         else -> "automatically changed the base branch"
                     }
                 "AddedToProject" ->
-                    eventSubject?.let { "added this item to $it" }
-                        ?: "added this item to a project"
+                    eventSubject?.let { "added this item to $it" } ?: "added this item to a project"
                 "MovedColumnsInProject" ->
                     when {
                         eventSubject != null && eventDetail != null ->
@@ -572,8 +578,7 @@ internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
                 "Pinned" -> "pinned this item"
                 "Unpinned" -> "unpinned this item"
                 "Transferred" ->
-                    eventSubject?.let { "transferred this item to $it" }
-                        ?: "transferred this item"
+                    eventSubject?.let { "transferred this item to $it" } ?: "transferred this item"
                 "ConvertedToDiscussion" ->
                     eventSubject?.let { "converted this item to $it" }
                         ?: "converted this item to a discussion"

@@ -92,6 +92,7 @@ fun WorkDetailPage(
     var propertySheet by remember(viewModel) { mutableStateOf<WorkProperty?>(null) }
     var baseBranchVisible by remember(viewModel) { mutableStateOf(false) }
     var mergeVisible by rememberSaveable { mutableStateOf(false) }
+    var subscriptionVisible by rememberSaveable { mutableStateOf(false) }
     val currentPage = host.isCurrent
     val issueEditor = viewModel.issueMetadata
     val issueMetadata by issueEditor.state.collectAsStateWithLifecycle()
@@ -257,7 +258,7 @@ fun WorkDetailPage(
                 kind = kind,
                 onMerge = { if (host.navigationEnabled) mergeVisible = true },
                 onComment = { if (host.navigationEnabled) viewModel.openComposer() },
-                onSubscription = { if (host.navigationEnabled) viewModel.toggleSubscription() },
+                onSubscription = { if (host.navigationEnabled) subscriptionVisible = true },
             )
         },
     ) {
@@ -371,6 +372,17 @@ fun WorkDetailPage(
         onMerge = { item, method, message ->
             if (host.navigationEnabled && viewModel.mergePullRequest(item, method, message))
                 mergeVisible = false
+        },
+    )
+    WorkSubscriptionSheet(
+        visible = currentPage && subscriptionVisible,
+        state = state,
+        onDismiss = { subscriptionVisible = false },
+        onSelect = { targetState ->
+            if (host.navigationEnabled) viewModel.updateSubscription(targetState)
+        },
+        onRetry = {
+            if (host.navigationEnabled) viewModel.loadSubscription(force = true)
         },
     )
     if (currentPage) CollaborationDeleteCommentDialog(state, viewModel)
