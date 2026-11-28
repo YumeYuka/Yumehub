@@ -39,8 +39,8 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.glass.GlassEmphasis
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
 
@@ -57,7 +57,7 @@ fun LoginScreen(
             model.handleResult(it.data)
         }
     val context = LocalContext.current
-    val failureMessage = LocalGithubStrings.current.Profile.AccountFailed
+    val failureMessage = LocalAppStrings.current.Profile.AccountFailed
     LaunchedEffect(state) {
         when (state) {
             LoginState.Completed -> onLoggedIn()
@@ -68,7 +68,7 @@ fun LoginScreen(
             else -> Unit
         }
     }
-    GithubBackHandler(enabled = state == LoginState.Completing) {}
+    AppBackHandler(enabled = state == LoginState.Completing) {}
     LoginContent(modifier, addingAccount, state) { model.start { launcher.launch(it) } }
 }
 
@@ -79,7 +79,7 @@ private fun LoginContent(
     state: LoginState,
     onLogin: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     BoxWithConstraints(
         modifier = modifier.fillMaxSize().safeDrawingPadding(),
         contentAlignment = Alignment.TopCenter,
@@ -136,7 +136,7 @@ private fun LoginContent(
 
 @Composable
 private fun LoginAction(state: LoginState, onClick: () -> Unit) {
-    val strings = LocalGithubStrings.current.Login
+    val strings = LocalAppStrings.current.Login
     GlasmioButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -157,7 +157,7 @@ private fun LoginAction(state: LoginState, onClick: () -> Unit) {
 @Composable
 private fun LoginLegalLinks() {
     val openExternal = rememberExternalUriHandler()
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val termsUrl = "https://docs.github.com/site-policy/github-terms/github-terms-of-service"
     val privacyUrl = "https://docs.github.com/site-policy/privacy-policies/github-privacy-statement"
     val linkStyles =

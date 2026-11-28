@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Explore(
+public data class ExploreStrings(
     val Title: String,
     val Discover: String,
     val Trending: String,
@@ -40,8 +40,8 @@ public data class GithubStrings_Explore(
     val UnfollowPrompt: String,
 )
 
-internal val ZhHansExploreStrings: GithubStrings_Explore =
-    GithubStrings_Explore(
+internal val ZhHansExploreStrings: ExploreStrings =
+    ExploreStrings(
         Title = "探索",
         Discover = "发现",
         Trending = "热门仓库",
@@ -103,8 +103,8 @@ internal val ZhHansExploreStrings: GithubStrings_Explore =
         UnfollowPrompt = "将不再接收此用户的关注动态。",
     )
 
-internal val EnExploreStrings: GithubStrings_Explore =
-    GithubStrings_Explore(
+internal val EnExploreStrings: ExploreStrings =
+    ExploreStrings(
         Title = "Explore",
         Discover = "Discover",
         Trending = "Trending repositories",

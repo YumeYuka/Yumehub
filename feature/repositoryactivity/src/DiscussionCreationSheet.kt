@@ -25,10 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -37,9 +34,10 @@ import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.data.api.dto.DiscussionCategoryDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.FilterChoiceRow
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun DiscussionCreationSheet(
@@ -56,7 +54,7 @@ internal fun DiscussionCreationSheet(
     onSubmit: (categoryId: String, title: String, body: String) -> Unit,
     onAcknowledgeUncertain: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val work = strings.WorkList
     val selectedId = creationState.categoryId
     val category = if (selectedId == null) categories.firstOrNull() else categories.firstOrNull { it.id == selectedId }
@@ -71,7 +69,7 @@ internal fun DiscussionCreationSheet(
             androidx.compose.runtime.snapshotFlow { title.text.toString() }.collect(onTitleChange)
         }
     }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
@@ -83,7 +81,7 @@ internal fun DiscussionCreationSheet(
                 title = strings.Repository.NewDiscussion,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
@@ -94,7 +92,7 @@ internal fun DiscussionCreationSheet(
                             onSubmit(selected.id, title.text.trim().toString(), body)
                         },
                     ) {
-                        GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
+                        AppIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
                     }
                 },
             )
@@ -116,7 +114,7 @@ internal fun DiscussionCreationSheet(
                 )
                 if (expanded) {
                     categories.forEach { option ->
-                        GithubFilterChoiceRow(
+                        FilterChoiceRow(
                             title = option.name,
                             checked = option.id == category?.id,
                             enabled = !submitting && !uncertain,
@@ -158,27 +156,12 @@ internal fun DiscussionCreationSheet(
         }
     }
     if (acknowledgeVisible && uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = strings.Common.MutationUncertain,
-            message = strings.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        strings.Common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        strings.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            onAcknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                onAcknowledgeUncertain()
+            },
         )
     }
 }

@@ -22,7 +22,7 @@ import moe.yumeyuka.yumehub.data.cache.MutationRejectedException
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.RepositoryForkRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import retrofit2.HttpException
 
 internal const val ForkNameMaxLength = 100
@@ -219,7 +219,7 @@ internal class RepositoryForkViewModel(
                 mutableState.value =
                     mutableState.value?.copy(
                         submitting = false,
-                        error = GithubTxt.current.Common.MutationNotSubmitted,
+                        error = CurrentAppStrings.current.Common.MutationNotSubmitted,
                     )
                 return@launch
             }
@@ -274,13 +274,13 @@ internal class RepositoryForkViewModel(
                     error =
                         when {
                             cmd.phase == WritePhase.UNCERTAIN ->
-                                GithubTxt.current.Repository.ForkOutcomeUnknown
+                                CurrentAppStrings.current.Repository.ForkOutcomeUnknown
                             cmd.phase == WritePhase.REJECTED || receipt == null ->
                                 capturedError
                                     ?.takeUnless { it is ForkNameTakenException }
                                     ?.let { message(it, submitting = true) }
                                     ?: cmd.message
-                                    ?: GithubTxt.current.Common.MutationNotSubmitted
+                                    ?: CurrentAppStrings.current.Common.MutationNotSubmitted
                             else -> null
                         },
                 )
@@ -317,7 +317,7 @@ internal class RepositoryForkViewModel(
     }
 
     private fun message(error: Exception, submitting: Boolean = false): String {
-        val strings = GithubTxt.current.Repository
+        val strings = CurrentAppStrings.current.Repository
         return when {
             error is HttpException ->
                 when (error.code()) {

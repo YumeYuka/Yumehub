@@ -35,15 +35,15 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.RepositoryStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.EntryIcon
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.CardSizeSpec
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
-import moe.yumeyuka.yumehub.ui.theme.GithubHomeColors
+import moe.yumeyuka.yumehub.ui.navigation.LocalCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.theme.HomeColors
 
 @Composable
 internal fun RepositoryHeaderDescription(description: String?, loading: Boolean) {
@@ -60,7 +60,7 @@ internal fun RepositoryHeaderDescription(description: String?, loading: Boolean)
         with(LocalDensity.current) {
             textMeasurer.measure("Ag\nAg", style = style, maxLines = lineCount).size.height.toDp()
         }
-    GithubLoadingContent(
+    LoadingContent(
         loading = loading,
         modifier = Modifier.fillMaxWidth().height(height),
         placeholder = {
@@ -96,7 +96,7 @@ internal fun RepositoryHeaderCard(
     onFork: () -> Unit,
     onOpenLink: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Repository
+    val strings = LocalAppStrings.current.Repository
     val overview = state.overview
     // 链接优先取仓库设置里的网站地址，未填写时回落到仓库自身的 GitHub 地址。
     val link =
@@ -118,7 +118,7 @@ internal fun RepositoryHeaderCard(
         onOpenLink,
         starEnabled = enabled && state.coordinatorReady && overview != null,
     )
-    val common = LocalGithubStrings.current.Common
+    val common = LocalAppStrings.current.Common
     val status =
         when (state.starPhase) {
             WritePhase.PENDING -> common.MutationPending
@@ -144,7 +144,7 @@ private fun RepositoryMetadataBar(
     starred: Boolean,
     stars: Int?,
     forks: Int?,
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     enabled: Boolean,
     onToggleStar: () -> Unit,
     onFork: () -> Unit,
@@ -203,7 +203,7 @@ private fun RepositoryMetadataBar(
                     // 撑满剩余宽度，统计胶囊紧贴其后；域名过长时在胶囊内截断。
                     modifier = Modifier.weight(1f),
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Link,
                         contentDescription = null,
                         size = iconSize,
@@ -225,11 +225,11 @@ private fun RepositoryMetadataBar(
                     enabled = starEnabled,
                     size = GlasmioButtonSize.Medium,
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Star,
                         contentDescription = null,
                         size = iconSize,
-                        tint = GithubHomeColors.starred,
+                        tint = HomeColors.starred,
                         filled = starred,
                     )
                     RepositoryCountLabel(starDisplay, starPlaceholderWidth, labelStyle)
@@ -239,7 +239,7 @@ private fun RepositoryMetadataBar(
                     enabled = enabled,
                     size = GlasmioButtonSize.Medium,
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.BookCopy,
                         contentDescription = strings.Forks,
                         size = iconSize,
@@ -253,7 +253,7 @@ private fun RepositoryMetadataBar(
 
 @Composable
 private fun RepositoryCountLabel(label: String?, placeholderWidth: Dp, style: TextStyle) {
-    GithubLoadingContent(
+    LoadingContent(
         loading = label == null,
         placeholder = {
             TextPlaceholder(Modifier.width(placeholderWidth), height = 8.dp, fraction = 1f)
@@ -274,7 +274,7 @@ internal fun RepositoryEntryCard(
     onExternal: (String) -> Unit,
     onOpenLicense: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Repository
+    val strings = LocalAppStrings.current.Repository
     val overview = state.overview
     val hasDiscussions = overview?.discussionsEnabled == true
     val hasMoreEntries =
@@ -285,17 +285,17 @@ internal fun RepositoryEntryCard(
                 overview.hasContributors ||
                 overview.watchers > 0 ||
                 overview.license != null)
-    val open = moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler()
+    val open = moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler()
     fun openActivity(path: String) {
         repository.fullName?.let { open("https://github.com/$it/$path") }
     }
     var expanded by rememberSaveable(repository.fullName) { mutableStateOf(false) }
-    val animate = LocalGithubCardMotionEnabled.current
-    Column(if (animate) Modifier.animateContentSize(GithubCardSizeSpec) else Modifier) {
+    val animate = LocalCardMotionEnabled.current
+    Column(if (animate) Modifier.animateContentSize(CardSizeSpec) else Modifier) {
         RepositoryEntry(
             strings.Code,
             Lucide.CodeXml,
-            GithubHomeColors.repositories,
+            HomeColors.repositories,
             detail = repository.defaultBranch,
             separator = false,
             enabled = enabled,
@@ -305,7 +305,7 @@ internal fun RepositoryEntryCard(
             RepositoryEntry(
                 strings.Issues,
                 Lucide.CircleDot,
-                GithubHomeColors.issues,
+                HomeColors.issues,
                 detail = overview.issues.toString(),
                 enabled = enabled,
                 onClick = onOpenIssues,
@@ -314,7 +314,7 @@ internal fun RepositoryEntryCard(
             RepositoryEntry(
                 strings.PullRequests,
                 Lucide.GitPullRequest,
-                GithubHomeColors.pullRequests,
+                HomeColors.pullRequests,
                 detail = overview.pullRequests.toString(),
                 enabled = enabled,
                 onClick = onOpenPullRequests,
@@ -323,7 +323,7 @@ internal fun RepositoryEntryCard(
             RepositoryEntry(
                 strings.Releases,
                 Lucide.Tag,
-                GithubHomeColors.repositories,
+                HomeColors.repositories,
                 detail = overview.releases.toString(),
                 enabled = enabled,
                 onClick = { onExternal("releases") },
@@ -333,7 +333,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.Projects,
                     Lucide.Columns3,
-                    GithubHomeColors.projects,
+                    HomeColors.projects,
                     enabled = enabled,
                     onClick = { openActivity("projects") },
                 )
@@ -341,7 +341,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.ActionsTitle,
                     Lucide.CirclePlay,
-                    GithubHomeColors.starred,
+                    HomeColors.starred,
                     enabled = enabled,
                     onClick = { openActivity("actions") },
                 )
@@ -349,7 +349,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.Discussions,
                     Lucide.MessagesSquare,
-                    GithubHomeColors.discussions,
+                    HomeColors.discussions,
                     detail = overview.discussions.toString(),
                     enabled = enabled,
                     onClick = { openActivity("discussions") },
@@ -358,7 +358,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.Contributors,
                     Lucide.UsersRound,
-                    GithubHomeColors.contributors,
+                    HomeColors.contributors,
                     enabled = enabled,
                     onClick = { openActivity("graphs/contributors") },
                 )
@@ -366,7 +366,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.Watchers,
                     Lucide.Eye,
-                    GithubHomeColors.watchers,
+                    HomeColors.watchers,
                     detail = overview.watchers.toString(),
                     enabled = enabled,
                     onClick = { openActivity("watchers") },
@@ -376,7 +376,7 @@ internal fun RepositoryEntryCard(
                 RepositoryEntry(
                     strings.License,
                     Lucide.Scale,
-                    GithubHomeColors.license,
+                    HomeColors.license,
                     detail = license,
                     enabled = enabled,
                     onClick = onOpenLicense,
@@ -387,7 +387,7 @@ internal fun RepositoryEntryCard(
             GlasmioListRow(
                 title = strings.More,
                 systemName = null,
-                leading = { GithubEntryIcon(Lucide.Ellipsis, GithubHomeColors.projects) },
+                leading = { EntryIcon(Lucide.Ellipsis, HomeColors.projects) },
                 enabled = enabled,
                 onClick = { expanded = true },
             )
@@ -409,7 +409,7 @@ private fun RepositoryEntry(
         title = title,
         detail = detail,
         systemName = null,
-        leading = { GithubEntryIcon(icon, color) },
+        leading = { EntryIcon(icon, color) },
         showTopSeparator = separator,
         enabled = enabled,
         onClick = onClick,

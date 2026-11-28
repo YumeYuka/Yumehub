@@ -17,7 +17,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.githubAvatarShape
+import moe.yumeyuka.yumehub.ui.component.avatarShape
 
 /** 与正文同形的静态色块。 */
 @Composable
@@ -54,7 +54,7 @@ fun TextLinePlaceholder(
 /** 头像占位与真实头像共用轮廓，组织圆角随尺寸缩放。 */
 @Composable
 fun AvatarPlaceholder(size: Dp, modifier: Modifier = Modifier, type: String? = null) {
-    Spacer(modifier.size(size).placeholderFill(githubAvatarShape(type, size)))
+    Spacer(modifier.size(size).placeholderFill(avatarShape(type, size)))
 }
 
 /** 列表行左侧的图标底块，尺寸与真实图标容器一致。 */

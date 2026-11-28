@@ -1,11 +1,12 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Common(
+public data class CommonStrings(
     val FontSize: String,
     val Search: String,
     val Edit: String,
     val Save: String,
     val AppName: String,
+    val UserAvatarDescription: (String) -> String,
     val Cancel: String,
     val Confirm: String,
     val Close: String,
@@ -27,13 +28,14 @@ public data class GithubStrings_Common(
     val MutationAcknowledgeWarning: String,
 )
 
-internal val ZhHansCommonStrings: GithubStrings_Common =
-    GithubStrings_Common(
+internal val ZhHansCommonStrings: CommonStrings =
+    CommonStrings(
         FontSize = "字号",
         Search = "搜索",
         Edit = "编辑",
         Save = "保存",
         AppName = "GitHub",
+        UserAvatarDescription = { "$it 的头像" },
         Cancel = "取消",
         Confirm = "确定",
         Close = "关闭",
@@ -55,13 +57,14 @@ internal val ZhHansCommonStrings: GithubStrings_Common =
         MutationAcknowledgeWarning = "请先在 GitHub 核对；原操作仍可能稍后生效，继续不会重新提交",
     )
 
-internal val EnCommonStrings: GithubStrings_Common =
-    GithubStrings_Common(
+internal val EnCommonStrings: CommonStrings =
+    CommonStrings(
         FontSize = "Font size",
         Search = "Search",
         Edit = "Edit",
         Save = "Save",
         AppName = "GitHub",
+        UserAvatarDescription = { "Avatar for $it" },
         Cancel = "Cancel",
         Confirm = "Confirm",
         Close = "Close",

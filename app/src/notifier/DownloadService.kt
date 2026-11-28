@@ -23,7 +23,7 @@ import moe.yumeyuka.yumehub.data.download.DownloadStatus
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.download.DownloadTask
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import org.koin.android.ext.android.inject
 import org.koin.core.component.get
 
@@ -50,7 +50,7 @@ class DownloadService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL,
-                GithubTxt.current.Downloads.Title,
+                CurrentAppStrings.current.Downloads.Title,
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
@@ -156,7 +156,7 @@ class DownloadService : Service() {
     }
 
     private fun notification(task: DownloadTask?): Notification {
-        val strings = GithubTxt.current.Downloads
+        val strings = CurrentAppStrings.current.Downloads
         val action =
             when (task?.status) {
                 DownloadStatus.DOWNLOADING -> PAUSE
@@ -242,7 +242,7 @@ class DownloadService : Service() {
             Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.github_mark)
                 .setContentTitle(task.name)
-                .setContentText(GithubTxt.current.Downloads.CompletedOpen)
+                .setContentText(CurrentAppStrings.current.Downloads.CompletedOpen)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setContentIntent(pending)
                 .setAutoCancel(true)

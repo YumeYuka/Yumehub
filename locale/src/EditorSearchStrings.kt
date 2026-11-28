@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_EditorSearch(
+public data class EditorSearchStrings(
     val Placeholder: String,
     val Searching: String,
     val NoMatches: String,
@@ -10,8 +10,8 @@ public data class GithubStrings_EditorSearch(
     val Close: String,
 )
 
-internal val ZhHansEditorSearchStrings: GithubStrings_EditorSearch =
-    GithubStrings_EditorSearch(
+internal val ZhHansEditorSearchStrings: EditorSearchStrings =
+    EditorSearchStrings(
         Placeholder = "查找关键字",
         Searching = "查找中",
         NoMatches = "无匹配",
@@ -21,8 +21,8 @@ internal val ZhHansEditorSearchStrings: GithubStrings_EditorSearch =
         Close = "关闭查找",
     )
 
-internal val EnEditorSearchStrings: GithubStrings_EditorSearch =
-    GithubStrings_EditorSearch(
+internal val EnEditorSearchStrings: EditorSearchStrings =
+    EditorSearchStrings(
         Placeholder = "Find in file",
         Searching = "Searching",
         NoMatches = "No matches",

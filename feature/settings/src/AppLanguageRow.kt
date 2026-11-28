@@ -11,13 +11,13 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.Globe
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.locale.AppLanguage
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
 import moe.yumeyuka.yumehub.ui.platform.AppLanguageManager
 
 @Composable
 internal fun AppLanguageRow() {
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
     val context = LocalContext.current
     var selected by remember(context) { mutableStateOf(AppLanguageManager.current(context)) }
     LifecycleResumeEffect(context) {
@@ -26,7 +26,7 @@ internal fun AppLanguageRow() {
     }
     GlasmioListRow(
         title = strings.AppLanguage,
-        leading = { GithubIcon(Lucide.Globe, contentDescription = null) },
+        leading = { AppIcon(Lucide.Globe, contentDescription = null) },
         trailing = {
             SettingsPopUpButton(
                 selected = selected,

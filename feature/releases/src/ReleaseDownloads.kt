@@ -40,21 +40,21 @@ import io.github.yumeyucca.lucide.Share
 import moe.yumeyuka.yumehub.core.model.githubWebUri
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseAsset
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.githubDownloadFileIcon
-import moe.yumeyuka.yumehub.ui.component.githubPagingItemsIndexed
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.PagingSlots
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
+import moe.yumeyuka.yumehub.ui.component.downloadFileIcon
+import moe.yumeyuka.yumehub.ui.component.pagingItemsIndexed
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseAssetPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 
 internal fun LazyListScope.releaseDownloads(
     detail: GithubReleaseDetail,
     assets: LazyPagingItems<GithubReleaseAsset>,
-    slots: GithubPagingSlots<GithubReleaseAsset>,
+    slots: PagingSlots<GithubReleaseAsset>,
     onDownload:
         (name: String, url: String, size: Long?, digest: String?, sourceArchive: Boolean) -> Unit,
     onViewAttestation: (String) -> Unit,
@@ -69,24 +69,24 @@ internal fun LazyListScope.releaseDownloads(
 
     if (assetRows > 0)
         item(key = "release-downloads-heading") {
-            GithubSectionHeader(
-                LocalGithubStrings.current.Release.Artifacts,
+            SectionHeader(
+                LocalAppStrings.current.Release.Artifacts,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
         }
-    githubPagingItemsIndexed(slots, contentType = "release-download") { asset, index, _ ->
+    pagingItemsIndexed(slots, contentType = "release-download") { asset, index, _ ->
         ReleaseListGroupRow(index, assetRows) {
-            GithubLoadingContent(
+            LoadingContent(
                 loading = asset == null,
                 placeholder = { ReleaseAssetPlaceholder(showTopSeparator = index > 0) },
             ) {
                 if (asset != null) {
                     ReleaseDownloadRow(
                         showTopSeparator = index > 0,
-                        icon = githubDownloadFileIcon(sourceArchive = false),
+                        icon = downloadFileIcon(sourceArchive = false),
                         name = asset.name,
                         subtitle =
-                            LocalGithubStrings.current.Release.AssetStats(
+                            LocalAppStrings.current.Release.AssetStats(
                                 Formatter.formatShortFileSize(LocalContext.current, asset.size),
                                 asset.downloadCount,
                             ),
@@ -104,7 +104,7 @@ internal fun LazyListScope.releaseDownloads(
         item(key = "release-downloads-footer") {
             ReleaseListGroupRow(slots.size, assetRows) {
                 GlasmioListRow(
-                    title = LocalGithubStrings.current.Markdown.Retry,
+                    title = LocalAppStrings.current.Markdown.Retry,
                     showTopSeparator = slots.size > 0,
                     showDisclosure = false,
                     onClick = onRetry,
@@ -114,8 +114,8 @@ internal fun LazyListScope.releaseDownloads(
     }
     if (sourceRows > 0)
         item(key = "release-sources-heading") {
-            GithubSectionHeader(
-                LocalGithubStrings.current.Release.SourceAndAttestation,
+            SectionHeader(
+                LocalAppStrings.current.Release.SourceAndAttestation,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
         }
@@ -124,8 +124,8 @@ internal fun LazyListScope.releaseDownloads(
             ReleaseListGroupRow(index, sourceRows) {
                 ReleaseDownloadRow(
                     showTopSeparator = index > 0,
-                    icon = githubDownloadFileIcon(sourceArchive = true),
-                    name = LocalGithubStrings.current.Release.SourceArchive(archive.extension),
+                    icon = downloadFileIcon(sourceArchive = true),
+                    name = LocalAppStrings.current.Release.SourceArchive(archive.extension),
                     url = archive.url,
                     onClick = { onDownload(archive.fileName, archive.url, null, null, true) },
                 )
@@ -138,7 +138,7 @@ internal fun LazyListScope.releaseDownloads(
                 ReleaseDownloadRow(
                     showTopSeparator = sourceRows > 1,
                     icon = Lucide.BadgeCheck,
-                    name = LocalGithubStrings.current.Release.ViewAttestation,
+                    name = LocalAppStrings.current.Release.ViewAttestation,
                     url = detail.url,
                     viewAttestation = true,
                     onClick = { onViewAttestation(detail.url) },
@@ -159,17 +159,17 @@ private fun ReleaseDownloadRow(
     viewAttestation: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val context = LocalContext.current
     val copy = rememberCopyText()
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val host = requireNotNull(LocalAppPageHost.current)
     var expanded by remember(url) { mutableStateOf(false) }
     val tint = GlasmioTheme.colors.secondaryContent
     GlasmioListRow(
         title = name,
         subtitle = subtitle,
         showTopSeparator = showTopSeparator,
-        leading = { GithubIcon(icon, contentDescription = null, tint = tint) },
+        leading = { AppIcon(icon, contentDescription = null, tint = tint) },
         enabled = host.navigationEnabled,
         showDisclosure = false,
         trailing = {
@@ -190,7 +190,7 @@ private fun ReleaseDownloadRow(
                                 ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.Ellipsis,
                             contentDescription = strings.EditorMenu.More,
                             tint = tint,
@@ -204,7 +204,7 @@ private fun ReleaseDownloadRow(
                         else strings.Release.Download,
                     backdrop = backdrop,
                     icon = {
-                        GithubIcon(
+                        AppIcon(
                             if (viewAttestation) Lucide.BadgeCheck else Lucide.Download,
                             contentDescription = null,
                             size = 20.dp,
@@ -220,7 +220,7 @@ private fun ReleaseDownloadRow(
                     title = strings.Repository.ShareLink,
                     backdrop = backdrop,
                     icon = {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.Share,
                             contentDescription = null,
                             size = 20.dp,
@@ -253,7 +253,7 @@ private fun ReleaseDownloadRow(
                         backdrop = backdrop,
                         enabled = asset.digest != null,
                         icon = {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.Copy,
                                 contentDescription = null,
                                 size = 20.dp,

@@ -19,8 +19,8 @@ import java.net.URI
 import java.util.UUID
 import kotlin.math.abs
 import moe.yumeyuka.markdown.core.isSafeHtmlMailto
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
+import moe.yumeyuka.yumehub.ui.component.MarkdownActions
+import moe.yumeyuka.yumehub.ui.component.MarkdownContent
 import org.json.JSONObject
 
 internal const val MarkdownMaxHeightPx = 120_000
@@ -28,7 +28,7 @@ internal const val MarkdownMaxHeightPx = 120_000
 @SuppressLint("SetJavaScriptEnabled", "ViewConstructor")
 internal class MarkdownWebView(
     context: Context,
-    content: GithubMarkdownContent,
+    content: MarkdownContent,
     html: String,
     private val assets: MarkdownAssets,
     private val dark: Boolean,
@@ -39,11 +39,11 @@ internal class MarkdownWebView(
     private val nativeCodeBlocks: Boolean = false,
 ) : WebView(context) {
     @Volatile private var messageId = UUID.randomUUID().toString()
-    private var content: GithubMarkdownContent? = content.copy(scrollToAnchor = null)
+    private var content: MarkdownContent? = content.copy(scrollToAnchor = null)
     private var html: String? = html
     private var bound = false
     private var isCurrent: () -> Boolean = { false }
-    private var actions: (() -> GithubMarkdownActions)? = null
+    private var actions: (() -> MarkdownActions)? = null
     private var onHeight: (Double) -> Unit = {}
     private var onAnchor: (Double, String) -> Unit = { _, _ -> }
     private var onFailure: () -> Unit = {}
@@ -267,7 +267,7 @@ internal class MarkdownWebView(
 
     fun updateCallbacks(
         isCurrent: () -> Boolean,
-        actions: () -> GithubMarkdownActions,
+        actions: () -> MarkdownActions,
         onHeight: (Double) -> Unit,
         onAnchor: (Double, String) -> Unit,
         onFailure: () -> Unit,
@@ -297,7 +297,7 @@ internal class MarkdownWebView(
     }
 
     /** 同一文档不重载模板；输入完全相同则跳过 JS，新版本由适配器按 HTML 幂等复用 DOM。 */
-    fun updateContent(content: GithubMarkdownContent, html: String) {
+    fun updateContent(content: MarkdownContent, html: String) {
         if (!active()) return
         val next = content.copy(scrollToAnchor = null)
         val previous = this.content

@@ -11,12 +11,12 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.GithubWorkflowRow
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.WorkflowRow
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 
 @Composable
@@ -25,7 +25,7 @@ internal fun WorkCheckGroups(
     viewModel: CollaborationDetailViewModel,
     onOpenRun: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val work = strings.WorkDetail
     if (head.isNullOrBlank()) {
         GlasmioGroupedList { GlasmioListRow(title = work.NoChecksCommit, showTopSeparator = false) }
@@ -37,7 +37,7 @@ internal fun WorkCheckGroups(
             remember(viewModel, head) { viewModel.checksRevalidation(head) }
                 .collectAsStateWithLifecycle()
         val slots =
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 pages,
                 "work-checks:$head",
                 autoRefresh = false,
@@ -55,7 +55,7 @@ internal fun WorkCheckGroups(
             loads.refresh as? LoadState.Error
                 ?: loads.append as? LoadState.Error
                 ?: loads.prepend as? LoadState.Error
-        GithubLoadFailureToast(failure, strings.Activity.LoadFailed)
+        LoadFailureToast(failure, strings.Activity.LoadFailed)
         if (revalidation is RevalidationState.Failed) {
             GlasmioGroupedList {
                 GlasmioListRow(
@@ -91,10 +91,10 @@ internal fun WorkCheckGroups(
                         suiteId == null -> work.CommitStatuses
                         else -> workflow ?: first.appName ?: work.Checks
                     }
-                GithubSection(title) {
+                ListSection(title) {
                     checks.forEachIndexed { index, check ->
                         key(check.id) {
-                            GithubWorkflowRow(
+                            WorkflowRow(
                                 title = check.name,
                                 state = check.conclusion ?: check.status,
                                 stateDescription =

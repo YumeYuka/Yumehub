@@ -1,7 +1,7 @@
 package moe.yumeyuka.yumehub.feature.workspaces
 
 import moe.yumeyuka.yumehub.core.model.GithubRepositoryLocation
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 
 /** 仓库代码浏览页；目录切换只改页面内部状态，不新增路由。 */
 data class WorkspacesRoute(
@@ -14,11 +14,11 @@ data class WorkspacesRoute(
     val gitObject: GithubRepositoryLocation.GitObject? = null,
     val linkUrl: String? = null,
     val license: Boolean = false,
-) : GithubRoute
+) : AppRoute
 
 /** 当前分支的提交历史页面。 */
 data class CommitHistoryRoute(
     val owner: String,
     val name: String,
     val ref: String,
-) : GithubRoute
+) : AppRoute

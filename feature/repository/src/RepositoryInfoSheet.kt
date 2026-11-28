@@ -12,7 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioSheetToolbarButton
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
@@ -21,10 +21,10 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.repository.RepositoryOverview
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
 
 /** 点击仓库头部后展示的仓库信息；数据缺失的行直接省略，不显示占位。 */
 @Composable
@@ -37,11 +37,11 @@ internal fun RepositoryInfoSheet(
     onDismiss: () -> Unit,
     onOpenLink: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val info = strings.Repository
     val colors = GlasmioTheme.colors
     val listState = rememberLazyListState()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = info.RepositoryInfo,
@@ -51,12 +51,12 @@ internal fun RepositoryInfoSheet(
                 title = info.RepositoryInfo,
                 navigation = {
                     GlasmioSheetToolbarButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
                     GlasmioSheetToolbarButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
+                        AppIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
                     }
                 },
             )
@@ -70,7 +70,7 @@ internal fun RepositoryInfoSheet(
         ) {
             repository?.description?.takeIf(String::isNotBlank)?.let { description ->
                 item("description") {
-                    GithubSection(info.Description) {
+                    ListSection(info.Description) {
                         Text(
                             text = description,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -85,13 +85,13 @@ internal fun RepositoryInfoSheet(
             val parent = overview?.forkParent
             if (login != null || parent != null) {
                 item("ownership") {
-                    GithubSection(info.Ownership) {
+                    ListSection(info.Ownership) {
                         if (login != null) {
                             GlasmioListRow(
                                 title = login,
                                 detail = info.Owner,
                                 leading = {
-                                    GithubAvatar(owner.avatarUrl, login, owner.type, 24.dp)
+                                    UserAvatar(owner.avatarUrl, login, owner.type, 24.dp)
                                 },
                                 showTopSeparator = false,
                                 onClick = {
@@ -106,7 +106,7 @@ internal fun RepositoryInfoSheet(
                                 title = parent.login,
                                 detail = info.ForkedFrom,
                                 leading = {
-                                    GithubAvatar(
+                                    UserAvatar(
                                         parent.avatarUrl,
                                         parent.login,
                                         parent.ownerType,
@@ -121,7 +121,7 @@ internal fun RepositoryInfoSheet(
                 }
             }
             item("repository-link") {
-                GithubSection(info.RepositoryLink) {
+                ListSection(info.RepositoryLink) {
                     GlasmioListRow(
                         title = repositoryUrl,
                         showTopSeparator = false,

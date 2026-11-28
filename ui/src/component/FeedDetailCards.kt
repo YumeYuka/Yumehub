@@ -19,7 +19,7 @@ import io.github.yumeyucca.lucide.MessagesSquare
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 
 @Composable
 internal fun FeedWorkCard(
@@ -31,7 +31,7 @@ internal fun FeedWorkCard(
     val repository = state?.repository ?: event.repositoryDetails
     val pullRequest = event.isPullRequestWork()
     val number = work.number ?: event.payload.number
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val discussion = event.payload.discussion != null
     val slug = repository?.fullName ?: event.repo?.name
     val kind = if (pullRequest) CollaborationKind.PullRequest else CollaborationKind.Issue
@@ -70,7 +70,7 @@ internal fun FeedWorkCard(
                     else
                         ({
                             if (discussion) {
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.MessagesSquare,
                                     contentDescription = strings.Repository.Discussions,
                                     size = 20.dp,
@@ -79,7 +79,7 @@ internal fun FeedWorkCard(
                                 workMergeProgress(write.mergePhase)?.let {
                                     Text(it, style = GlasmioTheme.textStyles.caption1)
                                 }
-                                GithubWorkItemStatusIcon(
+                                WorkItemStatusIcon(
                                     kind,
                                     write.state ?: write.confirmed?.state ?: work.state,
                                     work.draft,
@@ -95,14 +95,14 @@ internal fun FeedWorkCard(
 @Composable
 internal fun FeedReleaseCard(event: FeedEventDto, repository: RepositoryDto?, open: (() -> Unit)?) {
     val release = event.payload.release ?: return
-    val strings = LocalGithubStrings.current.Explore
+    val strings = LocalAppStrings.current.Explore
     val title = release.name?.takeIf { it.isNotBlank() } ?: release.tagName ?: strings.ReleaseTitle
     FeedDetailCard(
         title = title,
         body = release.body,
         open = open,
         cover = {
-            GithubRepositoryCover(
+            RepositoryCover(
                 imageUrl = release.socialPreviewImageUrl ?: repository?.openGraphImageUrl,
                 description = strings.ReleaseCover(title),
             )
@@ -126,16 +126,16 @@ private fun FeedDetailCard(
     titleMaxLines: Int = 2,
     compactSummary: Boolean = false,
 ) {
-    GithubActivityCard(
+    ActivityCard(
         onClick = open,
         cover = cover,
         header = header,
         summary = {
-            GithubActivityCardSummary(
+            ActivityCardSummary(
                 title,
                 body,
                 titleStyle =
-                    if (compactSummary) githubWorkItemTitleStyle() else feedDetailTitleStyle(),
+                    if (compactSummary) workItemTitleStyle() else feedDetailTitleStyle(),
                 bodyStyle =
                     if (compactSummary)
                         repositoryCardBodyStyle().copy(fontSize = 14.sp, lineHeight = 20.sp)
@@ -149,7 +149,7 @@ private fun FeedDetailCard(
 
 @Composable
 internal fun feedDetailTitleStyle() =
-    githubWorkItemTitleStyle().copy(fontSize = 18.sp, lineHeight = 24.sp)
+    workItemTitleStyle().copy(fontSize = 18.sp, lineHeight = 24.sp)
 
 @Composable
 private fun FeedReadMoreButton(onOpen: () -> Unit) {
@@ -160,12 +160,12 @@ private fun FeedReadMoreButton(onOpen: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = LocalGithubStrings.current.Explore.ReadMore,
+                text = LocalAppStrings.current.Explore.ReadMore,
                 style = GlasmioTheme.textStyles.body.copy(fontSize = 16.sp, lineHeight = 22.sp),
                 color = GlasmioTheme.colors.content,
                 maxLines = 1,
             )
-            GithubIcon(Lucide.ChevronRight, contentDescription = null, size = 20.dp)
+            AppIcon(Lucide.ChevronRight, contentDescription = null, size = 20.dp)
         }
     }
 }

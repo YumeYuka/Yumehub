@@ -15,16 +15,16 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.BookOpen
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_Repository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
-import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.locale.RepositoryStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.EntryIcon
+import moe.yumeyuka.yumehub.ui.component.MarkdownBody
+import moe.yumeyuka.yumehub.ui.component.ReadingFooter
+import moe.yumeyuka.yumehub.ui.component.ReadingGroup
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingCard
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.MarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryEntryRowsPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryHeaderPlaceholder
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
@@ -32,7 +32,7 @@ import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
 internal fun LazyListScope.RepositoryDetailScreen(
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     state: RepositoryDetailUiState,
     onBrowseFiles: () -> Unit,
     onSwitchRef: (String) -> Unit,
@@ -67,7 +67,7 @@ internal fun LazyListScope.RepositoryDetailScreen(
     val currentRef = state.selectedRef ?: repository?.defaultBranch?.let { "refs/heads/$it" }
     if (state.page == RepositoryDetailPage.Readme) {
         item(key = "repository-ref") {
-            GithubSection(strings.Refs) {
+            ListSection(strings.Refs) {
                 RepositoryRefSelector(
                     state.refs,
                     currentRef.orEmpty(),
@@ -111,7 +111,7 @@ internal fun LazyListScope.RepositoryDetailScreen(
 }
 
 private fun LazyListScope.repositoryOverview(
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     repository: RepositoryDto?,
     ref: String?,
     readme: RepositoryLoad<RepositoryTextPreview>,
@@ -127,7 +127,7 @@ private fun LazyListScope.repositoryOverview(
     onOpenSource: (String?) -> Unit,
 ) {
     item(key = "repository-header") {
-        GithubLoadingContent(
+        LoadingContent(
             loading = repository == null,
             placeholder = { RepositoryHeaderPlaceholder() },
         ) {
@@ -146,7 +146,7 @@ private fun LazyListScope.repositoryOverview(
         }
     }
     item(key = "repository-entries") {
-        GithubLoadingCard(
+        LoadingCard(
             loading = repository == null,
             placeholder = { RepositoryEntryRowsPlaceholder() },
         ) {
@@ -182,10 +182,10 @@ private fun RepositoryOverviewReadmeHeader() {
     DisableSelection {
         val labelColor = GlasmioTheme.colors.secondaryContent
         GlasmioListRow(
-            title = LocalGithubStrings.current.Repository.ReadmeFileTitle,
+            title = LocalAppStrings.current.Repository.ReadmeFileTitle,
             titleColor = labelColor,
             systemName = null,
-            leading = { GithubEntryIcon(Lucide.BookOpen, tint = labelColor) },
+            leading = { EntryIcon(Lucide.BookOpen, tint = labelColor) },
             showTopSeparator = false,
             showDisclosure = true,
         )
@@ -193,7 +193,7 @@ private fun RepositoryOverviewReadmeHeader() {
 }
 
 private fun LazyListScope.repositoryLocation(
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     repository: RepositoryDto,
     path: String? = null,
     ref: String? = null,
@@ -213,7 +213,7 @@ private fun LazyListScope.repositoryLocation(
 }
 
 private fun LazyListScope.repositoryReadme(
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     preview: RepositoryLoad<RepositoryTextPreview>,
     ref: String?,
     repositoryRootUrl: String?,
@@ -227,7 +227,7 @@ private fun LazyListScope.repositoryReadme(
 
 @Composable
 private fun RepositoryReadmeCard(
-    strings: GithubStrings_Repository,
+    strings: RepositoryStrings,
     preview: RepositoryLoad<RepositoryTextPreview>,
     ref: String?,
     repositoryRootUrl: String?,
@@ -241,7 +241,7 @@ private fun RepositoryReadmeCard(
     val html = document?.html?.takeIf(String::isNotBlank)
     if (preview is RepositoryLoad.Ready && html == null) return
     val path = document?.path?.takeIf(String::isNotBlank)
-    GithubReadingGroup(
+    ReadingGroup(
         documentKey = html,
         onHeaderClick = if (overview && path != null) ({ onOpenSource(path) }) else null,
         header = { if (overview) RepositoryOverviewReadmeHeader() },
@@ -251,7 +251,7 @@ private fun RepositoryReadmeCard(
             placeholder = { RepositoryReadmePlaceholder() },
         ) {
             if (preview is RepositoryLoad.Ready) {
-                GithubMarkdown(
+                MarkdownBody(
                     "",
                     Modifier.fillMaxWidth().readmePadding(),
                     pageUrl = preview.value.htmlUrl?.takeIf { "/blob/" in it } ?: repositoryRootUrl,
@@ -262,7 +262,7 @@ private fun RepositoryReadmeCard(
                     scrollToAnchor = scrollToAnchor,
                 )
                 if (!overview)
-                    GithubReadingFooter {
+                    ReadingFooter {
                         DisableSelection {
                             Column {
                                 if (path != null)
@@ -284,7 +284,7 @@ private fun RepositoryReadmeCard(
 internal fun RepositoryRetryRow(message: String, onRetry: () -> Unit) {
     GlasmioListRow(
         title = message,
-        detail = LocalGithubStrings.current.Common.Retry,
+        detail = LocalAppStrings.current.Common.Retry,
         systemName = null,
         onClick = onRetry,
     )
@@ -303,12 +303,12 @@ private fun Modifier.readmePadding(): Modifier =
 
 @Composable
 private fun RepositoryReadmePlaceholder() {
-    GithubMarkdownPlaceholder(Modifier.readmePadding(), compact = true)
+    MarkdownPlaceholder(Modifier.readmePadding(), compact = true)
 }
 
 @Composable
 private fun RepositoryWebRow(url: String?) {
-    val strings = LocalGithubStrings.current.Repository
+    val strings = LocalAppStrings.current.Repository
     val uri = url?.let(Uri::parse) ?: return
     if (
         uri.scheme != "https" ||

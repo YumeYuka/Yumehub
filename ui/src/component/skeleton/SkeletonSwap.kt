@@ -25,9 +25,9 @@ import kotlin.math.abs
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
+import moe.yumeyuka.yumehub.ui.navigation.LocalCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalRouteEntryReady
+import moe.yumeyuka.yumehub.ui.navigation.LocalSkeletonEntrance
 
 /** 骨架交接的唯一时序与曲线；所有 Card、文档正文都从这里取参数。 */
 object SkeletonTiming {
@@ -61,13 +61,13 @@ fun SkeletonSwap(
     loading: Boolean,
     modifier: Modifier = Modifier,
     contentPending: Boolean = loading,
-    entrance: Boolean = LocalGithubSkeletonEntrance.current?.presented == false,
+    entrance: Boolean = LocalSkeletonEntrance.current?.presented == false,
     reservedHeight: Int = 0,
     placeholder: @Composable () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    val routeReady = LocalGithubRouteEntryReady.current
-    val animate = LocalGithubCardMotionEnabled.current
+    val routeReady = LocalRouteEntryReady.current
+    val animate = LocalCardMotionEnabled.current
     // A measured document is being remounted. Wait for this renderer, not another entrance.
     val restoring = reservedHeight > 0
     var hasSettledBody by remember {
@@ -128,7 +128,7 @@ fun SkeletonSwap(
         modifier = modifier.clipToBounds(),
         content = {
             if (!deferBody) {
-                CompositionLocalProvider(LocalGithubSkeletonEntrance provides null) {
+                CompositionLocalProvider(LocalSkeletonEntrance provides null) {
                     Column(Modifier.layoutId(BodySlot)) { content() }
                 }
             }

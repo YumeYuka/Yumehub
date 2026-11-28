@@ -41,17 +41,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.yumeyuka.markdown.compose.HtmlStyles
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
+import moe.yumeyuka.yumehub.ui.component.MarkdownActions
+import moe.yumeyuka.yumehub.ui.component.MarkdownContent
 
 @Composable
 internal fun MarkdownWebContent(
-    content: GithubMarkdownContent,
-    requested: GithubMarkdownContent,
+    content: MarkdownContent,
+    requested: MarkdownContent,
     allowInteraction: Boolean,
     html: String,
     modifier: Modifier,
-    actions: GithubMarkdownActions,
+    actions: MarkdownActions,
     isCurrentAccount: () -> Boolean,
     presentation: MarkdownPresentation? = null,
     initialHeightPx: Int = 0,

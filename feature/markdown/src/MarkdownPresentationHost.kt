@@ -18,7 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import java.lang.ref.WeakReference
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDocumentGeometry
+import moe.yumeyuka.yumehub.ui.component.placeholders.DocumentGeometry
 import org.koin.compose.koinInject
 
 private val LocalPresentations = staticCompositionLocalOf<MarkdownPresentations?> { null }
@@ -58,7 +58,7 @@ internal class MarkdownPresentationOwner : ViewModel() {
 
 internal data class MarkdownPresentationKey(
     val owner: MarkdownPresentationOwner,
-    val geometry: GithubDocumentGeometry,
+    val geometry: DocumentGeometry,
     val layout: Any,
     val width: Int,
     val window: IBinder,
@@ -67,7 +67,7 @@ internal data class MarkdownPresentationKey(
 
 internal class MarkdownPresentations(private val currentSession: () -> Boolean) {
     private data class Parked(val key: MarkdownPresentationKey, val view: MarkdownWebView)
-    private val parked = LinkedHashMap<GithubDocumentGeometry, Parked>()
+    private val parked = LinkedHashMap<DocumentGeometry, Parked>()
     private var closed = false
 
     fun take(key: MarkdownPresentationKey, document: NativeMarkdownDocument, height: Int): MarkdownWebView? {

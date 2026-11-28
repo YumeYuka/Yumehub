@@ -47,8 +47,8 @@ import moe.yumeyuka.yumehub.core.model.CollaborationScopeFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationSortOrder
 import moe.yumeyuka.yumehub.core.model.CollaborationStateFilter
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkList
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.WorkListStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 
 private val WorkListIssueTabs =
     listOf(
@@ -93,9 +93,9 @@ internal fun WorkListActions(
     onSearch: () -> Unit,
     onShowFilterSheet: () -> Unit,
 ) {
-    val common = LocalGithubStrings.current.Common
-    val strings = LocalGithubStrings.current.WorkList
-    GithubToolbarActions(
+    val common = LocalAppStrings.current.Common
+    val strings = LocalAppStrings.current.WorkList
+    ToolbarActions(
         toolbarIcon(
             Lucide.Search,
             common.Search,
@@ -133,8 +133,8 @@ internal fun WorkListFilterSheet(
     onDismiss: () -> Unit,
     onApply: (CollaborationListFilter) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkList
+    val common = LocalAppStrings.current.Common
     var query by remember(visible) { mutableStateOf("") }
     var draft by remember(visible) { mutableStateOf(filter) }
     val normalizedQuery = query.trim()
@@ -239,7 +239,7 @@ internal fun WorkListFilterSheet(
                     draft = draft.copy(issueType = type)
                 }
             }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = strings.SortAndFilter,
         placeholder = common.Search,
@@ -252,9 +252,9 @@ internal fun WorkListFilterSheet(
         fun group(title: String, choices: List<WorkListFilterChoice>) {
             if (choices.isEmpty()) return
             item {
-                GithubSection(title) {
+                ListSection(title) {
                     choices.forEach { choice ->
-                        GithubFilterChoiceRow(
+                        FilterChoiceRow(
                             choice.title,
                             choice.selected,
                             enabled = enabled,
@@ -295,7 +295,7 @@ fun CollaborationStateFilterControl(
     modifier: Modifier = Modifier,
     allFirst: Boolean = false,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
+    val strings = LocalAppStrings.current.WorkList
     val states = if (allFirst) WorkListIssueTabs else CollaborationStateFilter.entries
     GlasmioSegmentedControl(
         items = states.map { it to stateLabel(it, strings) },
@@ -317,7 +317,7 @@ fun WorkListFilterMenus(
     issueTypes: List<CollaborationLabelDto> = emptyList(),
     pullRequest: Boolean = false,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
+    val strings = LocalAppStrings.current.WorkList
     val details = buildList {
         add(
             GlasmioCascadingMenuItem(
@@ -473,7 +473,7 @@ private fun WorkListFilterMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberGlasmioMenuAnchorState()
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val density = LocalDensity.current
     var windowScreenOrigin by remember { mutableStateOf<Offset?>(null) }
     Box {
@@ -487,7 +487,7 @@ private fun WorkListFilterMenu(
                 },
             enabled = enabled,
         ) {
-            GithubIcon(icon, contentDescription = title)
+            AppIcon(icon, contentDescription = title)
         }
         val origin = windowScreenOrigin
         val bounds = anchor.bounds
@@ -528,7 +528,7 @@ private fun PullRequestDraftFilterControl(
     onSelected: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
+    val strings = LocalAppStrings.current.WorkList
     GlasmioSegmentedControl(
         items = listOf(false to strings.All, true to strings.Draft),
         selected = draftOnly,
@@ -553,8 +553,8 @@ fun CollaborationFilterAction(
     showReviewFilter: Boolean = false,
     onExpand: (() -> Unit)? = null,
 ) {
-    val strings = LocalGithubStrings.current.WorkList
-    val menuStrings = LocalGithubStrings.current.EditorMenu
+    val strings = LocalAppStrings.current.WorkList
+    val menuStrings = LocalAppStrings.current.EditorMenu
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberGlasmioMenuAnchorState()
     Box {
@@ -568,7 +568,7 @@ fun CollaborationFilterAction(
             enabled = enabled,
             modifier = Modifier.glasmioMenuAnchor(anchor),
         ) {
-            GithubIcon(Lucide.ListFilter, contentDescription = strings.Filter)
+            AppIcon(Lucide.ListFilter, contentDescription = strings.Filter)
         }
         if (expanded) {
             GlasmioCascadingMenu(
@@ -586,7 +586,7 @@ fun CollaborationFilterAction(
                             GlasmioCascadingMenuItem(
                                 title = strings.State,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.CircleDot,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -607,7 +607,7 @@ fun CollaborationFilterAction(
                             GlasmioCascadingMenuItem(
                                 title = strings.Scope,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.UsersRound,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -628,7 +628,7 @@ fun CollaborationFilterAction(
                             GlasmioCascadingMenuItem(
                                 title = strings.Sort,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.ArrowDownUp,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -650,7 +650,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.Labels,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.Tag,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -692,7 +692,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.IssueType,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.CircleDot,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -736,7 +736,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.Milestone,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.Milestone,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -780,7 +780,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.Category,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.MessagesSquare,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -824,7 +824,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.ReviewStatus,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.MessageCircleCheck,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -849,7 +849,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.DraftOnly,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.GitPullRequestDraft,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -867,7 +867,7 @@ fun CollaborationFilterAction(
                                 GlasmioCascadingMenuItem(
                                     title = strings.Unanswered,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.MessageSquare,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -890,14 +890,14 @@ fun CollaborationFilterAction(
     }
 }
 
-private fun stateLabel(state: CollaborationStateFilter, strings: GithubStrings_WorkList) =
+private fun stateLabel(state: CollaborationStateFilter, strings: WorkListStrings) =
     when (state) {
         CollaborationStateFilter.Open -> strings.Open
         CollaborationStateFilter.Closed -> strings.Closed
         CollaborationStateFilter.All -> strings.All
     }
 
-private fun scopeLabel(scope: CollaborationScopeFilter, strings: GithubStrings_WorkList) =
+private fun scopeLabel(scope: CollaborationScopeFilter, strings: WorkListStrings) =
     when (scope) {
         CollaborationScopeFilter.All -> strings.All
         CollaborationScopeFilter.CreatedByMe -> strings.CreatedByMe
@@ -908,14 +908,14 @@ private fun scopeLabel(scope: CollaborationScopeFilter, strings: GithubStrings_W
         CollaborationScopeFilter.Involved -> strings.Involved
     }
 
-private fun sortLabel(sort: CollaborationSortOrder, strings: GithubStrings_WorkList) =
+private fun sortLabel(sort: CollaborationSortOrder, strings: WorkListStrings) =
     when (sort) {
         CollaborationSortOrder.Updated -> strings.Updated
         CollaborationSortOrder.Created -> strings.Created
         CollaborationSortOrder.Comments -> strings.Comments
     }
 
-private fun reviewLabel(review: CollaborationReviewFilter, strings: GithubStrings_WorkList) =
+private fun reviewLabel(review: CollaborationReviewFilter, strings: WorkListStrings) =
     when (review) {
         CollaborationReviewFilter.Any -> strings.All
         CollaborationReviewFilter.NoReviews -> strings.NoReviews

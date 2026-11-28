@@ -34,16 +34,16 @@ import kotlinx.coroutines.flow.StateFlow
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseVersion
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.githubRelativeTime
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.PagingSlotKeys
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.formatRelativeTime
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseVersionPlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 @Composable
 internal fun ReleaseVersionSheet(
@@ -55,12 +55,12 @@ internal fun ReleaseVersionSheet(
     onDismiss: () -> Unit,
     onSelect: (GithubReleaseVersion) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val revalidationState by revalidation.collectAsStateWithLifecycle()
     var query by remember(visible) { mutableStateOf("") }
     val pages = if (visible) versions.collectAsLazyPagingItems() else null
     val slots = pages?.let { items ->
-        rememberGithubPagingSlots(
+        rememberPagingSlots(
             items, "release-selector", autoRefresh = false,
             accessDenied = (revalidationState as? RevalidationState.Failed)?.error?.invalidatesCachedContent() == true,
         ) { it.id }
@@ -80,17 +80,17 @@ internal fun ReleaseVersionSheet(
     val failure =
         (pages?.loadState?.refresh as? LoadState.Error)
             ?: (pages?.loadState?.append as? LoadState.Error)
-    GithubLoadFailureToast(failure.takeIf { visible }, strings.Release.LoadFailed)
+    LoadFailureToast(failure.takeIf { visible }, strings.Release.LoadFailed)
     val initialLoading =
         pages == null || (slots?.snapshot.isNullOrEmpty() && slots?.isEmptyResult != true && pages.loadState.refresh is LoadState.Loading)
     val appending = pages?.loadState?.append is LoadState.Loading
-    val allocator = remember(versions, query) { GithubPagingSlotKeys("release-versions") }
+    val allocator = remember(versions, query) { PagingSlotKeys("release-versions") }
     val rowKeys =
         remember(allocator, matches, initialLoading, appending) {
             allocator.update(matches.map { it.value.id }, appending, initialLoading)
         }
 
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = strings.Release.Timeline,
         placeholder = strings.Release.SearchVersions,
@@ -124,7 +124,7 @@ internal fun ReleaseVersionSheet(
             // 浏览时正常预取；搜索时由「加载更多」继续翻页。
             if (visible && query.isEmpty() && match != null && match.index < (pages?.itemCount ?: 0)) pages?.get(match.index)
             ReleaseListGroupRow(index, size) {
-                GithubLoadingContent(
+                LoadingContent(
                     loading = match == null && (initialLoading || appending && failure == null),
                     placeholder = { ReleaseVersionPlaceholder(index > 0) },
                 ) {
@@ -175,7 +175,7 @@ private fun ReleaseVersionRow(
     showTopSeparator: Boolean,
     onClick: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val colors = GlasmioTheme.colors
     val textStyles = GlasmioTheme.textStyles
     val title = version.title ?: strings.Repository.Releases
@@ -183,11 +183,11 @@ private fun ReleaseVersionRow(
     val status =
         when {
             version.draft -> strings.Explore.Draft to colors.secondaryContent
-            version.prerelease -> strings.Release.Prerelease to GithubWorkColors.releasePrerelease
-            version.latest -> strings.Release.Latest to GithubWorkColors.releaseLatest
+            version.prerelease -> strings.Release.Prerelease to WorkColors.releasePrerelease
+            version.latest -> strings.Release.Latest to WorkColors.releaseLatest
             else -> null
         }
-    val time = githubRelativeTime(version.date, strings.Notifications)
+    val time = formatRelativeTime(version.date, strings.Notifications)
     val inset = GlasmioListRowDefaults.horizontalPadding
     Row(
         modifier =
@@ -239,7 +239,7 @@ private fun ReleaseVersionRow(
             }
         }
         if (selected) {
-            GithubIcon(Lucide.Check, contentDescription = null, tint = colors.content)
+            AppIcon(Lucide.Check, contentDescription = null, tint = colors.content)
         }
     }
 }

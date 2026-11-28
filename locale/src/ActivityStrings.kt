@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Activity(
+public data class ActivityStrings(
     val Commit: String,
     val Details: String,
     val CommitHash: String,
@@ -60,8 +60,8 @@ public data class GithubStrings_Activity(
     val State: (String) -> String,
 )
 
-internal val ZhHansActivityStrings: GithubStrings_Activity =
-    GithubStrings_Activity(
+internal val ZhHansActivityStrings: ActivityStrings =
+    ActivityStrings(
         Commit = "提交",
         Details = "详细信息",
         CommitHash = "提交哈希",
@@ -158,8 +158,8 @@ internal val ZhHansActivityStrings: GithubStrings_Activity =
         },
     )
 
-internal val EnActivityStrings: GithubStrings_Activity =
-    GithubStrings_Activity(
+internal val EnActivityStrings: ActivityStrings =
+    ActivityStrings(
         Commit = "Commit",
         Details = "Details",
         CommitHash = "Commit hash",

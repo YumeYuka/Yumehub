@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Workspaces(
+public data class WorkspacesStrings(
     val Title: String,
     val CommitHistory: String,
     val SwitchBranch: String,
@@ -36,8 +36,8 @@ public data class GithubStrings_Workspaces(
     val YearsAgo: (Int) -> String,
 )
 
-internal val ZhHansWorkspacesStrings: GithubStrings_Workspaces =
-    GithubStrings_Workspaces(
+internal val ZhHansWorkspacesStrings: WorkspacesStrings =
+    WorkspacesStrings(
         Title = "Workspaces",
         CommitHistory = "提交历史",
         SwitchBranch = "切换分支",
@@ -73,8 +73,8 @@ internal val ZhHansWorkspacesStrings: GithubStrings_Workspaces =
         YearsAgo = { count -> "$count 年前" },
     )
 
-internal val EnWorkspacesStrings: GithubStrings_Workspaces =
-    GithubStrings_Workspaces(
+internal val EnWorkspacesStrings: WorkspacesStrings =
+    WorkspacesStrings(
         Title = "Workspaces",
         CommitHistory = "Commit history",
         SwitchBranch = "Switch branch",

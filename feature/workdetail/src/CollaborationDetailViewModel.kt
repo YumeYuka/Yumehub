@@ -58,11 +58,11 @@ import moe.yumeyuka.yumehub.data.repository.convergeGithubReactions
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.repository.withToggledReaction
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import moe.yumeyuka.yumehub.ui.component.MarkdownEditorState
-import moe.yumeyuka.yumehub.ui.component.githubDiffContainsLine
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.ui.component.diffContainsLine
+import moe.yumeyuka.yumehub.ui.navigation.EditorSessionKind
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import retrofit2.HttpException
 
@@ -87,7 +87,7 @@ internal enum class CollaborationSection {
     Commits;
 
     val title: String
-        get() = label(GithubTxt.current.WorkDetail)
+        get() = label(CurrentAppStrings.current.WorkDetail)
 }
 
 internal enum class WorkStatusPanel {
@@ -213,7 +213,7 @@ internal class CollaborationDetailViewModel(
     private val detail = repository.detail(viewerLogin, owner, repo, kind, number)
     val issueMetadata =
         IssueMetadataEditor(detail, viewModelScope) { error ->
-            val strings = GithubTxt.current.WorkDetail
+            val strings = CurrentAppStrings.current.WorkDetail
             messageChannel.trySend(
                 if (error is WorkDetailReviewChangedException) strings.PropertyChanged
                 else strings.PropertySaveFailed,
@@ -226,7 +226,7 @@ internal class CollaborationDetailViewModel(
             draftStore.save(viewerLogin, "$draftPrefix/$suffix", body)
         }
     private val composerStates = mutableMapOf<CollaborationEditorTarget, MarkdownEditorState>()
-    private var activeEditorSession: GithubEditorSession? = null
+    private var activeEditorSession: EditorSession? = null
     private var activeEditorTarget: CollaborationEditorTarget? = null
     private val messageChannel = Channel<String>(Channel.BUFFERED)
     val messages = messageChannel.receiveAsFlow()
@@ -401,7 +401,7 @@ internal class CollaborationDetailViewModel(
                             Json.decodeFromString<ReviewForm>(encoded)
                         }
                 } catch (_: SerializationException) {
-                    messageChannel.trySend(GithubTxt.current.Common.MutationNotSubmitted)
+                    messageChannel.trySend(CurrentAppStrings.current.Common.MutationNotSubmitted)
                     return@launch
                 }
             mutableUiState.update {
@@ -424,15 +424,15 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun takeTitleEditorSession(): GithubEditorSession? {
+    fun takeTitleEditorSession(): EditorSession? {
         val state = uiState.value
         val item = state.item ?: return null
         if (!state.titleEditorOpen || state.submitting) return null
-        lateinit var session: GithubEditorSession
+        lateinit var session: EditorSession
         session =
-            GithubEditorSession(
-                title = GithubTxt.current.WorkDetail.EditTitle,
-                kind = GithubEditorKind.Markdown,
+            EditorSession(
+                title = CurrentAppStrings.current.WorkDetail.EditTitle,
+                kind = EditorSessionKind.Markdown,
                 source = item.title,
                 onSourceChange = { source ->
                     mutableUiState.update { it.copy(titleDraft = source) }
@@ -442,7 +442,7 @@ internal class CollaborationDetailViewModel(
                     mutableUiState.update { it.copy(titleEditorOpen = false, titleDraft = "") }
                     session.complete()
                 },
-                submitLabel = GithubTxt.current.WorkDetail.SaveChanges,
+                submitLabel = CurrentAppStrings.current.WorkDetail.SaveChanges,
                 onDismiss = {
                     mutableUiState.update { it.copy(titleEditorOpen = false, titleDraft = "") }
                 },
@@ -466,15 +466,15 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun takeBodyEditorSession(): GithubEditorSession? {
+    fun takeBodyEditorSession(): EditorSession? {
         val state = uiState.value
         val item = state.item ?: return null
         if (!state.bodyEditorOpen || state.submitting) return null
-        lateinit var session: GithubEditorSession
+        lateinit var session: EditorSession
         session =
-            GithubEditorSession(
-                title = GithubTxt.current.WorkDetail.EditDescription,
-                kind = GithubEditorKind.Markdown,
+            EditorSession(
+                title = CurrentAppStrings.current.WorkDetail.EditDescription,
+                kind = EditorSessionKind.Markdown,
                 source = item.body.orEmpty(),
                 originalSource = item.body,
                 pageUrl = state.browserUrl,
@@ -487,7 +487,7 @@ internal class CollaborationDetailViewModel(
                     mutableUiState.update { it.copy(bodyEditorOpen = false, bodyDraft = "") }
                     session.complete()
                 },
-                submitLabel = GithubTxt.current.WorkDetail.SaveChanges,
+                submitLabel = CurrentAppStrings.current.WorkDetail.SaveChanges,
                 onDismiss = {
                     mutableUiState.update { it.copy(bodyEditorOpen = false, bodyDraft = "") }
                 },
@@ -676,22 +676,22 @@ internal class CollaborationDetailViewModel(
         }
     }
 
-    fun takeEditorSession(): GithubEditorSession? {
+    fun takeEditorSession(): EditorSession? {
         if (uiState.value.submitting) return null
         val target = uiState.value.composerTarget ?: return null
         if (activeEditorSession != null) return null
         val state = uiState.value
-        val strings = GithubTxt.current.WorkDetail
-        lateinit var session: GithubEditorSession
+        val strings = CurrentAppStrings.current.WorkDetail
+        lateinit var session: EditorSession
         session =
-            GithubEditorSession(
+            EditorSession(
                 title =
                     when (target) {
                         CollaborationEditorTarget.Comment -> strings.Comment
                         CollaborationEditorTarget.EditedComment -> strings.EditComment
                         CollaborationEditorTarget.LineComment -> strings.LineComment
                     },
-                kind = GithubEditorKind.Markdown,
+                kind = EditorSessionKind.Markdown,
                 source = editorSource(state, target),
                 originalSource =
                     state.editingComment?.comment?.body.takeIf {
@@ -1034,7 +1034,7 @@ internal class CollaborationDetailViewModel(
                 )
             if (!accepted) {
                 val message =
-                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}"
+                    "${CurrentAppStrings.current.Common.MutationNotSubmitted}: ${CurrentAppStrings.current.Common.MutationLimit}"
                 mutableUiState.update { it.copy(subscriptionError = message) }
                 messageChannel.trySend(message)
             }
@@ -1180,7 +1180,7 @@ internal class CollaborationDetailViewModel(
                     throw error
                 } catch (_: Exception) {
                     reactionUpdates.set(subjectId, previous)
-                    messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
+                    messageChannel.trySend(CurrentAppStrings.current.Activity.ActionFailed)
                     return@launch
                 }
             if (reactionObservers[subjectId]?.isActive != true) {
@@ -1201,7 +1201,7 @@ internal class CollaborationDetailViewModel(
                             write.phase == WritePhase.REJECTED ||
                                 write.phase == WritePhase.UNCERTAIN
                         ) {
-                            messageChannel.trySend(GithubTxt.current.Activity.ActionFailed)
+                            messageChannel.trySend(CurrentAppStrings.current.Activity.ActionFailed)
                         }
                     }
                 }
@@ -1233,7 +1233,7 @@ internal class CollaborationDetailViewModel(
             if (!accepted) {
                 reactionUpdates.set(subjectId, previous)
                 messageChannel.trySend(
-                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}",
+                    "${CurrentAppStrings.current.Common.MutationNotSubmitted}: ${CurrentAppStrings.current.Common.MutationLimit}",
                 )
             }
         }
@@ -1304,7 +1304,7 @@ internal class CollaborationDetailViewModel(
                 )
             if (!accepted) {
                 messageChannel.trySend(
-                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}",
+                    "${CurrentAppStrings.current.Common.MutationNotSubmitted}: ${CurrentAppStrings.current.Common.MutationLimit}",
                 )
             }
         }
@@ -1386,10 +1386,10 @@ internal class CollaborationDetailViewModel(
                         )
                     }
                 outcome.phase == WritePhase.UNCERTAIN ->
-                    messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
+                    messageChannel.trySend(CurrentAppStrings.current.Common.MutationUncertain)
                 outcome.phase != WritePhase.PENDING ->
                     messageChannel.trySend(
-                        outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted,
+                        outcome.message ?: CurrentAppStrings.current.Common.MutationNotSubmitted,
                     )
             }
         }
@@ -1416,7 +1416,7 @@ internal class CollaborationDetailViewModel(
                     target.draft,
                 )
             if (!draftSaved) {
-                messageChannel.trySend(GithubTxt.current.WorkDetail.PropertySaveFailed)
+                messageChannel.trySend(CurrentAppStrings.current.WorkDetail.PropertySaveFailed)
                 return@launch
             }
             val coord = ensureCoordinator()
@@ -1451,7 +1451,7 @@ internal class CollaborationDetailViewModel(
                 )
             if (!accepted) {
                 messageChannel.trySend(
-                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}",
+                    "${CurrentAppStrings.current.Common.MutationNotSubmitted}: ${CurrentAppStrings.current.Common.MutationLimit}",
                 )
             }
         }
@@ -1470,7 +1470,7 @@ internal class CollaborationDetailViewModel(
         val line = newLine ?: oldLine ?: return
         val path = file.filename
         val patch = file.patch ?: return
-        if (!githubDiffContainsLine(patch, line, side)) return
+        if (!diffContainsLine(patch, line, side)) return
         val target = ReviewLineTarget(path, line, side, commit, patch)
         if (state.reviewLine == target) return
         state.reviewLine?.let { draftWrites.flush(lineDraftKey(it)) }
@@ -1523,7 +1523,7 @@ internal class CollaborationDetailViewModel(
                 !validCommentBody(draft)
         )
             return
-        if (!githubDiffContainsLine(target.patch, target.line, target.side)) return
+        if (!diffContainsLine(target.patch, target.line, target.side)) return
         submitCommand(
             section = CollaborationSection.Files,
             key = lineCommentKey(target),
@@ -1610,10 +1610,10 @@ internal class CollaborationDetailViewModel(
             when (outcome.phase) {
                 WritePhase.REJECTED ->
                     messageChannel.trySend(
-                        outcome.message ?: GithubTxt.current.Common.MutationNotSubmitted,
+                        outcome.message ?: CurrentAppStrings.current.Common.MutationNotSubmitted,
                     )
                 WritePhase.UNCERTAIN ->
-                    messageChannel.trySend(GithubTxt.current.Common.MutationUncertain)
+                    messageChannel.trySend(CurrentAppStrings.current.Common.MutationUncertain)
                 else -> Unit
             }
         }
@@ -1793,7 +1793,7 @@ internal class CollaborationDetailViewModel(
     }
 
     fun operationLabel(op: PendingMutationSummary): String {
-        val strings = GithubTxt.current.WorkDetail
+        val strings = CurrentAppStrings.current.WorkDetail
         val field = op.target.removePrefix("${detail.workTarget}:")
         return when (op.kind) {
             MutationKind.MERGE -> strings.MergePullRequest
@@ -1845,7 +1845,7 @@ internal class CollaborationDetailViewModel(
                 coord.submit(key, confirmed, desired, detail.mutationTags, send, readBack)
             if (!accepted) {
                 val limitMsg =
-                    "${GithubTxt.current.Common.MutationNotSubmitted}: ${GithubTxt.current.Common.MutationLimit}"
+                    "${CurrentAppStrings.current.Common.MutationNotSubmitted}: ${CurrentAppStrings.current.Common.MutationLimit}"
                 mutableUiState.update { it.copy(submissionError = limitMsg) }
                 messageChannel.trySend(limitMsg)
             }
@@ -1893,7 +1893,7 @@ internal class CollaborationDetailViewModel(
                             encodeDraft()
                         }
                 if (storedKey != null && !store.saveConfirmed(account, storedKey, storedText)) {
-                    val message = GithubTxt.current.Common.MutationNotSubmitted
+                    val message = CurrentAppStrings.current.Common.MutationNotSubmitted
                     mutableUiState.update {
                         it.copy(
                             submitting = false,
@@ -1932,8 +1932,8 @@ internal class CollaborationDetailViewModel(
                     val limitMsg =
                         shared.message
                             ?: if (shared.phase == WritePhase.UNCERTAIN)
-                                GithubTxt.current.Common.MutationUncertain
-                            else GithubTxt.current.Common.MutationNotSubmitted
+                                CurrentAppStrings.current.Common.MutationUncertain
+                            else CurrentAppStrings.current.Common.MutationNotSubmitted
                     mutableUiState.update {
                         it.copy(
                             submitting = false,
@@ -1962,14 +1962,14 @@ internal class CollaborationDetailViewModel(
                     WritePhase.UNCERTAIN -> {
                         val message =
                             if (cmd.phase == WritePhase.UNCERTAIN)
-                                GithubTxt.current.Common.MutationUncertain
+                                CurrentAppStrings.current.Common.MutationUncertain
                             else
                                 when (val error = latestError) {
                                     is WorkDetailCommentChangedException ->
                                         "评论已在其他位置更新，请重新打开评论核对，草稿已保留"
                                     is WorkDetailReviewChangedException -> "拉取请求已更新，请刷新后重新检查，草稿已保留。"
                                     null ->
-                                        cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted
+                                        cmd.message ?: CurrentAppStrings.current.Common.MutationNotSubmitted
                                     else -> collaborationErrorMessage(error)
                                 }
                         mutableUiState.update {

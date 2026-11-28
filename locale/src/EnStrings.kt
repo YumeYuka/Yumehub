@@ -1,7 +1,7 @@
 package moe.yumeyuka.yumehub.locale
 
-public val EnStrings: GithubStrings =
-    GithubStrings(
+public val EnStrings: AppStrings =
+    AppStrings(
         Settings = EnSettingsStrings,
         Downloads = EnDownloadsStrings,
         Activity = EnActivityStrings,

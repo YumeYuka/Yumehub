@@ -40,22 +40,22 @@ import moe.yumeyuka.yumehub.core.model.GithubLinkTarget
 import moe.yumeyuka.yumehub.core.model.GithubRepositoryLocation
 import moe.yumeyuka.yumehub.core.model.parseGithubLink
 import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
-import moe.yumeyuka.yumehub.ui.platform.LocalGithubLinkHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageState
+import moe.yumeyuka.yumehub.ui.platform.LocalPageLinkHandler
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -64,7 +64,7 @@ data class RepositoryRoute(
     val owner: String,
     val name: String,
     val readme: GithubRepositoryLocation.Readme? = null,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun RepositoryPage(
@@ -92,8 +92,8 @@ fun RepositoryPage(
     onExit: () -> Unit,
     readme: GithubRepositoryLocation.Readme? = null,
 ) {
-    val strings = LocalGithubStrings.current.Repository
-    val profileStrings = LocalGithubStrings.current.Profile
+    val strings = LocalAppStrings.current.Repository
+    val profileStrings = LocalAppStrings.current.Profile
     val viewModel: RepositoryDetailViewModel =
         koinViewModel(
             key = "repository-$owner-$name",
@@ -113,7 +113,7 @@ fun RepositoryPage(
             parameters = { parametersOf(owner, name) },
         )
     val overview by overviewViewModel.uiState.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Repositories,
         DataDomain.Content,
@@ -134,10 +134,10 @@ fun RepositoryPage(
         if (homeOverview != null) overviewViewModel.loadPinned()
     }
     val context = LocalContext.current
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val common = LocalGithubStrings.current.Common
+    val host = requireNotNull(LocalAppPageHost.current)
+    val common = LocalAppStrings.current.Common
     val openExternal = rememberExternalUriHandler()
-    val openGithubLink = rememberGithubUriHandler()
+    val openGithubLink = rememberPageLinkHandler()
     val details = (state.repository as? RepositoryLoad.Ready)?.value
     val fullNameParts = details?.fullName?.split('/', limit = 2)
     val currentOwner =
@@ -209,7 +209,7 @@ fun RepositoryPage(
     // 没有外壳注入时仍分别保留概览和 README 的滚动位置。
     val fallbackListStates = remember { LinkedHashMap<String, LazyListState>(16, 0.75f, true) }
     val listState =
-        LocalGithubPageState.current?.listState(pageKey)
+        LocalAppPageState.current?.listState(pageKey)
             ?: fallbackListStates
                 .getOrPut(pageKey) { LazyListState() }
                 .also {
@@ -219,14 +219,14 @@ fun RepositoryPage(
                 }
     val overviewActions = state.page == RepositoryDetailPage.Overview
     if (!overviewActions) {
-        GithubBackHandler { if (host.backEnabled) viewModel.navigateUp() }
+        AppBackHandler { if (host.backEnabled) viewModel.navigateUp() }
     }
     // 头部（头像、大标题与简介）点击后打开仓库信息面板。
     var infoOpen by remember { mutableStateOf(false) }
     val description =
         (overview.descriptionOverride ?: details?.description)?.takeIf(String::isNotBlank)
     var currentReadmeAnchor by rememberSaveable { mutableStateOf(readme?.anchor) }
-    val parentLinkHandler = LocalGithubLinkHandler.current
+    val parentLinkHandler = LocalPageLinkHandler.current
     val repositoryLinkHandler: (String) -> Unit =
         remember(currentOwner, currentName, viewModel, parentLinkHandler) {
             { url ->
@@ -254,8 +254,8 @@ fun RepositoryPage(
                 }
             }
         }
-    CompositionLocalProvider(LocalGithubLinkHandler provides repositoryLinkHandler) {
-        GithubPage(
+    CompositionLocalProvider(LocalPageLinkHandler provides repositoryLinkHandler) {
+        AppPage(
             title =
                 when (state.page) {
                     RepositoryDetailPage.Overview -> currentName
@@ -295,7 +295,7 @@ fun RepositoryPage(
             titleTrailing =
                 if (overviewActions) {
                     {
-                        GithubAvatar(
+                        UserAvatar(
                             url = details?.owner?.avatarUrl,
                             login = details?.owner?.login ?: currentOwner,
                             type = details?.owner?.type,
@@ -318,7 +318,7 @@ fun RepositoryPage(
                         var expanded by remember(viewModel, pageKey) { mutableStateOf(false) }
                         val createAnchor = rememberGlasmioMenuAnchorState()
                         val moreAnchor = rememberGlasmioMenuAnchorState()
-                        GithubToolbarActions(
+                        ToolbarActions(
                             toolbarIcon(Lucide.Plus, strings.Create, menuAnchor = createAnchor) {
                                 if (host.navigationEnabled) creating = true
                             },
@@ -338,7 +338,7 @@ fun RepositoryPage(
                                 title = strings.NewIssue,
                                 backdrop = backdrop,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.CircleDot,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -362,7 +362,7 @@ fun RepositoryPage(
                                 title = strings.NewPullRequest,
                                 backdrop = backdrop,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.GitPullRequest,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -387,7 +387,7 @@ fun RepositoryPage(
                                     title = strings.NewDiscussion,
                                     backdrop = backdrop,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.MessagesSquare,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -415,7 +415,7 @@ fun RepositoryPage(
                                 backdrop = backdrop,
                                 enabled = details != null,
                                 icon = {
-                                    GithubIcon(Lucide.Bell, contentDescription = null, size = 20.dp)
+                                    AppIcon(Lucide.Bell, contentDescription = null, size = 20.dp)
                                 },
                                 onClick = {
                                     close()
@@ -428,7 +428,7 @@ fun RepositoryPage(
                                 backdrop = backdrop,
                                 enabled = details?.nodeId != null && !overview.busy,
                                 icon = {
-                                    GithubIcon(Lucide.List, contentDescription = null, size = 20.dp)
+                                    AppIcon(Lucide.List, contentDescription = null, size = 20.dp)
                                 },
                                 onClick = {
                                     close()
@@ -447,7 +447,7 @@ fun RepositoryPage(
                                             overview.coordinatorReady &&
                                             !overview.busy,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.Pin,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -468,7 +468,7 @@ fun RepositoryPage(
                                         !overview.busy &&
                                         overview.overview?.canEditDescription == true,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.Pencil,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -550,7 +550,7 @@ fun RepositoryPage(
         onRetry = { overview.management?.sheet?.let(openSheet) },
     )
     if (repositoryLists.failed) {
-        GithubLoadFailureToast(Unit, profileStrings.ListLoadFailed)
+        LoadFailureToast(Unit, profileStrings.ListLoadFailed)
     }
     RepositoryListsSheet(
         state = repositoryLists,

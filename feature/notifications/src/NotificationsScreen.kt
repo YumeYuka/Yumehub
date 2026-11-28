@@ -22,16 +22,16 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_Notifications
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.NotificationsStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.githubCardItemMotion
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.cardItemMotion
 import moe.yumeyuka.yumehub.ui.component.isEmptyStateNetworkFailure
 
 internal fun LazyListScope.NotificationsScreen(
-    strings: GithubStrings_Notifications,
+    strings: NotificationsStrings,
     state: NotificationsUiState,
     notifications: List<NotificationDto>,
     hasActiveSearch: Boolean,
@@ -51,7 +51,7 @@ internal fun LazyListScope.NotificationsScreen(
 ) {
     if (state.uncertainThreadIds.isNotEmpty()) {
         item(key = "notifications-uncertain-banner") {
-            val common = LocalGithubStrings.current.Common
+            val common = LocalAppStrings.current.Common
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = common.MutationUncertain,
@@ -89,8 +89,8 @@ internal fun LazyListScope.NotificationsScreen(
         )
         if (offline) {
             item(key = "notifications-offline") {
-                val labels = LocalGithubStrings.current
-                GithubEmptyState(
+                val labels = LocalAppStrings.current
+                EmptyState(
                     scene = EmptyScene.Offline,
                     title = labels.Common.NoOfflineData,
                     description = labels.Repository.NetworkFailed,
@@ -109,7 +109,7 @@ internal fun LazyListScope.NotificationsScreen(
                 state.repository != null ||
                 state.reasonFilter != NotificationReasonFilter.All
         item(key = "notifications-empty", contentType = "notifications-empty") {
-            GithubEmptyState(
+            EmptyState(
                 scene = if (hasActiveFilters) EmptyScene.Search else EmptyScene.Done,
                 title = if (hasActiveFilters) strings.NoMatches else strings.Empty,
                 description = strings.EmptyHint.takeUnless { hasActiveFilters },
@@ -125,7 +125,7 @@ internal fun LazyListScope.NotificationsScreen(
         contentType = { "notification-card" },
     ) { index ->
         val notification = notifications.getOrNull(index)
-        Box(githubCardItemMotion()) {
+        Box(cardItemMotion()) {
             NotificationRow(
                 notification,
                 notification?.let { state.previews[it] },
@@ -176,7 +176,7 @@ internal fun NotificationsControls(
     onMarkSelectedDone: () -> Unit,
     showSelectionActions: Boolean,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
+    val strings = LocalAppStrings.current.Notifications
     if (state.isSelecting) {
         GlasmioGroupedList {
             GlasmioListRow(
@@ -223,7 +223,7 @@ internal fun NotificationsSelectionMenu(
     onMarkSelectedRead: () -> Unit,
     onMarkSelectedDone: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
+    val strings = LocalAppStrings.current.Notifications
     val canProcess = state.selectedThreadIds.isNotEmpty() && !state.isProcessing
     GlasmioMenu(
         expanded = expanded && !state.isProcessing,
@@ -274,7 +274,7 @@ private fun SelectionActions(
     onMarkSelectedRead: () -> Unit,
     onMarkSelectedDone: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
+    val strings = LocalAppStrings.current.Notifications
     val canProcess = state.selectedThreadIds.isNotEmpty() && !state.isProcessing
     GlasmioListRow(
         title = strings.CancelSelection,

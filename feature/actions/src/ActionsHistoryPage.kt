@@ -18,9 +18,9 @@ import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -84,7 +84,7 @@ internal fun ActionsHistoryPage(
     val revalidation = remember(vm, workflowId) { vm.revalidation(workflowId) }
     val target = selected?.id?.let(vm::target)
     val command = vm.commands.stateFor(target)
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val activity = strings.Activity
     var filter by remember { mutableStateOf(false) }
     var form by remember { mutableStateOf(false) }
@@ -120,7 +120,7 @@ internal fun ActionsHistoryPage(
             }
         }
     }
-    GithubActivityListPage(
+    ActivityListPage(
         title = strings.Repository.ActionsTitle,
         source = runs,
         emptyScene = if (selected == null) EmptyScene.Inbox else EmptyScene.Search,
@@ -137,7 +137,7 @@ internal fun ActionsHistoryPage(
         row = { entry, click -> WorkflowRow(entry, click) },
         toolbar = { refresh ->
             LaunchedEffect(refreshAfterSubmit) { if (refreshAfterSubmit > 0) refresh() }
-            GithubToolbarActions(
+            ToolbarActions(
                 toolbarIcon(Lucide.ListFilter, activity.WorkflowFilter) { filter = true },
                 if ((selected?.active == true && vm.catalog?.canWrite == true) || command?.phase == WritePhase.UNCERTAIN)
                     toolbarIcon(Lucide.Play, activity.RunWorkflow, enabled = command?.phase != WritePhase.PENDING) {
@@ -157,7 +157,7 @@ internal fun ActionsHistoryPage(
                 }
             }
         val showAll = activity.AllRuns.contains(search.trim(), ignoreCase = true)
-        GithubSearchSelectionSheet(
+        SearchSelectionSheet(
             visible = true,
             title = activity.WorkflowFilter,
             placeholder = strings.Common.Search,
@@ -176,7 +176,7 @@ internal fun ActionsHistoryPage(
                                 filter = false
                             }
                         }
-                    GithubLoadingContent(
+                    LoadingContent(
                         loading = vm.catalog == null && !failed,
                         placeholder = { TitleRowPlaceholder(showTopSeparator = showAll) },
                     ) {
@@ -222,27 +222,12 @@ internal fun ActionsHistoryPage(
     }
     val acknowledging = acknowledgeId
     if (acknowledging != null && target != null && command?.phase == WritePhase.UNCERTAIN && command.submissionId == acknowledging) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = strings.Common.MutationUncertain,
-            message = strings.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        strings.Common.Cancel,
-                        onClick = { acknowledgeId = null },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        strings.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeId = null
-                            vm.commands.acknowledge(target, acknowledging)
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeId = null },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeId = null },
+            onAcknowledge = {
+                acknowledgeId = null
+                vm.commands.acknowledge(target, acknowledging)
+            },
         )
     }
 }
@@ -260,6 +245,6 @@ internal fun FilterRow(
         enabled = enabled,
         onClick = select,
         showDisclosure = false,
-        trailing = { if (checked) GithubIcon(Lucide.Check, contentDescription = null) },
+        trailing = { if (checked) AppIcon(Lucide.Check, contentDescription = null) },
     )
 }

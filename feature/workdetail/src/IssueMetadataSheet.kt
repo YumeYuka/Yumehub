@@ -17,19 +17,20 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.*
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.api.dto.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 @Composable
 internal fun IssueMetadataSheet(
@@ -38,7 +39,7 @@ internal fun IssueMetadataSheet(
     editor: IssueMetadataEditor,
 ) {
     val panel = state.panel
-    val all = LocalGithubStrings.current
+    val all = LocalAppStrings.current
     val strings = all.WorkDetail
     val choices = state.choices
     val fields = state.fields
@@ -55,7 +56,7 @@ internal fun IssueMetadataSheet(
             IssueMetadataPanel.Fields -> strings.IssueFields
             null -> ""
         }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible && panel != null && field == null,
         title = title,
         placeholder = strings.PropertySearch,
@@ -81,7 +82,7 @@ internal fun IssueMetadataSheet(
             }
         },
     ) {
-        if (panel == null) return@GithubSearchSelectionSheet
+        if (panel == null) return@SearchSelectionSheet
         if (state.loadFailed || state.conflict || state.saveFailed || state.uncertain) {
             item("error") {
                 IssueMetadataError(
@@ -105,13 +106,13 @@ internal fun IssueMetadataSheet(
                             index > 0,
                             leading = {
                                 if (isType) {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.CircleDot,
                                         contentDescription = null,
                                         size = 20.dp,
                                         tint = issueOptionColor(choice.color),
                                     )
-                                } else GithubAvatar(choice.avatarUrl, choice.title, size = 20.dp)
+                                } else UserAvatar(choice.avatarUrl, choice.title, size = 20.dp)
                             },
                             onClick =
                                 if (
@@ -169,27 +170,12 @@ internal fun IssueMetadataSheet(
         }
     }
     if (visible && acknowledgeVisible && state.uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = all.Common.MutationUncertain,
-            message = all.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        all.Common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        all.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            editor.acknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                editor.acknowledgeUncertain()
+            },
         )
     }
 }
@@ -212,7 +198,7 @@ private fun LazyListScope.issueFieldRows(
     }
     if (available.isNotEmpty()) {
         item("available") {
-            GithubSection(LocalGithubStrings.current.WorkDetail.AddIssueField) {
+            ListSection(LocalAppStrings.current.WorkDetail.AddIssueField) {
                 available.forEachIndexed { index, field -> IssueFieldRow(field, index > 0, onOpen) }
             }
         }
@@ -221,7 +207,7 @@ private fun LazyListScope.issueFieldRows(
         item("empty") {
             GlasmioGroupedList {
                 GlasmioListRow(
-                    title = LocalGithubStrings.current.WorkDetail.NoPropertyOptions,
+                    title = LocalAppStrings.current.WorkDetail.NoPropertyOptions,
                     showDisclosure = false,
                 )
             }
@@ -245,7 +231,7 @@ private fun IssueFieldRow(field: IssueField, separated: Boolean, onOpen: (IssueF
                     IssueFieldKind.SingleSelect,
                     IssueFieldKind.MultiSelect -> Lucide.ListChecks
                 }
-            GithubIcon(icon, contentDescription = null, size = 20.dp)
+            AppIcon(icon, contentDescription = null, size = 20.dp)
         },
         onClick = { onOpen(field) },
     )
@@ -262,7 +248,7 @@ private fun IssueFieldValueSheet(
     onAcknowledge: (() -> Unit)?,
     onSave: (IssueFieldValue?) -> Boolean,
 ) {
-    val all = LocalGithubStrings.current
+    val all = LocalAppStrings.current
     val strings = all.WorkDetail
     val scope = rememberCoroutineScope()
     val canEdit = editable && !state.saving && !state.conflict && !state.uncertain
@@ -308,7 +294,7 @@ private fun IssueFieldValueSheet(
         field.kind == IssueFieldKind.SingleSelect || field.kind == IssueFieldKind.MultiSelect
     val valid = isChoice || text.isBlank() || value != null
     val scroll = rememberScrollState()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         title = field.name,
         sheetState = sheet,
@@ -321,7 +307,7 @@ private fun IssueFieldValueSheet(
                 title = field.name,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = all.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = all.Common.Close)
                     }
                 },
                 actions = {
@@ -330,7 +316,7 @@ private fun IssueFieldValueSheet(
                             onClick = { if (onSave(value)) scope.launch { sheet.hide() } },
                             enabled = canEdit && valid && value != field.value,
                         ) {
-                            GithubIcon(Lucide.Check, contentDescription = all.Common.Confirm)
+                            AppIcon(Lucide.Check, contentDescription = all.Common.Confirm)
                         }
                     }
                 },
@@ -364,7 +350,7 @@ private fun IssueFieldValueSheet(
                             checked,
                             index > 0,
                             leading = {
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.CircleDot,
                                     contentDescription = null,
                                     size = 20.dp,
@@ -429,7 +415,7 @@ private fun IssueMetadataError(
     onReload: () -> Unit,
     onAcknowledge: (() -> Unit)? = null,
 ) {
-    val all = LocalGithubStrings.current
+    val all = LocalAppStrings.current
     val strings = all.WorkDetail
     val reload = state.loadFailed || state.conflict || state.uncertain
     GlasmioGroupedList {
@@ -474,7 +460,7 @@ private fun IssueChoiceRow(
         showTopSeparator = separated,
         showDisclosure = false,
         leading = leading,
-        trailing = if (checked) ({ GithubIcon(Lucide.Check, contentDescription = null) }) else null,
+        trailing = if (checked) ({ AppIcon(Lucide.Check, contentDescription = null) }) else null,
         onClick = onClick,
     )
 }
@@ -482,12 +468,12 @@ private fun IssueChoiceRow(
 @Composable
 internal fun issueOptionColor(color: String?) =
     when (color) {
-        "BLUE" -> GithubWorkColors.branchForeground
-        "GREEN" -> GithubWorkColors.open
-        "RED" -> GithubWorkColors.closed
-        "PURPLE" -> GithubWorkColors.merged
+        "BLUE" -> WorkColors.branchForeground
+        "GREEN" -> WorkColors.open
+        "RED" -> WorkColors.closed
+        "PURPLE" -> WorkColors.merged
         "YELLOW",
-        "ORANGE" -> GithubWorkColors.releasePrerelease
+        "ORANGE" -> WorkColors.releasePrerelease
         else -> GlasmioTheme.colors.secondaryContent
     }
 

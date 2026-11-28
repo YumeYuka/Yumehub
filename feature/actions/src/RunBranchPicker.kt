@@ -5,8 +5,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubChoiceSheet
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.ChoiceSheet
 import org.koin.compose.koinInject
 
 private class BranchChoices {
@@ -34,7 +34,7 @@ internal fun RunBranchPicker(
     onSelect: (String) -> Unit,
 ) {
     val repo: WorkspacesRepository = koinInject()
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     var query by remember { mutableStateOf("") }
     val queries = remember(account, route) { LinkedHashMap<String, BranchChoices>(8, 0.75f, true) }
     val pane = remember(queries, query) {
@@ -63,7 +63,7 @@ internal fun RunBranchPicker(
         }
         pane.loading = false
     }
-    GithubChoiceSheet(
+    ChoiceSheet(
         true,
         strings.Workspaces.Branches,
         strings.Workspaces.BranchSearchPlaceholder,

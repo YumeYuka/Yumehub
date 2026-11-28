@@ -17,7 +17,7 @@ import moe.yumeyuka.yumehub.data.auth.AuthException
 import moe.yumeyuka.yumehub.data.auth.AuthRepository
 import moe.yumeyuka.yumehub.data.auth.SessionFailures
 import moe.yumeyuka.yumehub.data.auth.SessionRecovery
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 
 sealed interface AuthUiState {
     data object Restoring : AuthUiState
@@ -90,7 +90,7 @@ class AuthViewModel(
             throw cancelled
         } catch (_: Exception) {
             mutableEvents.tryEmit(
-                AuthEvent.AuthorizationFailed(GithubTxt.current.Profile.AccountFailed),
+                AuthEvent.AuthorizationFailed(CurrentAppStrings.current.Profile.AccountFailed),
             )
             false
         }

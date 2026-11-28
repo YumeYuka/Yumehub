@@ -56,13 +56,13 @@ import moe.yumeyuka.yumehub.feature.auth.TwoFactorViewModel
 import moe.yumeyuka.yumehub.feature.markdown.MarkdownPresentationHost
 import moe.yumeyuka.yumehub.feature.markdown.officialGithubMarkdownRenderer
 import moe.yumeyuka.yumehub.feature.profile.SettingsViewModel
-import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
-import moe.yumeyuka.yumehub.navigation.GithubAppShell
-import moe.yumeyuka.yumehub.navigation.GithubNavigationSession
+import moe.yumeyuka.yumehub.navigation.AppNavigationComponent
+import moe.yumeyuka.yumehub.navigation.AppNavigationShell
+import moe.yumeyuka.yumehub.navigation.NavigationSession
 import moe.yumeyuka.yumehub.navigation.openLink
-import moe.yumeyuka.yumehub.ui.component.GithubFpsCounter
-import moe.yumeyuka.yumehub.ui.component.GithubTextSelectionHost
-import moe.yumeyuka.yumehub.ui.component.LocalGithubMarkdownRenderer
+import moe.yumeyuka.yumehub.ui.component.FpsCounter
+import moe.yumeyuka.yumehub.ui.component.TextSelectionHost
+import moe.yumeyuka.yumehub.ui.component.LocalMarkdownRenderer
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import moe.yumeyuka.yumehub.ui.theme.YumehubTheme
 import org.koin.androidx.compose.koinViewModel
@@ -70,7 +70,7 @@ import org.koin.compose.koinInject
 
 @Composable
 internal fun AppRoot(
-    navigationComponent: GithubAppNavigationComponent,
+    navigationComponent: AppNavigationComponent,
     loginOpen: Boolean,
     openLogin: () -> Unit,
     updateGlassHdrOutput: (enabled: Boolean) -> Unit,
@@ -89,7 +89,7 @@ internal fun AppRoot(
         }
 
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
-    GithubPendingLinkEffect(navigationComponent, authState, loginOpen)
+    PendingLinkEffect(navigationComponent, authState, loginOpen)
     val twoFactorState by twoFactorViewModel.uiState.collectAsStateWithLifecycle()
     val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
     val accentArgb by settingsViewModel.accentColor.collectAsStateWithLifecycle()
@@ -148,7 +148,7 @@ internal fun AppRoot(
         topBarBlurEnabled = topBarBlurEnabled,
     ) {
         CompositionLocalProvider(
-            LocalGithubMarkdownRenderer provides officialGithubMarkdownRenderer,
+            LocalMarkdownRenderer provides officialGithubMarkdownRenderer,
         ) {
             GlasmioBackdropHost(
                 sampledContent = {
@@ -159,7 +159,7 @@ internal fun AppRoot(
                     )
                 },
                 overlayContent = {
-                    GithubTextSelectionHost {
+                    TextSelectionHost {
                         when (val currentAuthState = authState) {
                             AuthUiState.Restoring -> Unit
 
@@ -171,7 +171,7 @@ internal fun AppRoot(
                                     key(currentAuthState.login, currentAuthState.generation) {
                                         val sessionOwner = rememberViewModelStoreOwner()
                                         viewModel(viewModelStoreOwner = sessionOwner) {
-                                            GithubNavigationSession(
+                                            NavigationSession(
                                                 component = navigationComponent,
                                                 login = currentAuthState.login,
                                                 navigationSessionId = tokens.navigationSessionId,
@@ -181,7 +181,7 @@ internal fun AppRoot(
                                             LocalViewModelStoreOwner provides sessionOwner,
                                         ) {
                                             MarkdownPresentationHost {
-                                                GithubAppShell(
+                                                AppNavigationShell(
                                                     navigationComponent = navigationComponent,
                                                     currentLogin = currentAuthState.login,
                                                     accounts = tokens.accounts,
@@ -206,7 +206,7 @@ internal fun AppRoot(
                                             twoFactorViewModel::acknowledgeRegistrationUncertain,
                                     )
                                     if (fpsCounter) {
-                                        GithubFpsCounter(
+                                        FpsCounter(
                                             Modifier.align(Alignment.TopEnd)
                                                 .statusBarsPadding()
                                                 .padding(top = 70.dp, end = 12.dp),
@@ -233,8 +233,8 @@ internal fun AppRoot(
 }
 
 @Composable
-private fun GithubPendingLinkEffect(
-    navigationComponent: GithubAppNavigationComponent,
+private fun PendingLinkEffect(
+    navigationComponent: AppNavigationComponent,
     authState: AuthUiState,
     loginOpen: Boolean,
 ) {

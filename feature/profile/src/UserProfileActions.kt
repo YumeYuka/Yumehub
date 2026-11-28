@@ -21,25 +21,25 @@ import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Flag
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.UserPlus
-import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.locale.ProfileStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 @Composable
 internal fun UserProfileActions(
     visible: Boolean,
     state: UserProfileState,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onToggleFollowing: () -> Unit,
     onReport: () -> Unit,
 ) {
     var expanded by remember(visible) { mutableStateOf(false) }
-    val host = LocalGithubPageHost.current
+    val host = LocalAppPageHost.current
     val anchor = rememberGlasmioMenuAnchorState()
     Box {
-        GithubToolbarActions(
+        ToolbarActions(
             if (visible)
                 toolbarIcon(Lucide.UserPlus, strings.UserActions, menuAnchor = anchor) {
                     if (host?.navigationEnabled == true) expanded = true
@@ -65,10 +65,10 @@ internal fun UserProfileActions(
                                 if (state.following == true) ToggleableState.On
                                 else ToggleableState.Off
                         },
-                    icon = { GithubIcon(Lucide.UserPlus, contentDescription = null, size = 20.dp) },
+                    icon = { AppIcon(Lucide.UserPlus, contentDescription = null, size = 20.dp) },
                     trailing = {
                         if (state.following == true) {
-                            GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
+                            AppIcon(Lucide.Check, contentDescription = null, size = 20.dp)
                         }
                     },
                     enabled =
@@ -87,7 +87,7 @@ internal fun UserProfileActions(
                     title = strings.ReportUser,
                     destructive = true,
                     icon = {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.Flag,
                             contentDescription = null,
                             size = 20.dp,

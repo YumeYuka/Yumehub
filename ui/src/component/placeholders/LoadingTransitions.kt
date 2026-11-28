@@ -28,16 +28,16 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import kotlin.math.roundToInt
 import moe.yumeyuka.yumehub.ui.component.LocalReadingReceipt
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 // Apple UnitCurve curves: easeOut (0, 0, 0.58, 1) and easeIn (0.42, 0, 1, 1).
 private val IosEaseOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
 private val IosEaseIn = CubicBezierEasing(0.42f, 0f, 1f, 1f)
 
-internal val GithubCardEnterSpec = tween<Float>(360, easing = IosEaseOut)
-internal val GithubCardExitSpec = tween<Float>(200, easing = IosEaseIn)
-val GithubCardSizeSpec =
+internal val CardEnterSpec = tween<Float>(360, easing = IosEaseOut)
+internal val CardExitSpec = tween<Float>(200, easing = IosEaseIn)
+val CardSizeSpec =
     spring<IntSize>(dampingRatio = 1f, stiffness = 320f, visibilityThreshold = IntSize(1, 1))
 private val CardContentEnterSpec = tween<Float>(300, easing = IosEaseOut)
 private val CardContentExitSpec = tween<Float>(200, delayMillis = 60, easing = IosEaseIn)
@@ -49,7 +49,7 @@ private val CardContentExitSpec = tween<Float>(200, delayMillis = 60, easing = I
  * 重内容（Markdown、diff、分页列表）各自在自己的渲染器里按入场状态决定挂载时机。
  */
 @Composable
-fun GithubLoadingContent(
+fun LoadingContent(
     loading: Boolean,
     modifier: Modifier = Modifier,
     placeholder: @Composable () -> Unit,
@@ -65,7 +65,7 @@ fun GithubLoadingContent(
 }
 
 @Composable
-fun GithubLoadingCard(
+fun LoadingCard(
     loading: Boolean,
     modifier: Modifier = Modifier,
     grouped: Boolean = true,
@@ -74,10 +74,10 @@ fun GithubLoadingCard(
 ) {
     if (grouped) {
         GlasmioGroupedList(modifier = modifier) {
-            GithubLoadingContent(loading, placeholder = placeholder, content = content)
+            LoadingContent(loading, placeholder = placeholder, content = content)
         }
     } else {
-        GithubLoadingContent(
+        LoadingContent(
             loading = loading,
             modifier = modifier,
             placeholder = placeholder,
@@ -87,7 +87,7 @@ fun GithubLoadingCard(
 }
 
 /** Owned by the bounded route document cache. No pixels, View or Compose state are retained. */
-class GithubDocumentGeometry {
+class DocumentGeometry {
     private var environment: Any? = null
     private var width = 0
     private var height = 0
@@ -104,11 +104,11 @@ class GithubDocumentGeometry {
 
 /** 文档正文先挂载，加载期间按缓存或骨架高度占位。渲染器可画后，正文与槽高同一拍交接。 */
 @Composable
-fun GithubLoadingOverlay(
+fun LoadingOverlay(
     loading: Boolean,
     documentKey: Any,
     modifier: Modifier = Modifier,
-    geometry: GithubDocumentGeometry? = null,
+    geometry: DocumentGeometry? = null,
     layoutKey: Any,
     reservedHeight: Int,
     layoutWidth: Int,
@@ -122,7 +122,7 @@ fun GithubLoadingOverlay(
     DisposableEffect(receipt, owner) {
         onDispose { if (receipt != null && receipt.drawnBy === owner) receipt.drawnBy = null }
     }
-    val active = LocalGithubPageHost.current?.isCurrent != false
+    val active = LocalAppPageHost.current?.isCurrent != false
     val width = layoutWidth
     var presented by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner, presented) { if (presented) onPresented?.invoke() }
@@ -159,17 +159,17 @@ fun GithubLoadingOverlay(
 
 /** Only presence changes animate; a cached field is composed at full size on its first frame. */
 @Composable
-fun <T : Any> GithubCardField(value: T?, content: @Composable (T) -> Unit) {
-    val animate = LocalGithubCardMotionEnabled.current
+fun <T : Any> AnimatedCardField(value: T?, content: @Composable (T) -> Unit) {
+    val animate = LocalCardMotionEnabled.current
     AnimatedVisibility(
         visible = value != null,
         enter =
             if (animate)
-                fadeIn(CardContentEnterSpec) + expandVertically(GithubCardSizeSpec, Alignment.Top)
+                fadeIn(CardContentEnterSpec) + expandVertically(CardSizeSpec, Alignment.Top)
             else EnterTransition.None,
         exit =
             if (animate)
-                fadeOut(CardContentExitSpec) + shrinkVertically(GithubCardSizeSpec, Alignment.Top)
+                fadeOut(CardContentExitSpec) + shrinkVertically(CardSizeSpec, Alignment.Top)
             else ExitTransition.None,
         label = "card-field",
     ) {

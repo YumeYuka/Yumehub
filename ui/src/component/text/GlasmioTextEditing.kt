@@ -240,9 +240,9 @@ fun GlasmioEditableText(
     topViewportInset: Dp = 0.dp,
     bottomViewportInset: Dp = 0.dp,
     onVisibleTextRange: ((TextRange) -> Unit)? = null,
-    syntaxOverlay: GithubEditorSyntax? = null,
+    syntaxOverlay: EditorSyntax? = null,
     syntaxPainter: moe.yumeyuka.yumehub.ui.component.text.GlasmioCodeSyntaxPainter? = null,
-    searchHighlights: GithubCodeSearchHighlights? = null,
+    searchHighlights: CodeSearchHighlights? = null,
 ) {
     require(maxLines > 0) { "maxLines must be positive." }
     require(!password || singleLine) { "Secure fields must be single-line." }

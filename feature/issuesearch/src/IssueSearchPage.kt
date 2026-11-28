@@ -8,20 +8,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.core.model.hasActiveCriteria
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /** 我的议题／拉取请求列表的路由键。 */
-data class IssueSearchRoute(val kind: CollaborationKind) : GithubRoute
+data class IssueSearchRoute(val kind: CollaborationKind) : AppRoute
 
 @Composable
 fun IssueSearchPage(
@@ -35,11 +35,11 @@ fun IssueSearchPage(
           parameters = { parametersOf(login, kind) },
       )
   val filter by viewModel.filter.collectAsStateWithLifecycle()
-  val strings = LocalGithubStrings.current
+  val strings = LocalAppStrings.current
   val filtered = filter.hasActiveCriteria()
   val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
   WorkListControls(kind, filter, viewModel.scopes, viewModel::setQuery, viewModel::selectFilter) { actions, searching ->
-    GithubPagingContent(
+    PagingContent(
         pages,
         contentKey = Triple(login, kind, filter),
         revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
@@ -47,7 +47,7 @@ fun IssueSearchPage(
     ) { paging ->
       val items = paging.items
       val slots =
-          rememberGithubPagingSlots(
+          rememberPagingSlots(
               items,
               "work-search:$filter",
               paging.initialLoading,
@@ -55,7 +55,7 @@ fun IssueSearchPage(
           ) {
             it.target.toString()
           }
-      GithubPage(
+      AppPage(
           title = kind.title,
           listState = paging.listState,
           itemSpacing = 12.dp,

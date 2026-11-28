@@ -17,14 +17,14 @@ import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTag
-import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.WorkStatusTag
+import moe.yumeyuka.yumehub.ui.component.labelColor
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkHeaderPlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -41,11 +41,11 @@ internal fun WorkDetailHeader(
     val entry = state.item
     val enabled = !state.submitting || state.sendingInBackground
     val isPullRequest = kind == CollaborationKind.PullRequest
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val projectTitle =
         state.projectTitles?.let { it.firstOrNull() ?: strings.NoProjects } ?: strings.Projects
     GlasmioGroupedList {
-        GithubLoadingContent(
+        LoadingContent(
             loading = entry == null,
             placeholder = { WorkHeaderPlaceholder() },
         ) {
@@ -55,7 +55,7 @@ internal fun WorkDetailHeader(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    GithubWorkStatusTag(
+                    WorkStatusTag(
                         item = entry,
                         kind = kind,
                         onClick = onInformation,
@@ -65,13 +65,13 @@ internal fun WorkDetailHeader(
                     WorkHeaderProject(projectTitle, enabled, onProjects)
                     if (isPullRequest) WorkHeaderReviewers(entry, enabled, onReviewers)
                     if (kind == CollaborationKind.Issue) {
-                        val all = LocalGithubStrings.current
+                        val all = LocalAppStrings.current
                         if (entry.viewerCanTypeIssue || entry.issueType != null) {
                             WorkHeaderButton(
                                 enabled,
                                 { onIssueMetadata(IssueMetadataPanel.Type) },
                             ) {
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.CircleDot,
                                     contentDescription = null,
                                     size = 16.dp,
@@ -84,11 +84,11 @@ internal fun WorkDetailHeader(
                             enabled,
                             { onIssueMetadata(IssueMetadataPanel.Assignees) },
                         ) {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.UserRound,
                                 contentDescription = null,
                                 size = 16.dp,
-                                tint = GithubWorkColors.muted,
+                                tint = WorkColors.muted,
                             )
                             WorkHeaderText(
                                 when (entry.assignedActors.size) {
@@ -101,11 +101,11 @@ internal fun WorkDetailHeader(
                     }
                     val progress = entry.taskProgress
                     WorkHeaderButton(enabled, onInformation) {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.ListChecks,
                             contentDescription = null,
                             size = 16.dp,
-                            tint = GithubWorkColors.muted,
+                            tint = WorkColors.muted,
                         )
                         WorkHeaderText(
                             strings.TaskProgress(progress?.completed ?: 0, progress?.total ?: 0),
@@ -123,14 +123,14 @@ private fun WorkHeaderLabels(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     WorkHeaderButton(enabled, onClick) {
         if (labels.isEmpty()) {
-            GithubIcon(
+            AppIcon(
                 Lucide.Tag,
                 contentDescription = null,
                 size = 16.dp,
-                tint = GithubWorkColors.muted,
+                tint = WorkColors.muted,
             )
             WorkHeaderText(strings.NoLabels)
         } else {
@@ -140,7 +140,7 @@ private fun WorkHeaderLabels(
                     Box(
                         Modifier.zIndex(-index.toFloat())
                             .size(12.dp)
-                            .background(githubLabelColor(labels[index].color), CircleShape)
+                            .background(labelColor(labels[index].color), CircleShape)
                             .border(1.dp, outline, CircleShape),
                     )
                 }
@@ -158,11 +158,11 @@ private fun WorkHeaderProject(
     modifier: Modifier = Modifier,
 ) {
     WorkHeaderButton(enabled, onClick, modifier) {
-        GithubIcon(
+        AppIcon(
             Lucide.Package,
             contentDescription = null,
             size = 16.dp,
-            tint = GithubWorkColors.muted,
+            tint = WorkColors.muted,
         )
         WorkHeaderText(title, Modifier.weight(1f, fill = false))
     }
@@ -175,20 +175,20 @@ private fun WorkHeaderReviewers(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val reviewers = entry.requestedReviewers
     WorkHeaderButton(enabled, onClick, modifier) {
         if (reviewers.isEmpty()) {
-            GithubIcon(
+            AppIcon(
                 Lucide.UserRound,
                 contentDescription = null,
                 size = 16.dp,
-                tint = GithubWorkColors.muted,
+                tint = WorkColors.muted,
             )
             WorkHeaderText(strings.NoReviewRequests, Modifier.weight(1f, fill = false))
         } else {
             reviewers.take(3).forEachIndexed { index, login ->
-                GithubAvatar(
+                UserAvatar(
                     url = entry.requestedReviewerAvatars.getOrNull(index),
                     login = login,
                     size = 16.dp,
@@ -205,18 +205,18 @@ private fun WorkHeaderReviewers(
 @Composable
 private fun WorkHeaderChecks(entry: CollaborationItemDto, enabled: Boolean, onClick: () -> Unit) {
     val total = entry.requiredStatusCheckCount?.takeIf { it > 0 } ?: return
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val checks = entry.requiredStatusChecks
     val passed = checks.count { it.state == "SUCCESS" }
     val allPassed = passed == total && checks.size == total
     val color =
         when {
-            allPassed -> GithubWorkColors.open
-            checks.any { it.state == "FAILURE" || it.state == "ERROR" } -> GithubWorkColors.closed
+            allPassed -> WorkColors.open
+            checks.any { it.state == "FAILURE" || it.state == "ERROR" } -> WorkColors.closed
             checks.any {
                 it.state == "PENDING" || it.state == "EXPECTED" || it.state == "IN_PROGRESS"
-            } -> GithubWorkColors.draft
-            else -> GithubWorkColors.muted
+            } -> WorkColors.draft
+            else -> WorkColors.muted
         }
     val label =
         when {

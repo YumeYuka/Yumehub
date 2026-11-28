@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_TwoFactor(
+public data class TwoFactorStrings(
     val NotificationChannel: String,
     val NotificationTitle: String,
     val NotificationBody: String,
@@ -15,8 +15,8 @@ public data class GithubStrings_TwoFactor(
     val Reject: String,
 )
 
-internal val ZhHansTwoFactorStrings: GithubStrings_TwoFactor =
-    GithubStrings_TwoFactor(
+internal val ZhHansTwoFactorStrings: TwoFactorStrings =
+    TwoFactorStrings(
         NotificationChannel = "登录验证",
         NotificationTitle = "GitHub 登录验证请求",
         NotificationBody = "点按打开应用，确认是否为本人操作",
@@ -31,8 +31,8 @@ internal val ZhHansTwoFactorStrings: GithubStrings_TwoFactor =
         Reject = "拒绝",
     )
 
-internal val EnTwoFactorStrings: GithubStrings_TwoFactor =
-    GithubStrings_TwoFactor(
+internal val EnTwoFactorStrings: TwoFactorStrings =
+    TwoFactorStrings(
         NotificationChannel = "Login verification",
         NotificationTitle = "GitHub login verification request",
         NotificationBody = "Tap to open the app and confirm it is you",

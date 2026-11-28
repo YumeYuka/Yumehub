@@ -121,8 +121,8 @@ fun OrganizationRowPlaceholder(modifier: Modifier = Modifier) {
     }
 }
 
-/** README 请求阶段与正文首帧共用同形骨架，外壳由 `GithubReadingGroup` 提供。 */
+/** README 请求阶段与正文首帧共用同形骨架，外壳由 `ReadingGroup` 提供。 */
 @Composable
 fun ReadmePlaceholder(modifier: Modifier = Modifier) {
-    GithubMarkdownPlaceholder(modifier.padding(16.dp), compact = true)
+    MarkdownPlaceholder(modifier.padding(16.dp), compact = true)
 }

@@ -46,7 +46,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedTableFooter
@@ -64,11 +64,11 @@ import io.github.yumeyucca.lucide.X
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.yumeyuka.yumehub.locale.GithubStrings_Common
-import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
-import moe.yumeyuka.yumehub.ui.component.GithubEmojiChoiceCell
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+import moe.yumeyuka.yumehub.locale.CommonStrings
+import moe.yumeyuka.yumehub.locale.ProfileStrings
+import moe.yumeyuka.yumehub.ui.component.EmojiChoiceCell
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
 
@@ -77,8 +77,8 @@ private const val StatusMaxLength = 80
 @Composable
 internal fun ProfileStatusSheet(
     state: StatusEditorState?,
-    strings: GithubStrings_Profile,
-    common: GithubStrings_Common,
+    strings: ProfileStrings,
+    common: CommonStrings,
     onDismiss: () -> Unit,
     onEmojiChange: (String) -> Unit,
     onMessageChange: (String) -> Unit,
@@ -92,7 +92,7 @@ internal fun ProfileStatusSheet(
     LaunchedEffect(state) { if (state != null) displayed = state }
     val editor = state ?: displayed
     val sheetState = rememberGlasmioSheetState(skipPartiallyExpanded = true)
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.EditStatus,
@@ -102,13 +102,13 @@ internal fun ProfileStatusSheet(
                 title = strings.EditStatus,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
                     val canSave = editor?.canSave() == true
                     GlasmioIconButton(onClick = onSave, enabled = canSave) {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.Check,
                             contentDescription = strings.Save,
                             tint =
@@ -139,8 +139,8 @@ internal fun ProfileStatusSheet(
 @Composable
 private fun StatusEditorContent(
     editor: StatusEditorState,
-    strings: GithubStrings_Profile,
-    common: GithubStrings_Common,
+    strings: ProfileStrings,
+    common: CommonStrings,
     onEmojiChange: (String) -> Unit,
     onMessageChange: (String) -> Unit,
     onLimitedAvailabilityChange: (Boolean) -> Unit,
@@ -296,7 +296,7 @@ private data class StatusVisibility(val id: String?, val label: String)
 @Composable
 private fun VisibilityPicker(
     editor: StatusEditorState,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onOrganizationChange: (String?) -> Unit,
 ) {
     val options =
@@ -321,8 +321,8 @@ private fun VisibilityPicker(
 private fun EmojiPickerDialog(
     visible: Boolean,
     emoji: String,
-    strings: GithubStrings_Profile,
-    common: GithubStrings_Common,
+    strings: ProfileStrings,
+    common: CommonStrings,
     onEmojiChange: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -340,7 +340,7 @@ private fun EmojiPickerDialog(
                 Result.failure(error)
             }
     }
-    if (visible) GithubLoadFailureToast(catalog?.exceptionOrNull(), strings.EmojiLoadFailed)
+    if (visible) LoadFailureToast(catalog?.exceptionOrNull(), strings.EmojiLoadFailed)
     val selectedBackground = GlasmioTheme.colors.accent.copy(alpha = 0.18f)
     GlasmioAlertDialog(
         visible = visible,
@@ -363,7 +363,7 @@ private fun EmojiPickerDialog(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item {
-                GithubEmojiChoiceCell(
+                EmojiChoiceCell(
                     selected = emoji.isBlank(),
                     contentDescription = strings.NoEmoji,
                     selectedBackground = selectedBackground,
@@ -372,7 +372,7 @@ private fun EmojiPickerDialog(
                         onDismiss()
                     },
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.CircleSlash,
                         contentDescription = null,
                         size = 18.dp,
@@ -401,7 +401,7 @@ private fun EmojiPickerDialog(
                 }
                 items(category.emojis, key = { it }) { item ->
                     Box(Modifier.animateItem()) {
-                        GithubEmojiChoiceCell(
+                        EmojiChoiceCell(
                             selected = item == selectedEmoji,
                             contentDescription = item,
                             selectedBackground = selectedBackground,
@@ -438,7 +438,7 @@ private fun EmojiPickerButton(
         contentAlignment = Alignment.Center,
     ) {
         if (displayEmoji.isBlank()) {
-            GithubIcon(
+            AppIcon(
                 Lucide.FaceSlightlySmiling,
                 contentDescription = null,
                 size = 20.dp,
@@ -450,7 +450,7 @@ private fun EmojiPickerButton(
     }
 }
 
-private fun emojiCategoryLabel(category: String, strings: GithubStrings_Profile): String =
+private fun emojiCategoryLabel(category: String, strings: ProfileStrings): String =
     when (category) {
         "Smileys & Emotion" -> strings.EmojiCategorySmileys
         "People & Body" -> strings.EmojiCategoryPeople
@@ -464,7 +464,7 @@ private fun emojiCategoryLabel(category: String, strings: GithubStrings_Profile)
         else -> category
     }
 
-private fun expiryLabel(expiry: StatusExpiry, strings: GithubStrings_Profile): String =
+private fun expiryLabel(expiry: StatusExpiry, strings: ProfileStrings): String =
     when (expiry) {
         StatusExpiry.Never -> strings.Never
         StatusExpiry.ThirtyMinutes -> strings.Expiry30Minutes

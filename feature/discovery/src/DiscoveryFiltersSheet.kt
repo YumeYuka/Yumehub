@@ -10,7 +10,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.glasmioGroupedListBackground
 import moe.yumeyuka.yumehub.data.repository.TrendingPeriod
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
@@ -26,7 +26,7 @@ internal fun DiscoveryFiltersSheet(
     onDismiss: () -> Unit,
     onApply: (DiscoveryFilters) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val explore = strings.Explore
     val repos = strings.MyRepositories
     var draft by remember(visible) { mutableStateOf(filters) }
@@ -43,9 +43,9 @@ internal fun DiscoveryFiltersSheet(
         .filter { it.second.contains(needle, true) }
     val groups = if (trending) LanguageGroup.entries else listOf(LanguageGroup.Programming)
     if (visible && languages == LanguageState.Failed) {
-        GithubLoadFailureToast(Unit, strings.Activity.LoadFailed)
+        LoadFailureToast(Unit, strings.Activity.LoadFailed)
     }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = repos.Filter,
         placeholder = strings.Common.Search,
@@ -55,18 +55,18 @@ internal fun DiscoveryFiltersSheet(
         onConfirm = { onApply(draft) },
     ) {
         if (trending && periods.isNotEmpty()) item {
-            GithubSection(explore.Period) {
+            ListSection(explore.Period) {
                 periods.forEach { (value, title) ->
-                    GithubFilterChoiceRow(title, draft.trending.period == value) {
+                    FilterChoiceRow(title, draft.trending.period == value) {
                         draft = draft.copy(trending = draft.trending.copy(period = value))
                     }
                 }
             }
         }
         if (!trending && sorts.isNotEmpty()) item {
-            GithubSection(repos.Sort) {
+            ListSection(repos.Sort) {
                 sorts.forEach { (value, title) ->
-                    GithubFilterChoiceRow(title, draft.recentlyUpdated == value) {
+                    FilterChoiceRow(title, draft.recentlyUpdated == value) {
                         draft = draft.copy(recentlyUpdated = value)
                     }
                 }
@@ -100,7 +100,7 @@ internal fun DiscoveryFiltersSheet(
             if (choices.isEmpty()) continue
             hasMatches = true
             item(key = "${group.name}:header") {
-                GithubSectionHeader(title, Modifier.padding(bottom = 8.dp))
+                SectionHeader(title, Modifier.padding(bottom = 8.dp))
             }
             itemsIndexed(choices, key = { _, choice -> "${group.name}:${choice.first}" }) { index, (key, label) ->
                 val first = if (index == 0) 26.dp else 0.dp
@@ -115,7 +115,7 @@ internal fun DiscoveryFiltersSheet(
                 ) {
                     val value = key.ifEmpty { null }
                     val current = if (spoken) draft.trending.spokenLanguageCode else draft.trending.language
-                    GithubFilterChoiceRow(label, current == value, showTopSeparator = index > 0) {
+                    FilterChoiceRow(label, current == value, showTopSeparator = index > 0) {
                         draft = draft.copy(trending = if (spoken) draft.trending.copy(spokenLanguageCode = value)
                             else draft.trending.copy(language = value))
                     }

@@ -2,11 +2,11 @@ package moe.yumeyuka.yumehub.feature.home
 
 import androidx.compose.runtime.Composable
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.locale.GithubStrings_Home
-import moe.yumeyuka.yumehub.ui.component.GithubEntryIcon
-import moe.yumeyuka.yumehub.ui.theme.GithubHomeColors
+import moe.yumeyuka.yumehub.locale.HomeStrings
+import moe.yumeyuka.yumehub.ui.component.EntryIcon
+import moe.yumeyuka.yumehub.ui.theme.HomeColors
 
-internal fun HomeWorkItem.title(strings: GithubStrings_Home): String =
+internal fun HomeWorkItem.title(strings: HomeStrings): String =
     when (this) {
         HomeWorkItem.Issues -> strings.Issues
         HomeWorkItem.PullRequests -> strings.PullRequests
@@ -21,13 +21,13 @@ internal fun HomeWorkItem.title(strings: GithubStrings_Home): String =
 internal fun HomeWorkIcon(item: HomeWorkItem) {
     val background =
         when (item) {
-            HomeWorkItem.Issues -> GithubHomeColors.issues
-            HomeWorkItem.PullRequests -> GithubHomeColors.pullRequests
-            HomeWorkItem.Discussions -> GithubHomeColors.discussions
-            HomeWorkItem.Projects -> GithubHomeColors.projects
-            HomeWorkItem.Organizations -> GithubHomeColors.organizations
-            HomeWorkItem.Repositories -> GithubHomeColors.repositories
-            HomeWorkItem.Starred -> GithubHomeColors.starred
+            HomeWorkItem.Issues -> HomeColors.issues
+            HomeWorkItem.PullRequests -> HomeColors.pullRequests
+            HomeWorkItem.Discussions -> HomeColors.discussions
+            HomeWorkItem.Projects -> HomeColors.projects
+            HomeWorkItem.Organizations -> HomeColors.organizations
+            HomeWorkItem.Repositories -> HomeColors.repositories
+            HomeWorkItem.Starred -> HomeColors.starred
         }
     val icon =
         when (item) {
@@ -39,5 +39,5 @@ internal fun HomeWorkIcon(item: HomeWorkItem) {
             HomeWorkItem.Repositories -> Lucide.BookMarked
             HomeWorkItem.Starred -> Lucide.Star
         }
-    GithubEntryIcon(icon, background, filled = item == HomeWorkItem.Starred)
+    EntryIcon(icon, background, filled = item == HomeWorkItem.Starred)
 }

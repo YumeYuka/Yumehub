@@ -25,17 +25,17 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.yumeyucca.lucide.FaceSlightlySmiling
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.locale.ProfileStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
 
 @Composable
 internal fun ProfileHeader(
     profile: ProfileDto?,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onEditStatus: () -> Unit,
     onOpenFollowing: () -> Unit,
     showEditStatus: Boolean = true,
@@ -55,7 +55,7 @@ internal fun ProfileHeader(
     ) {
         Box(Modifier.size(100.dp)) {
             val avatarUrl = profile?.avatarUrl?.takeIf { it.isNotBlank() } ?: fallbackAvatarUrl
-            GithubAvatar(
+            UserAvatar(
                 avatarUrl,
                 profile?.login ?: fallbackName,
                 type = avatarType,
@@ -63,7 +63,7 @@ internal fun ProfileHeader(
                 placeholder = { AvatarPlaceholder(100.dp, type = avatarType) },
             )
         }
-        GithubLoadingContent(
+        LoadingContent(
             loading = profile == null && fallbackName == null,
             modifier = Modifier.fillMaxWidth().height(28.dp),
             placeholder = {
@@ -107,7 +107,7 @@ internal fun ProfileHeader(
                         if (emoji.isNotBlank()) {
                             Text(emoji, style = GlasmioTheme.textStyles.body.copy(fontSize = 18.sp))
                         } else {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.FaceSlightlySmiling,
                                 contentDescription = null,
                                 size = 20.dp,
@@ -117,7 +117,7 @@ internal fun ProfileHeader(
             }
         }
         if (!organization && (profile == null || profile.audienceResolved))
-            GithubLoadingContent(
+            LoadingContent(
                 loading = profile?.audienceResolved != true,
                 modifier = Modifier.fillMaxWidth().height(18.dp),
                 placeholder = {

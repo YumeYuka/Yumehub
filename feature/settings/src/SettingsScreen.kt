@@ -37,10 +37,10 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.DefaultAccentColorArgb
 import moe.yumeyuka.yumehub.data.storage.mmkv.MaxPredictiveBackProgress
 import moe.yumeyuka.yumehub.data.storage.mmkv.MinPredictiveBackProgress
 import moe.yumeyuka.yumehub.data.storage.mmkv.ThemeMode
-import moe.yumeyuka.yumehub.locale.GithubStrings_Settings
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.SettingsStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
 internal fun LazyListScope.SettingsContent(
@@ -59,12 +59,12 @@ internal fun LazyListScope.SettingsContent(
 @Composable
 private fun AppearanceSection(viewModel: SettingsPageViewModel) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.Settings
-    GithubSection(strings.Appearance) {
+    val strings = LocalAppStrings.current.Settings
+    ListSection(strings.Appearance) {
         AppLanguageRow()
         GlasmioListRow(
             title = strings.Theme,
-            leading = { GithubIcon(themeMode.icon(), contentDescription = null) },
+            leading = { AppIcon(themeMode.icon(), contentDescription = null) },
             trailing = {
                 SettingsPopUpButton(
                     selected = themeMode,
@@ -77,7 +77,7 @@ private fun AppearanceSection(viewModel: SettingsPageViewModel) {
     }
 }
 
-private fun ThemeMode.label(strings: GithubStrings_Settings): String =
+private fun ThemeMode.label(strings: SettingsStrings): String =
     when (this) {
         ThemeMode.System -> strings.System
         ThemeMode.Light -> strings.Light
@@ -94,12 +94,12 @@ private fun ThemeMode.icon(): ImageVector =
 @Composable
 private fun AccentSection(viewModel: SettingsPageViewModel, onShowPicker: () -> Unit) {
     val accentArgb by viewModel.accentColor.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
 
-    GithubSection(strings.Accent) {
+    ListSection(strings.Accent) {
         GlasmioListRow(
             title = strings.Accent,
-            leading = { GithubIcon(Lucide.Palette, contentDescription = null) },
+            leading = { AppIcon(Lucide.Palette, contentDescription = null) },
             trailing = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -156,7 +156,7 @@ internal fun SettingsDialogs(
     onDismiss: () -> Unit,
 ) {
     val accentArgb by viewModel.accentColor.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
     GlasmioColorPicker(
         visible = showAccentPicker,
         selectedColor = Color(accentArgb),
@@ -178,12 +178,12 @@ private fun InterfaceSection(viewModel: SettingsPageViewModel) {
     val liquidGlassEnabled by viewModel.liquidGlassEnabled.collectAsStateWithLifecycle()
     val reduceTransparency by viewModel.reduceTransparency.collectAsStateWithLifecycle()
     val topBarBlurEnabled by viewModel.topBarBlurEnabled.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
     val keepBottomBarExpanded by viewModel.keepBottomBarExpanded.collectAsStateWithLifecycle()
     val glassHdrEnabled by viewModel.glassHdrEnabled.collectAsStateWithLifecycle()
     val accent = GlasmioTheme.colors.accent
 
-    GithubSection(strings.Interface) {
+    ListSection(strings.Interface) {
         ToggleRow(
             title = strings.PinBottomBar,
             subtitle = strings.PinBottomBarHint,
@@ -237,9 +237,9 @@ private fun NavigationSection(viewModel: SettingsPageViewModel) {
     val predictiveBackEnabled by viewModel.predictiveBackEnabled.collectAsStateWithLifecycle()
     val progress by viewModel.predictiveBackMaxProgress.collectAsStateWithLifecycle()
     val accent = GlasmioTheme.colors.accent
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
 
-    GithubSection(strings.Navigation) {
+    ListSection(strings.Navigation) {
         ToggleRow(
             title = strings.PredictiveBack,
             subtitle = strings.NextLaunch,
@@ -258,9 +258,9 @@ private fun NavigationSection(viewModel: SettingsPageViewModel) {
 @Composable
 private fun DiagnosticsSection(viewModel: SettingsPageViewModel) {
     val fpsCounter by viewModel.fpsCounter.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.Settings
+    val strings = LocalAppStrings.current.Settings
 
-    GithubSection(strings.Diagnostics) {
+    ListSection(strings.Diagnostics) {
         ToggleRow(
             title = strings.Fps,
             subtitle = strings.FpsHint,
@@ -281,7 +281,7 @@ private fun PredictiveBackProgressRow(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = LocalGithubStrings.current.Settings.BackProgress,
+                text = LocalAppStrings.current.Settings.BackProgress,
                 style = GlasmioTheme.textStyles.body,
                 color = GlasmioTheme.colors.content,
                 modifier = Modifier.weight(1f),
@@ -317,7 +317,7 @@ internal fun ToggleRow(
         subtitle = subtitle,
         leading =
             if (icon != null) {
-                { GithubIcon(icon, contentDescription = title) }
+                { AppIcon(icon, contentDescription = title) }
             } else {
                 null
             },

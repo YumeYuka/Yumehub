@@ -1,8 +1,8 @@
 package moe.yumeyuka.yumehub.feature.workspaces
 
 import androidx.compose.runtime.Composable
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubChoiceSheet
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.ChoiceSheet
 
 @Composable
 internal fun WorkspaceBranchSheet(
@@ -15,8 +15,8 @@ internal fun WorkspaceBranchSheet(
     onQueryChange: (String) -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Workspaces
-    GithubChoiceSheet(
+    val strings = LocalAppStrings.current.Workspaces
+    ChoiceSheet(
         visible,
         strings.Branches,
         strings.BranchSearchPlaceholder,

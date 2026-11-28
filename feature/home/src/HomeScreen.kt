@@ -5,12 +5,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.key
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
-import moe.yumeyuka.yumehub.locale.GithubStrings_Home
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.HomeStrings
+import moe.yumeyuka.yumehub.ui.component.ListSection
 
 internal fun LazyListScope.HomeScreen(
     items: List<HomeWorkItem>,
-    strings: GithubStrings_Home,
+    strings: HomeStrings,
     onEdit: () -> Unit,
     onOpenRepositories: () -> Unit,
     onOpenWork: (CollaborationKind) -> Unit,
@@ -20,7 +20,7 @@ internal fun LazyListScope.HomeScreen(
     onOpenDiscussions: () -> Unit,
 ) {
     item(key = "home-repositories") {
-        GithubSection(title = strings.MyWork) {
+        ListSection(title = strings.MyWork) {
             Column {
                 if (items.isEmpty()) {
                     GlasmioListRow(

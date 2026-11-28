@@ -16,10 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -32,15 +29,16 @@ import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.PendingMutationSummary
-import moe.yumeyuka.yumehub.locale.GithubStrings
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.AppStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.component.RepositoryRow
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -68,12 +66,12 @@ fun HomePage(
     val recoveryFailed by viewModel.recoveryFailed.collectAsStateWithLifecycle()
     var pendingSheetVisible by remember { mutableStateOf(false) }
     var acknowledgeCandidate by remember { mutableStateOf<PendingMutationSummary?>(null) }
-    GithubRefreshEffect(viewModel, DataDomain.Repositories, onRefresh = viewModel::refresh)
+    PageRefreshEffect(viewModel, DataDomain.Repositories, onRefresh = viewModel::refresh)
     val work: HomeWorkViewModel = koinViewModel()
     val currentLayout by work.layout.collectAsStateWithLifecycle()
     var draftOrder by rememberSaveable(login) { mutableStateOf(emptyList<String>()) }
     val workDraft = remember(draftOrder) { HomeWorkLayout.decode(draftOrder, emptyList()) }
-    val allStrings = LocalGithubStrings.current
+    val allStrings = LocalAppStrings.current
     val strings = allStrings.Home
     val common = allStrings.Common
     val profileTitle = allStrings.Profile.Title
@@ -83,12 +81,12 @@ fun HomePage(
         draftOrder = currentLayout.encode()
         editingWork = true
     }
-    GithubPage(
+    AppPage(
         title = strings.Title,
         back = false,
         actions = {
-            val searchLabel = LocalGithubStrings.current.Common.Search
-            moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+            val searchLabel = LocalAppStrings.current.Common.Search
+            moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                 moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                     Lucide.Search,
                     searchLabel,
@@ -145,7 +143,7 @@ fun HomePage(
             }
         }
         item(key = "home-favorites") {
-            GithubSection(strings.Favorites) {
+            ListSection(strings.Favorites) {
                 if (state == HomeFavoritesState.Error || favorites?.refreshFailed == true) {
                     GlasmioListRow(
                         title = strings.FavoritesLoadFailed,
@@ -153,11 +151,11 @@ fun HomePage(
                         onClick = viewModel::retry,
                     )
                 }
-                GithubLoadingContent(
+                LoadingContent(
                     loading = state == HomeFavoritesState.Loading,
                     placeholder = { ListRowPlaceholder() },
                 ) {
-                    if (favorites == null) return@GithubLoadingContent
+                    if (favorites == null) return@LoadingContent
                     if (favorites.repositories.isEmpty()) {
                         GlasmioListRow(
                             title = strings.NoFavorites,
@@ -200,27 +198,12 @@ fun HomePage(
         onAcknowledge = { acknowledgeCandidate = it },
     )
     acknowledgeCandidate?.let { candidate ->
-        GlasmioAlertDialog(
-            visible = true,
-            title = common.MutationUncertain,
-            message = common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        common.Cancel,
-                        onClick = { acknowledgeCandidate = null },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeCandidate = null
-                            viewModel.acknowledgeMutation(candidate.operationId)
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeCandidate = null },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeCandidate = null },
+            onAcknowledge = {
+                acknowledgeCandidate = null
+                viewModel.acknowledgeMutation(candidate.operationId)
+            },
         )
     }
 }
@@ -229,7 +212,7 @@ fun HomePage(
 private fun PendingMutationsSheet(
     visible: Boolean,
     pending: List<PendingMutationSummary>,
-    allStrings: GithubStrings,
+    allStrings: AppStrings,
     onDismiss: () -> Unit,
     onAcknowledge: (PendingMutationSummary) -> Unit,
 ) {
@@ -237,7 +220,7 @@ private fun PendingMutationsSheet(
     val context = LocalContext.current
     val timeFormat =
         remember(context) { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         fitContent = true,
@@ -247,7 +230,7 @@ private fun PendingMutationsSheet(
                 title = common.MutationUncertain,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
             )
@@ -281,7 +264,7 @@ private fun PendingMutationsSheet(
     }
 }
 
-private fun mutationKindLabel(kind: MutationKind, strings: GithubStrings): String =
+private fun mutationKindLabel(kind: MutationKind, strings: AppStrings): String =
     when (kind) {
         MutationKind.STAR -> strings.Repository.Star
         MutationKind.FOLLOW -> strings.Profile.FollowUser

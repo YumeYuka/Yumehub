@@ -8,12 +8,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RotateCcw
 import io.github.yumeyucca.lucide.X
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun WorkflowRerunSheet(
@@ -23,12 +24,12 @@ internal fun WorkflowRerunSheet(
     onRerun: (debug: Boolean) -> Unit,
     onAcknowledgeUncertain: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val activity = strings.Activity
     var debug by remember { mutableStateOf(false) }
     var acknowledgeVisible by remember { mutableStateOf(false) }
     val sheet = rememberGlasmioSheetState(skipPartiallyExpanded = true)
-    GithubBottomSheet(
+    AppBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheet,
         fitContent = true,
@@ -40,7 +41,7 @@ internal fun WorkflowRerunSheet(
                 title = activity.RerunFailed,
                 navigation = {
                     GlasmioIconButton(onClick = onClose) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
@@ -48,7 +49,7 @@ internal fun WorkflowRerunSheet(
                         enabled = !busy && !uncertain,
                         onClick = { onRerun(debug) },
                     ) {
-                        GithubIcon(Lucide.RotateCcw, contentDescription = activity.Rerun)
+                        AppIcon(Lucide.RotateCcw, contentDescription = activity.Rerun)
                     }
                 },
             )
@@ -91,27 +92,12 @@ internal fun WorkflowRerunSheet(
         }
     }
     if (acknowledgeVisible && uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = strings.Common.MutationUncertain,
-            message = strings.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        strings.Common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        strings.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            onAcknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                onAcknowledgeUncertain()
+            },
         )
     }
 }

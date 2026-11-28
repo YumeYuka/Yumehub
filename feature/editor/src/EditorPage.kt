@@ -23,29 +23,29 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubCodeTextEditor
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.CodeTextEditor
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReadingTextPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
-import moe.yumeyuka.yumehub.ui.navigation.GithubFileReadStatus
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorBackdropSource
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorContentInsets
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorHeaderHeight
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.EditorSessionKind
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorFileReadStatus
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.LocalEditorBackdropSource
+import moe.yumeyuka.yumehub.ui.navigation.LocalEditorContentInsets
+import moe.yumeyuka.yumehub.ui.navigation.LocalEditorHeaderHeight
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 @Composable
-fun EditorPage(session: GithubEditorSession) {
+fun EditorPage(session: EditorSession) {
     key(session) { EditorSessionPage(session) }
 }
 
 @Composable
-private fun EditorSessionPage(session: GithubEditorSession) {
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val commonStrings = LocalGithubStrings.current.Common
+private fun EditorSessionPage(session: EditorSession) {
+    val host = requireNotNull(LocalAppPageHost.current)
+    val commonStrings = LocalAppStrings.current.Common
     val markdown = session.markdownState
     var searching by remember(session) { mutableStateOf(false) }
     val search = rememberEditorSearchState(session, searching)
@@ -58,17 +58,17 @@ private fun EditorSessionPage(session: GithubEditorSession) {
     val fileReadStatus = session.fileReadStatus
     val fileReady = fileReadStatus == null
     val enabled = fileReady && session.editable && !session.submitting && !session.closeRequested
-    GithubLoadFailureToast(session.error, session.error.orEmpty())
+    LoadFailureToast(session.error, session.error.orEmpty())
 
     LaunchedEffect(session.closeRequested, session.submitting, host.backEnabled) {
         if (session.closeRequested && !session.submitting && host.backEnabled) host.onBack()
     }
 
-    GithubPage(
+    AppPage(
         title = session.title.ifBlank { commonStrings.Edit },
         locked = session.submitting,
         editorTitle =
-            if (session.kind == GithubEditorKind.Code) {
+            if (session.kind == EditorSessionKind.Code) {
                 { EditorFileTitle(session) }
             } else null,
         actions = {
@@ -78,7 +78,7 @@ private fun EditorSessionPage(session: GithubEditorSession) {
             )
         },
         editorContent = {
-            val contentInsets = LocalGithubEditorContentInsets.current
+            val contentInsets = LocalEditorContentInsets.current
             val hasHeaderContent = session.headerContent != null
             val density = LocalDensity.current
             var searchHeight by remember(session) { mutableIntStateOf(0) }
@@ -88,12 +88,12 @@ private fun EditorSessionPage(session: GithubEditorSession) {
                     Modifier.fillMaxSize()
                         .then(
                             if (hasHeaderContent)
-                                Modifier.padding(top = LocalGithubEditorHeaderHeight.current)
+                                Modifier.padding(top = LocalEditorHeaderHeight.current)
                             else Modifier,
                         ),
                 ) {
                     CompositionLocalProvider(
-                        LocalGithubEditorContentInsets provides
+                        LocalEditorContentInsets provides
                             PaddingValues(
                                 top =
                                     if (hasHeaderContent) 0.dp
@@ -104,22 +104,22 @@ private fun EditorSessionPage(session: GithubEditorSession) {
                     ) {
                         session.headerContent?.invoke()
                         when (session.kind) {
-                            GithubEditorKind.Markdown ->
+                            EditorSessionKind.Markdown ->
                                 EditorMarkdownContent(
                                     session = session,
                                     state = markdown,
                                     fileReadStatus = fileReadStatus,
                                     modifier = Modifier.weight(1f).fillMaxWidth(),
                                 )
-                            GithubEditorKind.Code -> {
+                            EditorSessionKind.Code -> {
                                 EditorFileReadContent(
                                     status = fileReadStatus,
                                     modifier =
                                         Modifier.weight(1f)
                                             .fillMaxSize()
-                                            .then(LocalGithubEditorBackdropSource.current),
+                                            .then(LocalEditorBackdropSource.current),
                                 ) {
-                                    GithubCodeTextEditor(
+                                    CodeTextEditor(
                                         source = session.source,
                                         onSourceChange = session::changeSource,
                                         modifier = Modifier.fillMaxSize(),
@@ -139,7 +139,7 @@ private fun EditorSessionPage(session: GithubEditorSession) {
                         }
                     }
                 }
-                if (fileReady && session.kind == GithubEditorKind.Code && searching) {
+                if (fileReady && session.kind == EditorSessionKind.Code && searching) {
                     EditorTextSearch(
                         session = session,
                         search = search,
@@ -158,31 +158,31 @@ private fun EditorSessionPage(session: GithubEditorSession) {
 
 @Composable
 internal fun EditorFileReadContent(
-    status: GithubFileReadStatus?,
+    status: EditorFileReadStatus?,
     modifier: Modifier = Modifier,
     showEditor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val contentInsets = LocalGithubEditorContentInsets.current
-    GithubLoadingContent(
-        loading = status == GithubFileReadStatus.Loading,
+    val contentInsets = LocalEditorContentInsets.current
+    LoadingContent(
+        loading = status == EditorFileReadStatus.Loading,
         modifier = modifier,
         placeholder = { ReadingTextPlaceholder(Modifier.padding(contentInsets).padding(16.dp)) },
     ) {
         when (status) {
-            is GithubFileReadStatus.Failed -> {
+            is EditorFileReadStatus.Failed -> {
                 GlasmioGroupedList(Modifier.padding(contentInsets).padding(16.dp)) {
                     GlasmioListRow(title = status.message, systemName = null)
                     status.retry?.let { retry ->
                         GlasmioListRow(
-                            title = LocalGithubStrings.current.Common.Retry,
+                            title = LocalAppStrings.current.Common.Retry,
                             onClick = retry,
                         )
                     }
                 }
             }
             null -> if (showEditor) content() else Unit
-            GithubFileReadStatus.Loading -> Unit
+            EditorFileReadStatus.Loading -> Unit
         }
     }
 }

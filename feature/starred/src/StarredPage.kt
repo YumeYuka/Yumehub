@@ -18,24 +18,24 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Search
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.PageSearchLayout
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /** 已加星标页面的路由键。 */
-data object StarredRoute : GithubRoute
+data object StarredRoute : AppRoute
 
 @Composable
 fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val viewModel: StarredRepositoriesViewModel =
         koinViewModel(parameters = { parametersOf(login) })
     val lists by viewModel.lists.collectAsStateWithLifecycle()
@@ -69,11 +69,11 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         delay(200)
         viewModel.search(searchInput.text)
     }
-    GithubBackHandler(
+    AppBackHandler(
         enabled = searchVisible && !listsExpanded && !creation.visible,
         onBack = dismissSearch,
     )
-    GithubPageSearchLayout(
+    PageSearchLayout(
         searchVisible,
         searchInput,
         { searchInput = it },
@@ -81,7 +81,7 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         dismissSearch,
         strings.Profile.SearchStarred,
     ) {
-        GithubPagingContent(
+        PagingContent(
             source =
                 remember(viewModel, selectedList, search) {
                     viewModel.repositoriesFor(search, selectedList)
@@ -96,7 +96,7 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
         ) { paging ->
             val repositories = paging.items
             val slots =
-                rememberGithubPagingSlots(repositories, "starred", paging.initialLoading) {
+                rememberPagingSlots(repositories, "starred", paging.initialLoading) {
                     it.id?.toString() ?: it.fullName
                 }
             val loaded = slots.snapshot
@@ -119,12 +119,12 @@ fun StarredPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
                         }
                     }
                 }
-            GithubPage(
+            AppPage(
                 title = selectedList?.name ?: strings.Profile.Starred,
                 listState = paging.listState,
                 itemSpacing = 12.dp,
                 actions = {
-                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                    moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                         moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                             Lucide.Search,
                             strings.Profile.SearchStarred,

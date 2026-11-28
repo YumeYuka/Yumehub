@@ -6,19 +6,19 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownRenderer
+import moe.yumeyuka.yumehub.ui.component.MarkdownActions
+import moe.yumeyuka.yumehub.ui.component.MarkdownContent
+import moe.yumeyuka.yumehub.ui.component.MarkdownRenderer
 import org.koin.compose.koinInject
 
-val officialGithubMarkdownRenderer: GithubMarkdownRenderer = OfficialGithubMarkdownRenderer
+val officialGithubMarkdownRenderer: MarkdownRenderer = OfficialGithubMarkdownRenderer
 
-internal object OfficialGithubMarkdownRenderer : GithubMarkdownRenderer {
+internal object OfficialGithubMarkdownRenderer : MarkdownRenderer {
     @Composable
     override fun Render(
-        content: GithubMarkdownContent,
+        content: MarkdownContent,
         modifier: Modifier,
-        actions: GithubMarkdownActions,
+        actions: MarkdownActions,
     ) {
         val repository: GithubMarkdownRepository = koinInject()
         val session = rememberMarkdownSession(repository)
@@ -41,11 +41,11 @@ internal object OfficialGithubMarkdownRenderer : GithubMarkdownRenderer {
 
     @Composable
     override fun Preview(
-        content: GithubMarkdownContent,
+        content: MarkdownContent,
         visible: Boolean,
         contentPadding: PaddingValues,
         modifier: Modifier,
-        actions: GithubMarkdownActions,
+        actions: MarkdownActions,
     ) {
         val repository: GithubMarkdownRepository = koinInject()
         val session = rememberMarkdownSession(repository)
@@ -75,7 +75,7 @@ internal fun MarkdownWebDocument(
     state: NativeMarkdownDocumentState,
     document: NativeMarkdownDocument,
     modifier: Modifier,
-    actions: GithubMarkdownActions,
+    actions: MarkdownActions,
     isCurrentAccount: () -> Boolean,
     presentation: MarkdownPresentation?,
     initialHeightPx: Int,
@@ -106,7 +106,7 @@ internal fun MarkdownWebDocument(
         presentation = presentation,
         initialHeightPx = initialHeightPx,
         actions =
-            GithubMarkdownActions(
+            MarkdownActions(
                 onOpenLink = binding.actions.onOpenLink,
                 onTaskChanged =
                     actions.onTaskChanged?.let {

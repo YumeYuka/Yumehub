@@ -10,12 +10,11 @@ import cafe.adriel.lyricist.rememberStrings
 import java.util.Locale
 
 /** Compose entry point: read the tree from the composition, not through per-string getters. */
-public val LocalGithubStrings: ProvidableCompositionLocal<GithubStrings> =
-    staticCompositionLocalOf {
-        ZhHansStrings
-    }
+public val LocalAppStrings: ProvidableCompositionLocal<AppStrings> = staticCompositionLocalOf {
+    ZhHansStrings
+}
 
-private val stringsByTag: Map<String, GithubStrings> =
+private val stringsByTag: Map<String, AppStrings> =
     mapOf(
         "zh" to ZhHansStrings,
         "zh-cn" to ZhHansStrings,
@@ -24,18 +23,17 @@ private val stringsByTag: Map<String, GithubStrings> =
         "en" to EnStrings,
     )
 
-public fun stringsFor(languageTag: String): GithubStrings {
+public fun stringsFor(languageTag: String): AppStrings {
     val lower = languageTag.lowercase()
     return stringsByTag[lower] ?: stringsByTag[lower.substringBefore('-')] ?: ZhHansStrings
 }
 
-public object GithubLocaleManager {
+public object AppLocaleManager {
     @Volatile
-    public var activeStrings: GithubStrings = stringsFor(Locale.getDefault().toLanguageTag())
+    public var activeStrings: AppStrings = stringsFor(Locale.getDefault().toLanguageTag())
         private set
 
-    private val languageTagState =
-        mutableStateOf(Locale.getDefault().toLanguageTag().lowercase())
+    private val languageTagState = mutableStateOf(Locale.getDefault().toLanguageTag().lowercase())
 
     public val currentLanguageTag: String
         get() = languageTagState.value
@@ -48,21 +46,21 @@ public object GithubLocaleManager {
 }
 
 /** Non-composable entry point for notifications, view models and other background code. */
-public object GithubTxt {
-    public val current: GithubStrings
-        get() = GithubLocaleManager.activeStrings
+public object CurrentAppStrings {
+    public val current: AppStrings
+        get() = AppLocaleManager.activeStrings
 }
 
 @Composable
-public fun rememberGithubStrings(
+public fun rememberAppStrings(
     defaultLanguageTag: String = "zh-cn",
-    currentLanguageTag: String = GithubLocaleManager.currentLanguageTag,
-): Lyricist<GithubStrings> = rememberStrings(stringsByTag, defaultLanguageTag, currentLanguageTag)
+    currentLanguageTag: String = AppLocaleManager.currentLanguageTag,
+): Lyricist<AppStrings> = rememberStrings(stringsByTag, defaultLanguageTag, currentLanguageTag)
 
 @Composable
-public fun ProvideGithubStrings(
-    lyricist: Lyricist<GithubStrings> = rememberGithubStrings(),
+public fun ProvideAppStrings(
+    lyricist: Lyricist<AppStrings> = rememberAppStrings(),
     content: @Composable () -> Unit,
 ) {
-    ProvideStrings(lyricist, LocalGithubStrings, content)
+    ProvideStrings(lyricist, LocalAppStrings, content)
 }

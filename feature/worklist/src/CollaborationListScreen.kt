@@ -7,17 +7,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.repository.WorkCardContent
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.GithubWorkItemCard
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.PagingSlots
+import moe.yumeyuka.yumehub.ui.component.WorkItemCard
+import moe.yumeyuka.yumehub.ui.component.pagingItems
 
 internal fun LazyListScope.CollaborationListScreen(
     kind: CollaborationKind,
-    slots: GithubPagingSlots<CollaborationItemDto>,
+    slots: PagingSlots<CollaborationItemDto>,
     onOpenItem: (Int, String?) -> Unit,
     card: (CollaborationItemDto) -> WorkCardContent,
 ) {
-    githubPagingItems(
+    pagingItems(
         slots,
         contentType = "work-card",
     ) { entry ->
@@ -27,7 +27,7 @@ internal fun LazyListScope.CollaborationListScreen(
                 content.updates.collectAsStateWithLifecycle(content.initial).value
             }
         }
-        GithubWorkItemCard(
+        WorkItemCard(
             rich,
             kind,
             onClick = entry?.let { { onOpenItem(it.number, rich?.title) } },

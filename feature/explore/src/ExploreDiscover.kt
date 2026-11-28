@@ -12,9 +12,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.theme.AccentPalette
 
 @Composable
@@ -22,8 +22,8 @@ internal fun ExploreDiscoverSection(
     onOpenTrending: () -> Unit,
     onOpenFeatured: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Explore
-    GithubSection(strings.Discover) {
+    val strings = LocalAppStrings.current.Explore
+    ListSection(strings.Discover) {
         GlasmioListRow(
             title = strings.Trending,
             leading = { DiscoverIcon(Lucide.Flame, AccentPalette[4]) },
@@ -45,6 +45,6 @@ private fun DiscoverIcon(imageVector: ImageVector, color: Color) {
         modifier = Modifier.size(28.dp).background(color, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        GithubIcon(imageVector, contentDescription = null, size = 16.dp, tint = Color.White)
+        AppIcon(imageVector, contentDescription = null, size = 16.dp, tint = Color.White)
     }
 }

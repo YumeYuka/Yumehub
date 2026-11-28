@@ -8,17 +8,17 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.repository.WorkCardContent
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.WorkTarget
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.GithubWorkItemCard
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.PagingSlots
+import moe.yumeyuka.yumehub.ui.component.WorkItemCard
+import moe.yumeyuka.yumehub.ui.component.pagingItems
 
 internal fun LazyListScope.IssueSearchScreen(
     kind: CollaborationKind,
-    slots: GithubPagingSlots<WorkItem>,
+    slots: PagingSlots<WorkItem>,
     onOpenItem: (WorkTarget) -> Unit,
     card: (CollaborationItemDto) -> WorkCardContent,
 ) {
-    githubPagingItems(
+    pagingItems(
         slots,
         contentType = "work",
     ) { entry ->
@@ -28,6 +28,6 @@ internal fun LazyListScope.IssueSearchScreen(
                 content.updates.collectAsStateWithLifecycle(content.initial).value
             }
         }
-        GithubWorkItemCard(rich, kind, onClick = entry?.let { { onOpenItem(it.target) } })
+        WorkItemCard(rich, kind, onClick = entry?.let { { onOpenItem(it.target) } })
     }
 }

@@ -41,23 +41,23 @@ import java.time.Instant
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.WorkspaceCommit
 import moe.yumeyuka.yumehub.data.repository.WorkspaceEntry
-import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.WorkspacesStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.ui.component.CommitSummary
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspacePlaceholderRow
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageState
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -67,7 +67,7 @@ fun WorkspacesPage(
     route: WorkspacesRoute,
     onOpenCommitHistory: (String) -> Unit,
 ) {
-    val locale = LocalGithubStrings.current
+    val locale = LocalAppStrings.current
     val strings = locale.Workspaces
     val viewModel: WorkspacesViewModel =
         koinViewModel(
@@ -75,15 +75,15 @@ fun WorkspacesPage(
             parameters = { parametersOf(route) },
         )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Content,
         refreshOnFirstActivation = false,
         onRefresh = viewModel::refresh,
     )
     val branches by viewModel.branches.uiState.collectAsStateWithLifecycle()
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val open = moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler()
+    val host = requireNotNull(LocalAppPageHost.current)
+    val open = moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler()
     val openExternal = rememberExternalUriHandler()
     val context = LocalContext.current
     val latestStrings by rememberUpdatedState(strings)
@@ -116,9 +116,9 @@ fun WorkspacesPage(
         }
     }
     if (state.path.isNotEmpty()) {
-        GithubBackHandler { if (host.navigationEnabled) viewModel.navigateUp() }
+        AppBackHandler { if (host.navigationEnabled) viewModel.navigateUp() }
     }
-    GithubPage(
+    AppPage(
         title = strings.Title,
         onBack = { if (!viewModel.navigateUp()) host.onBack() },
         itemSpacing = 0.dp,
@@ -128,7 +128,7 @@ fun WorkspacesPage(
                     (state.repository is WorkspacesLoad.Error ||
                         state.entries is WorkspacesLoad.Error)
             val canBrowse = host.navigationEnabled && state.ref != null
-            GithubToolbarActions(
+            ToolbarActions(
                 if (failed)
                     toolbarIcon(
                         Lucide.RefreshCw,
@@ -197,7 +197,7 @@ fun WorkspacesPage(
 
 private fun LazyListScope.workspacesScreen(
     state: WorkspacesUiState,
-    strings: GithubStrings_Workspaces,
+    strings: WorkspacesStrings,
     enabled: Boolean,
     branchEpoch: Int,
     onRetryEntries: () -> Unit,
@@ -258,7 +258,7 @@ private fun LazyListScope.workspacesScreen(
                         },
                     ) {
                         if (ready != null && ready.value.isNotEmpty()) {
-                            val scroll = LocalGithubPageState.current
+                            val scroll = LocalAppPageState.current
                                 ?.listState("workspaces-tree:${state.ref}:${state.path}")
                                 ?: rememberLazyListState()
                             LazyColumn(Modifier.heightIn(max = viewportHeight), state = scroll) {
@@ -276,7 +276,7 @@ private fun LazyListScope.workspacesScreen(
                                 }
                             }
                         } else if (ready != null && directoryError == null) {
-                            GithubEmptyState(scene = EmptyScene.Inbox, title = strings.Empty)
+                            EmptyState(scene = EmptyScene.Inbox, title = strings.Empty)
                         }
                     }
                 }
@@ -288,7 +288,7 @@ private fun LazyListScope.workspacesScreen(
 @Composable
 private fun CommitBlock(
     state: WorkspacesUiState,
-    strings: GithubStrings_Workspaces,
+    strings: WorkspacesStrings,
     enabled: Boolean,
     onRetry: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -318,7 +318,7 @@ private fun CommitBlock(
 internal fun WorkspaceRetryRow(message: String, onRetry: () -> Unit) {
     GlasmioListRow(
         title = message,
-        detail = LocalGithubStrings.current.Common.Retry,
+        detail = LocalAppStrings.current.Common.Retry,
         onClick = onRetry,
     )
 }
@@ -326,7 +326,7 @@ internal fun WorkspaceRetryRow(message: String, onRetry: () -> Unit) {
 @Composable
 internal fun WorkspaceCommitCard(
     commit: WorkspaceCommit?,
-    strings: GithubStrings_Workspaces,
+    strings: WorkspacesStrings,
     onClick: (() -> Unit)? = null,
 ) {
     val author =
@@ -334,7 +334,7 @@ internal fun WorkspaceCommitCard(
             ?: commit?.authorName?.takeIf(String::isNotBlank)
             ?: strings.UnknownAuthor
     val time = workspaceRelativeTime(commit?.committedDate, strings)
-    GithubCommitSummary(
+    CommitSummary(
         message = commit?.message?.takeIf(String::isNotBlank) ?: strings.NoCommit,
         author = author,
         avatarUrl = commit?.avatarUrl,
@@ -356,7 +356,7 @@ private fun WorkspaceRow(
         detail = updatedAt,
         systemName = null,
         leading = {
-            GithubIcon(
+            AppIcon(
                 if (entry.directory) Lucide.Folder else Lucide.File,
                 contentDescription = null,
                 size = 20.dp,
@@ -372,7 +372,7 @@ private fun WorkspaceRow(
 
 private fun workspaceRelativeTime(
     value: String?,
-    strings: GithubStrings_Workspaces,
+    strings: WorkspacesStrings,
     now: Instant = Instant.now(),
 ): String? {
     val instant = value?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null

@@ -10,11 +10,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
-import moe.yumeyuka.yumehub.locale.GithubStrings_Explore
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.ExploreStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.FilterChoiceRow
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.ListSection
 
 @Composable
 internal fun ExploreFiltersSheet(
@@ -23,7 +23,7 @@ internal fun ExploreFiltersSheet(
     onDismiss: () -> Unit,
     onApply: (FeedOptions) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val explore = strings.Explore
     var query by remember(visible) { mutableStateOf("") }
     var draft by remember(visible, options) { mutableStateOf(options) }
@@ -38,7 +38,7 @@ internal fun ExploreFiltersSheet(
             .filter { (_, label) -> label.contains(term, ignoreCase = true) }
     val showAll = explore.AllActivities.contains(term, ignoreCase = true)
 
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = strings.WorkList.SortAndFilter,
         placeholder = strings.Common.Search,
@@ -52,12 +52,12 @@ internal fun ExploreFiltersSheet(
     ) { _ ->
         if (sorts.isNotEmpty()) {
             item {
-                GithubSection(
+                ListSection(
                     title = strings.WorkList.Sort,
                     modifier = Modifier.padding(bottom = 12.dp),
                 ) {
                     sorts.forEach { (sort, label) ->
-                        GithubFilterChoiceRow(title = label, checked = sort == draft.sort) {
+                        FilterChoiceRow(title = label, checked = sort == draft.sort) {
                             draft = draft.copy(sort = sort)
                         }
                     }
@@ -66,12 +66,12 @@ internal fun ExploreFiltersSheet(
         }
         if (showAll || activities.isNotEmpty()) {
             item {
-                GithubSection(
+                ListSection(
                     title = explore.ActivityType,
                     modifier = Modifier.padding(bottom = 12.dp),
                 ) {
                     if (showAll) {
-                        GithubFilterChoiceRow(
+                        FilterChoiceRow(
                             title = explore.AllActivities,
                             checked = draft.filters.size == FeedFilter.entries.size,
                         ) {
@@ -79,7 +79,7 @@ internal fun ExploreFiltersSheet(
                         }
                     }
                     activities.forEach { (filter, label) ->
-                        GithubFilterChoiceRow(title = label, checked = filter in draft.filters) {
+                        FilterChoiceRow(title = label, checked = filter in draft.filters) {
                             val filters = draft.filters
                             val updated =
                                 if (filter in filters) filters - filter else filters + filter
@@ -102,13 +102,13 @@ internal fun ExploreFiltersSheet(
     }
 }
 
-private fun FeedSort.label(strings: GithubStrings_Explore): String =
+private fun FeedSort.label(strings: ExploreStrings): String =
     when (this) {
         FeedSort.Newest -> strings.NewestFirst
         FeedSort.Oldest -> strings.OldestFirst
     }
 
-private fun FeedFilter.label(strings: GithubStrings_Explore): String =
+private fun FeedFilter.label(strings: ExploreStrings): String =
     when (this) {
         FeedFilter.Announcements -> strings.Announcements
         FeedFilter.Releases -> strings.ReleaseTitle

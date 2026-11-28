@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -30,11 +30,11 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.githubActivityTime
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.formatActivityTime
 
 @Composable
 internal fun NotificationThreadSheet(
@@ -47,14 +47,14 @@ internal fun NotificationThreadSheet(
     onSetUnread: (String, Boolean) -> Unit,
     onSetDone: (String, Boolean) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
-    val work = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.Notifications
+    val work = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     var lastNotification by remember { mutableStateOf(notification) }
     SideEffect { if (notification != null) lastNotification = notification }
     val item = notification ?: lastNotification
     val id = item?.threadId
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = notification != null,
         onDismissRequest = onDismiss,
         title = strings.ThreadActions,
@@ -64,7 +64,7 @@ internal fun NotificationThreadSheet(
                 title = strings.ThreadActions,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
@@ -73,7 +73,7 @@ internal fun NotificationThreadSheet(
                             onClick = { if (notification != null) onSetDone(id, !isDone) },
                             enabled = canChangeDoneState,
                         ) {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.Check,
                                 contentDescription = if (isDone) strings.MoveToInbox else strings.MarkDone,
                             )
@@ -97,7 +97,7 @@ internal fun NotificationThreadSheet(
                         GlasmioListRow(
                             title = work.Author,
                             leading = {
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.AtSign,
                                     contentDescription = null,
                                     size = 20.dp,
@@ -109,7 +109,7 @@ internal fun NotificationThreadSheet(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    GithubAvatar(author.avatarUrl, login, size = 20.dp)
+                                    UserAvatar(author.avatarUrl, login, size = 20.dp)
                                     Text(
                                         text = login,
                                         style = GlasmioTheme.textStyles.body,
@@ -123,9 +123,9 @@ internal fun NotificationThreadSheet(
                     }
                     GlasmioListRow(
                         title = strings.Updated,
-                        detail = item.updatedAt?.let(::githubActivityTime),
+                        detail = item.updatedAt?.let(::formatActivityTime),
                         leading = {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.Clock,
                                 contentDescription = null,
                                 size = 20.dp,
@@ -136,7 +136,7 @@ internal fun NotificationThreadSheet(
                         showDisclosure = false,
                     )
                 }
-                GithubSection(title = strings.Subject) {
+                ListSection(title = strings.Subject) {
                     GlasmioListRow(
                         title =
                             item.subject?.title?.takeIf(String::isNotBlank)
@@ -146,7 +146,7 @@ internal fun NotificationThreadSheet(
                         showDisclosure = false,
                     )
                 }
-                GithubSection(title = strings.Repository) {
+                ListSection(title = strings.Repository) {
                     GlasmioListRow(
                         title = item.repository?.fullName ?: strings.Repository,
                         systemName = null,
@@ -155,7 +155,7 @@ internal fun NotificationThreadSheet(
                     )
                 }
                 if (id != null) {
-                    GithubSection(title = strings.MoreActions) {
+                    ListSection(title = strings.MoreActions) {
                         GlasmioListRow(
                             title = if (item.unread) strings.MarkRead else strings.MarkUnread,
                             enabled = canChangeReadState,

@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Notifications(
+public data class NotificationsStrings(
     val Title: String,
     val Unread: String,
     val Inbox: String,
@@ -67,8 +67,8 @@ public data class GithubStrings_Notifications(
     val PartialFailure: (String, Int, Int, String) -> String,
 )
 
-internal val ZhHansNotificationsStrings: GithubStrings_Notifications =
-    GithubStrings_Notifications(
+internal val ZhHansNotificationsStrings: NotificationsStrings =
+    NotificationsStrings(
         Title = "通知",
         Unread = "未读",
         Inbox = "收件箱",
@@ -137,8 +137,8 @@ internal val ZhHansNotificationsStrings: GithubStrings_Notifications =
         },
     )
 
-internal val EnNotificationsStrings: GithubStrings_Notifications =
-    GithubStrings_Notifications(
+internal val EnNotificationsStrings: NotificationsStrings =
+    NotificationsStrings(
         Title = "Notifications",
         Unread = "Unread",
         Inbox = "Inbox",

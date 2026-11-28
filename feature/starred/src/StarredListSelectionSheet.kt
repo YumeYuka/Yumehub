@@ -14,10 +14,10 @@ import io.github.yumeyucca.lucide.CirclePlus
 import io.github.yumeyucca.lucide.ListCheck
 import io.github.yumeyucca.lucide.Lucide
 import moe.yumeyuka.yumehub.data.repository.UserRepositoryList
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.FilterChoiceRow
 
 @Composable
 internal fun StarredListSelectionSheet(
@@ -33,7 +33,7 @@ internal fun StarredListSelectionSheet(
     onSelectList: (UserRepositoryList?) -> Unit,
     onCreateList: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val profile = strings.Profile
     var draftId by remember(visible) { mutableStateOf(selectedListId) }
     val filteredLists =
@@ -41,7 +41,7 @@ internal fun StarredListSelectionSheet(
             it.name.contains(query.trim(), ignoreCase = true) ||
                 it.description.orEmpty().contains(query.trim(), ignoreCase = true)
         }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = profile.Lists,
         placeholder = profile.SearchLists,
@@ -56,18 +56,18 @@ internal fun StarredListSelectionSheet(
     ) { finish ->
         item {
             GlasmioGroupedList {
-                GithubFilterChoiceRow(
+                FilterChoiceRow(
                     title = profile.Starred,
                     checked = draftId == null,
                     leading = {
-                        GithubIcon(Lucide.ListCheck, contentDescription = null, size = 20.dp)
+                        AppIcon(Lucide.ListCheck, contentDescription = null, size = 20.dp)
                     },
                     onClick = { draftId = null },
                 )
                 GlasmioListRow(
                     title = profile.NewList,
                     leading = {
-                        GithubIcon(Lucide.CirclePlus, contentDescription = null, size = 20.dp)
+                        AppIcon(Lucide.CirclePlus, contentDescription = null, size = 20.dp)
                     },
                     showDisclosure = false,
                     showTopSeparator = false,
@@ -93,7 +93,7 @@ internal fun StarredListSelectionSheet(
                     )
                 }
                 filteredLists.forEachIndexed { index, list ->
-                    GithubFilterChoiceRow(
+                    FilterChoiceRow(
                         title = list.name,
                         checked = draftId == list.id,
                         showTopSeparator = index > 0,

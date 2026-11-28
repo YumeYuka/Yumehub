@@ -34,7 +34,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioAlertFieldGroup
 import io.github.neoruaa.glasmio.ui.GlasmioAlertTextField
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import moe.yumeyuka.yumehub.data.twofactor.MobileAuthRequestType
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
 @Composable
@@ -50,7 +50,7 @@ fun TwoFactorOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val notice = if (!state.isVisible) state.receivingError ?: state.notificationWarning else null
     LaunchedEffect(notice) {
         if (notice != null && consumeNotice(notice)) {
@@ -150,7 +150,7 @@ private fun TwoFactorPromptDialog(
     modifier: Modifier,
 ) {
     val colors = GlasmioTheme.colors
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     var fieldValue by remember(prompt.requestId) { mutableStateOf(TextFieldValue(prompt.digits)) }
 
     GlasmioAlertDialog(
@@ -237,7 +237,7 @@ private fun TwoFactorPromptDialog(
 
 @Composable
 private fun titleFor(type: MobileAuthRequestType?): String {
-    val strings = LocalGithubStrings.current.TwoFactor
+    val strings = LocalAppStrings.current.TwoFactor
     return when (type) {
         MobileAuthRequestType.DeviceVerification -> strings.DeviceTitle
         MobileAuthRequestType.TwoFactorPasswordReset -> strings.ResetTitle

@@ -27,7 +27,7 @@ import io.github.neoruaa.glasmio.glass.render.configureGlassDynamicRange
 import kotlinx.coroutines.launch
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
+import moe.yumeyuka.yumehub.navigation.AppNavigationComponent
 import moe.yumeyuka.yumehub.navigation.restoreNavigation
 import moe.yumeyuka.yumehub.navigation.saveNavigation
 import moe.yumeyuka.yumehub.ui.platform.AppLanguageManager
@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    private lateinit var navigationComponent: GithubAppNavigationComponent
+    private lateinit var navigationComponent: AppNavigationComponent
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         // Decompose registers its back callback before Compose registers page handlers.
         navigationComponent = retainedComponent { componentContext ->
-            GithubAppNavigationComponent(
+            AppNavigationComponent(
                 componentContext = componentContext,
                 predictiveBackEnabledAtLaunch = settingsStore.predictiveBackEnabled.state.value,
                 predictiveBackPercent = settingsStore.predictiveBackMaxProgress.state.value,

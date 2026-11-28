@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -15,10 +15,10 @@ import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubMutationRecoveryRow
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.FilterChoiceRow
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.MutationRecoveryRow
 
 @Composable
 internal fun RepositoryListsSheet(
@@ -29,9 +29,9 @@ internal fun RepositoryListsSheet(
     onToggle: (String) -> Unit,
     onSave: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val profile = strings.Profile
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = state.visible,
         onDismissRequest = onDismiss,
         title = profile.AddToList,
@@ -41,7 +41,7 @@ internal fun RepositoryListsSheet(
                 title = profile.AddToList,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Cancel)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Cancel)
                     }
                 },
                 actions = {
@@ -53,7 +53,7 @@ internal fun RepositoryListsSheet(
                                 !state.failed &&
                                 state.phase != WritePhase.UNCERTAIN,
                     ) {
-                        GithubIcon(Lucide.Check, contentDescription = strings.Common.Save)
+                        AppIcon(Lucide.Check, contentDescription = strings.Common.Save)
                     }
                 },
             )
@@ -73,7 +73,7 @@ internal fun RepositoryListsSheet(
                         onClick = onRetry,
                     )
                     state.uncertainOperationId?.let {
-                        GithubMutationRecoveryRow(it, onAcknowledge = onAcknowledge)
+                        MutationRecoveryRow(it, onAcknowledge = onAcknowledge)
                     }
                 }
             when {
@@ -87,7 +87,7 @@ internal fun RepositoryListsSheet(
                 else ->
                     GlasmioGroupedList {
                         state.lists.forEachIndexed { index, list ->
-                            GithubFilterChoiceRow(
+                            FilterChoiceRow(
                                 title = list.name,
                                 checked = list.id in state.selectedIds,
                                 enabled = !state.saving && state.phase != WritePhase.UNCERTAIN,

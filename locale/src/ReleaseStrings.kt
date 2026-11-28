@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Release(
+public data class ReleaseStrings(
     val Timeline: String,
     val SearchVersions: String,
     val NoMatchingVersions: String,
@@ -22,8 +22,8 @@ public data class GithubStrings_Release(
     val LoadFailed: String,
 )
 
-internal val ZhHansReleaseStrings: GithubStrings_Release =
-    GithubStrings_Release(
+internal val ZhHansReleaseStrings: ReleaseStrings =
+    ReleaseStrings(
         Timeline = "版本时间线",
         SearchVersions = "搜索发行版",
         NoMatchingVersions = "未找到匹配的版本",
@@ -45,8 +45,8 @@ internal val ZhHansReleaseStrings: GithubStrings_Release =
         LoadFailed = "发行版加载失败",
     )
 
-internal val EnReleaseStrings: GithubStrings_Release =
-    GithubStrings_Release(
+internal val EnReleaseStrings: ReleaseStrings =
+    ReleaseStrings(
         Timeline = "Release history",
         SearchVersions = "Search releases",
         NoMatchingVersions = "No matching releases",

@@ -4,17 +4,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.RepositoryLoadingCard
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.pagingItems
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -24,7 +24,7 @@ fun ProfileCollectionsPage(
     onOpenRepository: (RepositoryDto) -> Unit,
     onOpenOrganization: (login: String, avatarUrl: String?, name: String?) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val viewModel: ProfileCollectionsViewModel = koinViewModel(parameters = { parametersOf(route) })
     val title =
         when (route.kind) {
@@ -33,7 +33,7 @@ fun ProfileCollectionsPage(
             ProfileCollectionsRoute.Kind.Organizations -> strings.Profile.Organizations
         }
     val organizations = route.kind == ProfileCollectionsRoute.Kind.Organizations
-    GithubPagingContent(
+    PagingContent(
         viewModel.entries,
         contentKey = viewModel.account to route,
         revalidation = viewModel.revalidation,
@@ -41,7 +41,7 @@ fun ProfileCollectionsPage(
     ) { paging ->
         val pages = paging.items
         val slots =
-            rememberGithubPagingSlots(pages, "profile-collection", paging.initialLoading) { entry ->
+            rememberPagingSlots(pages, "profile-collection", paging.initialLoading) { entry ->
                 when (entry) {
                     is ProfileCollectionEntry.Repository ->
                         entry.value.id?.toString() ?: entry.value.fullName
@@ -49,15 +49,15 @@ fun ProfileCollectionsPage(
                         entry.value.id?.toString() ?: entry.value.login
                 }
             }
-        GithubPage(
+        AppPage(
             title = title,
             listState = paging.listState,
             itemSpacing = 12.dp,
         ) {
-            githubPagingItems(slots, contentType = "profile-collection") { entry ->
+            pagingItems(slots, contentType = "profile-collection") { entry ->
                 if (organizations) {
                     val organization = (entry as? ProfileCollectionEntry.Organization)?.value
-                    GithubLoadingCard(
+                    LoadingCard(
                         loading = entry == null,
                         placeholder = { OrganizationRowPlaceholder() },
                     ) {
@@ -67,7 +67,7 @@ fun ProfileCollectionsPage(
                                     ?: organization?.login.orEmpty(),
                             subtitle = organization?.login,
                             leading = {
-                                GithubAvatar(
+                                UserAvatar(
                                     organization?.avatarUrl,
                                     organization?.login,
                                     type = "Organization",

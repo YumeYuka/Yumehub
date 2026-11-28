@@ -16,7 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTokens
+import moe.yumeyuka.yumehub.ui.component.WorkStatusTokens
 
 object NotificationRowTokens {
     // 通知卡与议题／拉取请求卡共用同一正文层级，状态图标对齐标题首行。
@@ -45,7 +45,7 @@ fun NotificationRowPlaceholder(modifier: Modifier = Modifier) {
         )
     val statusSlotSize =
         maxOf(
-            GithubWorkStatusTokens.IconSize,
+            WorkStatusTokens.IconSize,
             with(LocalDensity.current) { titleStyle.lineHeight.toDp() },
         )
     Box(modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -62,7 +62,7 @@ fun NotificationRowPlaceholder(modifier: Modifier = Modifier) {
                     Modifier.width(statusSlotSize).height(statusSlotSize),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AvatarPlaceholder(GithubWorkStatusTokens.IconSize)
+                    AvatarPlaceholder(WorkStatusTokens.IconSize)
                 }
                 Column(
                     Modifier.weight(1f),

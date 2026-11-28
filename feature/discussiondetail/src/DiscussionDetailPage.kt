@@ -37,11 +37,11 @@ import moe.yumeyuka.yumehub.data.cache.NullableValue
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.workCacheTag
 import moe.yumeyuka.yumehub.data.repository.*
-import moe.yumeyuka.yumehub.locale.GithubTxt
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.navigation.*
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
@@ -55,7 +55,7 @@ data class DiscussionDetailRoute(
     val name: String,
     val number: Int,
     val parentId: String? = null,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun DiscussionDetailPage(
@@ -69,14 +69,14 @@ fun DiscussionDetailPage(
             parameters = { parametersOf(route, account) },
         )
     val state by viewModel.state.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Work,
         refreshOnFirstActivation = false,
         onRefresh = viewModel::revalidate,
     )
-    val strings = LocalGithubStrings.current
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val strings = LocalAppStrings.current
+    val host = requireNotNull(LocalAppPageHost.current)
     val composerLabel =
         if (route.parentId == null) strings.WorkDetail.WriteComment else strings.Activity.Reply
     val openComposer: () -> Unit = {
@@ -88,11 +88,11 @@ fun DiscussionDetailPage(
         } else null
     val comments = state.comments
     val window = comments?.state?.collectAsStateWithLifecycle()?.value
-    GithubLoadFailureToast(window?.error, strings.Activity.LoadFailed)
-    if (state.failed) GithubLoadFailureToast(Unit, strings.Activity.LoadFailed)
-    if (state.actionFailed) GithubLoadFailureToast(Unit, strings.Activity.ActionFailed)
+    LoadFailureToast(window?.error, strings.Activity.LoadFailed)
+    if (state.failed) LoadFailureToast(Unit, strings.Activity.LoadFailed)
+    if (state.actionFailed) LoadFailureToast(Unit, strings.Activity.ActionFailed)
     DiscussionReactionFailureToast(viewModel, strings.Activity.ActionFailed)
-    GithubPage(
+    AppPage(
         title =
             if (route.parentId == null) strings.Repository.Discussions else strings.Activity.Reply,
         titleSuffix = "#${route.number}",
@@ -113,7 +113,7 @@ fun DiscussionDetailPage(
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                         .height(44.dp),
             ) {
-                GithubIcon(Lucide.MessageSquare, contentDescription = null, size = 18.dp)
+                AppIcon(Lucide.MessageSquare, contentDescription = null, size = 18.dp)
                 Spacer(Modifier.width(6.dp))
                 Text(composerLabel, style = GlasmioTheme.textStyles.body)
             }
@@ -148,15 +148,15 @@ fun DiscussionDetailPage(
             }
         if (detail != null || !state.failed) {
             readingItem(key = "discussion-body") {
-                GithubLoadingContent(
+                LoadingContent(
                     loading = detail == null,
                     placeholder = {
-                        GithubReadingGroup {
-                            GithubThreadContentPlaceholder(showTitle = route.parentId == null)
+                        ReadingGroup {
+                            ThreadContentPlaceholder(showTitle = route.parentId == null)
                         }
                     },
                 ) {
-                    if (detail == null) return@GithubLoadingContent
+                    if (detail == null) return@LoadingContent
                     val parent = detail.parent
                     if (parent != null)
                         DiscussionCommentCard(
@@ -196,7 +196,7 @@ fun DiscussionDetailPage(
         val poll = detail?.poll
         if (poll != null && route.parentId == null) {
             item(key = "discussion-poll") {
-                GithubSection(poll.question) {
+                ListSection(poll.question) {
                     GlasmioListRow(
                         title = strings.Activity.PollVotes(poll.totalVoteCount),
                         systemName = null,
@@ -211,7 +211,7 @@ fun DiscussionDetailPage(
                                 },
                             trailing = {
                                 if (option.viewerHasVoted)
-                                    GithubIcon(Lucide.Check, contentDescription = null)
+                                    AppIcon(Lucide.Check, contentDescription = null)
                             },
                             systemName = null,
                             onClick =
@@ -230,13 +230,13 @@ fun DiscussionDetailPage(
             }
         }
         if (detail == null && !state.failed) {
-            githubThreadPlaceholder { GithubReadingGroup { GithubThreadContentPlaceholder() } }
+            threadPlaceholder { ReadingGroup { ThreadContentPlaceholder() } }
         } else if (detail != null && comments != null && window != null) {
-            githubThreadItems(
+            threadItems(
                 window,
                 GithubDiscussionComment::id,
                 comments::load,
-                placeholder = { GithubReadingGroup { GithubThreadContentPlaceholder() } },
+                placeholder = { ReadingGroup { ThreadContentPlaceholder() } },
             ) { comment, _ ->
                 DiscussionCommentCard(
                     comment =
@@ -266,7 +266,7 @@ fun DiscussionDetailPage(
 @Composable
 private fun DiscussionReactionFailureToast(viewModel: DiscussionDetailViewModel, message: String) {
     val failure by viewModel.reactionFailure.collectAsStateWithLifecycle()
-    GithubLoadFailureToast(failure, message)
+    LoadFailureToast(failure, message)
 }
 
 @Composable
@@ -278,17 +278,17 @@ private fun DiscussionPostCard(
     onToggleReaction: (GithubReactionContent, Boolean) -> Unit,
     onUpvote: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val colors = GlasmioTheme.colors
     val copy = rememberCopyText()
     val metadata =
         listOfNotNull(
-                githubRelativeTime(detail.createdAt, strings.Notifications),
+                formatRelativeTime(detail.createdAt, strings.Notifications),
                 detail.labels.firstOrNull() ?: detail.category.takeIf(String::isNotBlank),
             )
             .joinToString(" · ")
-    GithubReadingGroup(documentKey = detail.bodyHtml.takeIf(String::isNotBlank)) {
-        GithubCommentAuthorHeader(
+    ReadingGroup(documentKey = detail.bodyHtml.takeIf(String::isNotBlank)) {
+        CommentAuthorHeader(
             author = detail.author,
             avatarUrl = detail.avatarUrl,
             metadata = metadata,
@@ -316,7 +316,7 @@ private fun DiscussionPostCard(
         DiscussionBody(detail.bodyHtml, detail.url, post = true)
         val showVote = detail.canUpvote || detail.upvoted || detail.upvotes > 0
         if (showVote || detail.canReact || detail.reactions.any { it.count > 0 })
-            GithubReadingFooter {
+            ReadingFooter {
                 Row(
                     modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -339,7 +339,7 @@ private fun DiscussionPostCard(
                             )
                         }
                     }
-                    GithubReactionBar(
+                    ReactionBar(
                         subjectKey = detail.id,
                         sourceReactions = detail.reactions,
                         canReact = detail.canReact,
@@ -366,7 +366,7 @@ private fun DiscussionCommentCard(
     onSetAnswer: ((String, Boolean) -> Unit)?,
     onToggleReaction: (String, GithubReactionContent, Boolean) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val canSetAnswer =
         onSetAnswer != null &&
             (if (comment.isAnswer) comment.canUnmarkAsAnswer else comment.canMarkAsAnswer)
@@ -387,7 +387,7 @@ private fun DiscussionCommentCard(
             )
         }
     }
-    GithubReadingGroup(
+    ReadingGroup(
         documentKey = comment.bodyHtml.takeIf(String::isNotBlank),
         onFooterClick =
             onOpenReplies
@@ -406,7 +406,7 @@ private fun DiscussionCommentCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GithubDiscussionParticipantAvatars(comment.replyAuthors)
+                    DiscussionParticipantAvatars(comment.replyAuthors)
                     Text(
                         strings.Activity.Replies(comment.replies),
                         modifier = Modifier.weight(1f),
@@ -415,7 +415,7 @@ private fun DiscussionCommentCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    GithubIcon(
+                    AppIcon(
                         Lucide.ChevronRight,
                         contentDescription = null,
                         size = 18.dp,
@@ -425,18 +425,18 @@ private fun DiscussionCommentCard(
             }
         },
     ) {
-        GithubCommentAuthorHeader(
+        CommentAuthorHeader(
             author = comment.author,
             avatarUrl = comment.avatarUrl,
-            metadata = githubRelativeTime(comment.createdAt, strings.Notifications),
+            metadata = formatRelativeTime(comment.createdAt, strings.Notifications),
             menuItems = menuItems,
             menuEnabled = enabled,
         )
         DiscussionBody(comment.bodyHtml, pageUrl)
-        GithubReadingFooter {
+        ReadingFooter {
             if (comment.isAnswer)
                 GlasmioListRow(title = strings.Activity.Answer, systemName = null, enabled = false)
-            GithubReactionBar(
+            ReactionBar(
                 subjectKey = comment.id,
                 sourceReactions = comment.reactions,
                 canReact = comment.canReact,
@@ -458,13 +458,13 @@ private fun DiscussionBody(
     val modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
     if (html.isBlank())
         Text(
-            LocalGithubStrings.current.WorkDetail.NoBody,
+            LocalAppStrings.current.WorkDetail.NoBody,
             modifier,
             style = if (post) GlasmioTheme.textStyles.subheadline else GlasmioTheme.textStyles.body,
             color = GlasmioTheme.colors.secondaryContent,
         )
     else
-        GithubMarkdown(
+        MarkdownBody(
             "",
             modifier,
             html = html,
@@ -907,19 +907,19 @@ internal class DiscussionDetailViewModel(
         }
     }
 
-    fun commentEditor(title: String): GithubEditorSession? {
+    fun commentEditor(title: String): EditorSession? {
         val detail = state.value.detail ?: return null
-        lateinit var editor: GithubEditorSession
+        lateinit var editor: EditorSession
         editor =
-            GithubEditorSession(
+            EditorSession(
                 title = title,
-                kind = GithubEditorKind.Markdown,
+                kind = EditorSessionKind.Markdown,
                 source = commentDraft,
                 submitEnabled =
                     validComment(commentDraft) && state.value.commentPhase != WritePhase.UNCERTAIN,
                 pageUrl = detail.url,
                 repositoryRootUrl = "https://github.com/${route.owner}/${route.name}",
-                submitLabel = GithubTxt.current.WorkDetail.Publish,
+                submitLabel = CurrentAppStrings.current.WorkDetail.Publish,
                 onSourceChange = { text ->
                     commentDraft = text
                     drafts.save(account, draftKey, text)
@@ -934,7 +934,7 @@ internal class DiscussionDetailViewModel(
         return editor
     }
 
-    private fun submitComment(discussionId: String, editor: GithubEditorSession) {
+    private fun submitComment(discussionId: String, editor: EditorSession) {
         val body = editor.source
         if (!validComment(body) || state.value.commentPhase == WritePhase.UNCERTAIN) return
         editor.update(submitting = true, submitEnabled = false, error = null)
@@ -945,7 +945,7 @@ internal class DiscussionDetailViewModel(
                     submitting = false,
                     editable = true,
                     submitEnabled = true,
-                    error = GithubTxt.current.Common.MutationNotSubmitted,
+                    error = CurrentAppStrings.current.Common.MutationNotSubmitted,
                 )
                 return@launch
             }
@@ -979,8 +979,8 @@ internal class DiscussionDetailViewModel(
                     editable = true,
                     submitEnabled = !unknown && cmd.phase != WritePhase.PENDING,
                     error =
-                        if (unknown) GithubTxt.current.Activity.CommentUnconfirmed
-                        else GithubTxt.current.Common.MutationNotSubmitted,
+                        if (unknown) CurrentAppStrings.current.Activity.CommentUnconfirmed
+                        else CurrentAppStrings.current.Common.MutationNotSubmitted,
                 )
             }
         }

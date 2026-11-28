@@ -9,16 +9,16 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.hasActiveCriteria
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -28,7 +28,7 @@ data class WorkListRoute(
     val name: String,
     val kind: CollaborationKind,
     val createInitially: Boolean = false,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun WorkListPage(
@@ -45,7 +45,7 @@ fun WorkListPage(
             parameters = { parametersOf(owner, name, kind, login) },
         )
     val filter by viewModel.filter.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val filtered = filter.hasActiveCriteria()
     val filterOptions by viewModel.filterOptions.collectAsStateWithLifecycle()
     val branchPicker by viewModel.branchPicker.collectAsStateWithLifecycle()
@@ -67,16 +67,16 @@ fun WorkListPage(
         issueTypes = if (kind == CollaborationKind.Issue) filterOptions.issueTypes else emptyList(),
         onShowFilters = viewModel::loadFilterOptions,
     ) { actions, searching ->
-        GithubPagingContent(
+        PagingContent(
             pages,
             contentKey = Triple(login, WorkListRoute(owner, name, kind), filter),
             revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
             onRetryRevalidation = { viewModel.retryRevalidation(filter) },
         ) { paging ->
             val items = paging.items
-            val host = requireNotNull(LocalGithubPageHost.current)
+            val host = requireNotNull(LocalAppPageHost.current)
             val slots =
-                rememberGithubPagingSlots(
+                rememberPagingSlots(
                     items,
                     "work-list:$filter",
                     paging.initialLoading,
@@ -84,7 +84,7 @@ fun WorkListPage(
                 ) {
                     it.nodeId ?: it.number.toString()
                 }
-            GithubPage(
+            AppPage(
                 title = kind.title,
                 listState = paging.listState,
                 itemSpacing = 12.dp,
@@ -110,7 +110,7 @@ fun WorkListPage(
                     item(key = "work-list-options-retry") {
                         GlasmioGroupedList {
                             GlasmioListRow(
-                                title = LocalGithubStrings.current.Common.Retry,
+                                title = LocalAppStrings.current.Common.Retry,
                                 onClick = viewModel::retryFilterOptions,
                             )
                         }

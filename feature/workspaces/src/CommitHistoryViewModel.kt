@@ -20,7 +20,7 @@ import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesTimeoutException
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import retrofit2.HttpException
 
 internal data class CommitHistoryUiState(
@@ -175,7 +175,7 @@ internal class CommitHistoryViewModel(
     }
 
     private fun Throwable.readErrorMessage(): String {
-        val strings = GithubTxt.current
+        val strings = CurrentAppStrings.current
         return when (this) {
             is WorkspacesTimeoutException -> strings.Repository.RequestTimeout
             is WorkspacesGraphQlException,

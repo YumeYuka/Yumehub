@@ -32,16 +32,16 @@ import io.github.yumeyucca.lucide.Search
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.PagingSlotKeys
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageState
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -56,18 +56,18 @@ fun NotificationsPage(
             onEntered: () -> Unit,
         ) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.Notifications
+    val common = LocalAppStrings.current.Common
     val viewModel: NotificationsViewModel = koinViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Notifications,
         pollWhileVisible = true,
         onRefresh = viewModel::revalidate,
     )
-    val openLink = rememberGithubUriHandler()
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val openLink = rememberPageLinkHandler()
+    val host = requireNotNull(LocalAppPageHost.current)
     val bottomPadding = host.bottomPadding
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -94,9 +94,9 @@ fun NotificationsPage(
     val query = searchInput.text.trim()
     val source = "${state.filter}:${state.repository}:${state.reasonFilter}:$query"
     val listState =
-        LocalGithubPageState.current?.listState("notifications:$source")
+        LocalAppPageState.current?.listState("notifications:$source")
             ?: remember(source) { LazyListState() }
-    val allocator = remember(source) { GithubPagingSlotKeys("notifications:$source") }
+    val allocator = remember(source) { PagingSlotKeys("notifications:$source") }
     val visibleNotifications =
         remember(state.notifications, state.reasonFilter) { state.visibleNotifications }
     val notifications =
@@ -120,13 +120,13 @@ fun NotificationsPage(
             )
         }
 
-    GithubBackHandler(
+    AppBackHandler(
         enabled = searching && !filtersVisible && !state.isSelecting,
         onBack = closeSearch,
     )
-    GithubBackHandler(enabled = state.isSelecting, onBack = viewModel::endSelection)
+    AppBackHandler(enabled = state.isSelecting, onBack = viewModel::endSelection)
 
-    GithubPage(
+    AppPage(
         title = strings.Title,
         listState = listState,
         itemSpacing = 12.dp,
@@ -146,7 +146,7 @@ fun NotificationsPage(
             var expanded by remember(selectionMenu) { mutableStateOf(false) }
             val anchor = rememberGlasmioMenuAnchorState()
             Box {
-                GithubToolbarActions(
+                ToolbarActions(
                     if (!state.isSelecting)
                         toolbarIcon(Lucide.Search, common.Search) {
                             if (searching) {

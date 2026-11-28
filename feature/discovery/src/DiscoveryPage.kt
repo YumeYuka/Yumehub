@@ -10,15 +10,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-enum class DiscoveryRoute : GithubRoute {
+enum class DiscoveryRoute : AppRoute {
     Trending,
     Featured,
 }
@@ -40,7 +40,7 @@ fun DiscoveryPage(
     val languages by vm.languages.collectAsStateWithLifecycle()
     val pages = remember(vm, filters, query) { vm.repositoriesFor(filters, query) }
     val sourceKey = remember(vm, filters, query) { vm.sourceKey(filters, query) }
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val trending = route == DiscoveryRoute.Trending
     val title = if (trending) strings.Explore.Trending else strings.Explore.Featured
     var sheet by remember { mutableStateOf(false) }
@@ -61,8 +61,8 @@ fun DiscoveryPage(
         delay(200)
         vm.search(input.text)
     }
-    GithubBackHandler(enabled = searching && !sheet, onBack = closeSearch)
-    GithubPageSearchLayout(
+    AppBackHandler(enabled = searching && !sheet, onBack = closeSearch)
+    PageSearchLayout(
         searching,
         input,
         { input = it },
@@ -70,7 +70,7 @@ fun DiscoveryPage(
         closeSearch,
         strings.MyRepositories.Search,
     ) {
-        GithubPagingContent(
+        PagingContent(
             pages,
             contentKey = Triple(account, sourceKey, query),
             revalidation = remember(vm, sourceKey) { vm.revalidation(sourceKey) },
@@ -78,13 +78,13 @@ fun DiscoveryPage(
         ) { paging ->
             val items = paging.items
             val slots =
-                rememberGithubPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
-            GithubPage(
+                rememberPagingSlots(items, route.name, paging.initialLoading) { it.nodeId }
+            AppPage(
                 title = title,
                 listState = paging.listState,
                 itemSpacing = 12.dp,
                 actions = {
-                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                    moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                         moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                             Lucide.Search,
                             strings.MyRepositories.Search,
@@ -105,7 +105,7 @@ fun DiscoveryPage(
                     )
                 },
             ) {
-                githubPagingItems(slots, contentType = "repository") { repository ->
+                pagingItems(slots, contentType = "repository") { repository ->
                     RepositoryLoadingCard(
                         repository,
                         onClick = repository?.let { { onOpenRepository(it) } },

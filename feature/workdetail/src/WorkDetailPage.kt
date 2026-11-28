@@ -32,16 +32,16 @@ import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.rememberDiffExpansions
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageState
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -52,7 +52,7 @@ data class WorkDetailRoute(
     val kind: CollaborationKind,
     val number: Int,
     val title: String? = null,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun WorkDetailPage(
@@ -77,7 +77,7 @@ fun WorkDetailPage(
     // 轮询只在页面真在前台时做静默核对；不要走 refresh()，它会作废时间线与评论分页。
     // 首屏由 ViewModel init 发起，这里不能再抢一次强刷：invalidate() 会取消仍在飞的首个请求，
     // 让它重发同一份查询，PR 详情因此白白多等一整轮。
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Work,
         refreshOnFirstActivation = false,
@@ -85,8 +85,8 @@ fun WorkDetailPage(
         pollWhileVisible = state.item?.state == "open",
         onRefresh = viewModel::revalidate,
     )
-    val strings = LocalGithubStrings.current.WorkDetail
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val strings = LocalAppStrings.current.WorkDetail
+    val host = requireNotNull(LocalAppPageHost.current)
     val context = LocalContext.current
     var infoVisible by rememberSaveable { mutableStateOf(false) }
     var propertySheet by remember(viewModel) { mutableStateOf<WorkProperty?>(null) }
@@ -127,10 +127,10 @@ fun WorkDetailPage(
             CollaborationSection.Commits -> "work-${state.section}:$head"
             else -> "work-${state.section}"
         }
-    val expansions = rememberGithubDiffExpansions(head)
+    val expansions = rememberDiffExpansions(head)
     val listStates = remember { mutableMapOf<String, LazyListState>() }
     val listState =
-        LocalGithubPageState.current?.listState(sectionKey)
+        LocalAppPageState.current?.listState(sectionKey)
             ?: listStates.getOrPut(sectionKey) { LazyListState() }
     val entries =
         remember(viewModel, sectionKey) { viewModel.entriesFor(state.section, head) }
@@ -149,14 +149,14 @@ fun WorkDetailPage(
         remember(timeline?.items) {
             timeline?.items?.let(::groupWorkActivities).orEmpty()
         }
-    GithubLoadFailureToast(state.error, state.error.orEmpty())
+    LoadFailureToast(state.error, state.error.orEmpty())
     val pageFailure =
         timeline?.error
             ?: (entries?.loadState?.refresh as? LoadState.Error)
             ?: (entries?.loadState?.append as? LoadState.Error)
-    GithubLoadFailureToast(pageFailure, LocalGithubStrings.current.Activity.LoadFailed)
+    LoadFailureToast(pageFailure, LocalAppStrings.current.Activity.LoadFailed)
     val entrySlots = entries?.let { pages ->
-        rememberGithubPagingSlots(
+        rememberPagingSlots(
             pages,
             sectionKey,
             autoRefresh = false,
@@ -168,7 +168,7 @@ fun WorkDetailPage(
     val routeTitle =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestTitle(number)
         else strings.IssueTitle(number)
-    GithubPage(
+    AppPage(
         title = state.item?.title ?: title?.takeIf(String::isNotBlank) ?: routeTitle,
         smallTitle = routeTitle,
         titleMaxLines = 2,
@@ -224,7 +224,7 @@ fun WorkDetailPage(
             var editExpanded by remember { mutableStateOf(false) }
             val editAnchor = io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState()
             val editAvailable = state.item != null && host.navigationEnabled && !state.submitting
-            moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+            moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                 moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                     Lucide.Info,
                     strings.Information,
@@ -355,7 +355,7 @@ fun WorkDetailPage(
         item = state.item,
         onDismiss = { if (host.isCurrent) viewModel.showStatusPanel(null) },
         checks = {
-            val open = rememberGithubUriHandler()
+            val open = rememberPageLinkHandler()
             WorkCheckGroups(state.item?.head?.sha, viewModel) { url ->
                 if (host.navigationEnabled && state.statusPanel == WorkStatusPanel.Checks) {
                     viewModel.showStatusPanel(null)

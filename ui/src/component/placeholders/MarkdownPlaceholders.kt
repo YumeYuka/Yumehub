@@ -25,7 +25,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
  * 骨架保留标题、段落、引用和列表的大致排版关系，避免官方 HTML 或原生文档完成首帧前 只显示一块空白。它不承载文档语义，也不使用闪烁动画；真实内容出现时由调用方交叉淡入。
  */
 @Composable
-fun GithubMarkdownPlaceholder(modifier: Modifier = Modifier, compact: Boolean = false) {
+fun MarkdownPlaceholder(modifier: Modifier = Modifier, compact: Boolean = false) {
     Column(
         modifier = modifier.fillMaxWidth().heightIn(min = PlaceholderTokens.ReadmeMinHeight),
         verticalArrangement = Arrangement.spacedBy(24.dp),

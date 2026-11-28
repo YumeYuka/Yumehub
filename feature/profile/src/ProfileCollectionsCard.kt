@@ -18,22 +18,22 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Star
 import java.text.NumberFormat
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
+import moe.yumeyuka.yumehub.locale.ProfileStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.ProfileCollectionsPlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubProfileColors
+import moe.yumeyuka.yumehub.ui.theme.ProfileColors
 
 @Composable
 internal fun ProfileCollectionsCard(
     profile: ProfileDto?,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onOpenRepositories: (String, Boolean) -> Unit,
     onOpenStarred: (String) -> Unit,
     onOpenOrganizations: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    GithubLoadingCard(
+    LoadingCard(
         loading = profile == null,
         modifier = modifier,
         placeholder = { ProfileCollectionsPlaceholder() },
@@ -44,7 +44,7 @@ internal fun ProfileCollectionsCard(
                     title = strings.Repositories,
                     count = profile.repositoriesCount,
                     icon = Lucide.BookMarked,
-                    color = GithubProfileColors.repositoriesBackground,
+                    color = ProfileColors.repositoriesBackground,
                     showSeparator = false,
                     onClick = { onOpenRepositories(profile.login, profile.isOrganization) },
                 )
@@ -53,7 +53,7 @@ internal fun ProfileCollectionsCard(
                         title = strings.Starred,
                         count = profile.starredRepositoriesCount,
                         icon = Lucide.Star,
-                        color = GithubProfileColors.starredBackground,
+                        color = ProfileColors.starredBackground,
                         filled = true,
                         onClick = { onOpenStarred(profile.login) },
                     )
@@ -61,7 +61,7 @@ internal fun ProfileCollectionsCard(
                         title = strings.Organizations,
                         count = profile.organizationsCount,
                         icon = Lucide.Building2,
-                        color = GithubProfileColors.organizationsBackground,
+                        color = ProfileColors.organizationsBackground,
                         onClick = { onOpenOrganizations(profile.login) },
                     )
                 }
@@ -88,12 +88,12 @@ private fun ProfileCollectionRow(
                 Modifier.size(28.dp).background(color, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                GithubIcon(
+                AppIcon(
                     icon,
                     contentDescription = null,
                     size = 16.dp,
                     filled = filled,
-                    tint = GithubProfileColors.collectionIcon,
+                    tint = ProfileColors.collectionIcon,
                 )
             }
         },

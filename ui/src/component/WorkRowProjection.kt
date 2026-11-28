@@ -10,7 +10,7 @@ import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.WorkDetailRepository
 import moe.yumeyuka.yumehub.data.repository.WorkRowProjection
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import org.koin.compose.koinInject
 
 private val NoWorkWrite = WorkRowProjection()
@@ -34,7 +34,7 @@ fun rememberWorkRowProjection(target: WorkTarget?): WorkRowProjection {
 @Composable
 fun workMergeProgress(phase: WritePhase): String? =
     when (phase) {
-        WritePhase.PENDING -> LocalGithubStrings.current.WorkDetail.Merging
-        WritePhase.UNCERTAIN -> LocalGithubStrings.current.Common.MutationUncertain
+        WritePhase.PENDING -> LocalAppStrings.current.WorkDetail.Merging
+        WritePhase.UNCERTAIN -> LocalAppStrings.current.Common.MutationUncertain
         else -> null
     }

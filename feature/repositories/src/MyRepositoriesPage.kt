@@ -18,39 +18,39 @@ import io.github.yumeyucca.lucide.Search
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubFilterChoiceRow
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.ui.component.FilterChoiceRow
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.PageSearchLayout
+import moe.yumeyuka.yumehub.ui.component.PagingContent
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-data object MyRepositoriesRoute : GithubRoute
+data object MyRepositoriesRoute : AppRoute
 
 @Composable
 fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit) {
     val viewModel: RepositoryViewModel =
         koinViewModel(key = "my-repositories-$login", parameters = { parametersOf(login) })
-    val strings = LocalGithubStrings.current.MyRepositories
+    val strings = LocalAppStrings.current.MyRepositories
     val listing by viewModel.listing.collectAsStateWithLifecycle()
-    GithubRefreshEffect(viewModel, DataDomain.Repositories, refreshOnFirstActivation = false) {
+    PageRefreshEffect(viewModel, DataDomain.Repositories, refreshOnFirstActivation = false) {
         viewModel.refreshLanguages()
     }
     val filters = listing.filters
     val filtered = filters.query.isNotBlank() || filters.language != null || filters.type != "all"
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     if (languages == RepositoryLanguages.Failed)
-        GithubLoadFailureToast(Unit, LocalGithubStrings.current.Activity.LoadFailed)
+        LoadFailureToast(Unit, LocalAppStrings.current.Activity.LoadFailed)
     var searching by remember { mutableStateOf(false) }
     var query by
         rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -69,8 +69,8 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
         delay(200)
         viewModel.setQuery(query.text)
     }
-    GithubBackHandler(enabled = searching && !filterSheetVisible, onBack = dismissSearch)
-    GithubPageSearchLayout(
+    AppBackHandler(enabled = searching && !filterSheetVisible, onBack = dismissSearch)
+    PageSearchLayout(
         searching,
         query,
         { query = it },
@@ -78,7 +78,7 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
         dismissSearch,
         strings.Search,
     ) {
-        GithubPagingContent(
+        PagingContent(
             source = listing.pages,
             contentKey = login to filters,
             revalidation = listing.revalidation,
@@ -86,7 +86,7 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
         ) { paging ->
             val repositories = paging.items
             val slots =
-                rememberGithubPagingSlots(
+                rememberPagingSlots(
                     repositories,
                     "my-repositories",
                     initialLoading = paging.initialLoading,
@@ -94,12 +94,12 @@ fun MyRepositoriesPage(login: String, onOpenRepository: (RepositoryDto) -> Unit)
                     it.id?.let { id -> "id:$id" }
                         ?: it.fullName?.takeIf(String::isNotBlank)?.let { name -> "name:$name" }
                 }
-            GithubPage(
+            AppPage(
                 title = strings.Title,
                 listState = paging.listState,
                 itemSpacing = 12.dp,
                 actions = {
-                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                    moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                         moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                             Lucide.Search,
                             strings.Search,
@@ -155,8 +155,8 @@ private fun RepositoryFiltersSheet(
     onDismiss: () -> Unit,
     onApply: (RepositoryFilters) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.MyRepositories
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.MyRepositories
+    val common = LocalAppStrings.current.Common
     var query by remember(visible) { mutableStateOf("") }
     var draft by remember(visible) { mutableStateOf(filters) }
     val normalizedQuery = query.trim()
@@ -200,7 +200,7 @@ private fun RepositoryFiltersSheet(
                     draft = draft.copy(language = value)
                 }
             }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = strings.Filter,
         placeholder = common.Search,
@@ -212,9 +212,9 @@ private fun RepositoryFiltersSheet(
         fun group(title: String, choices: List<RepositoryFilterChoice>) {
             if (choices.isEmpty()) return
             item {
-                GithubSection(title) {
+                ListSection(title) {
                     choices.forEach { choice ->
-                        GithubFilterChoiceRow(
+                        FilterChoiceRow(
                             choice.title,
                             choice.selected,
                             onClick = choice.onClick,

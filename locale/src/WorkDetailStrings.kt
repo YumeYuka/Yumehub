@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_WorkDetail(
+public data class WorkDetailStrings(
     val LoadFailed: String,
     val RecoveryTitle: String,
     val SubmissionUncertain: String,
@@ -149,8 +149,8 @@ public data class GithubStrings_WorkDetail(
     val LineContext: (String, Int, Boolean) -> String,
 )
 
-internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
-    GithubStrings_WorkDetail(
+internal val ZhHansWorkDetailStrings: WorkDetailStrings =
+    WorkDetailStrings(
         LoadFailed = "详情加载失败",
         RecoveryTitle = "核对提交结果",
         SubmissionUncertain = "提交结果尚未确认",
@@ -425,8 +425,8 @@ internal val ZhHansWorkDetailStrings: GithubStrings_WorkDetail =
         },
     )
 
-internal val EnWorkDetailStrings: GithubStrings_WorkDetail =
-    GithubStrings_WorkDetail(
+internal val EnWorkDetailStrings: WorkDetailStrings =
+    WorkDetailStrings(
         LoadFailed = "Unable to load details",
         RecoveryTitle = "Verify submission",
         SubmissionUncertain = "Submission result is uncertain",

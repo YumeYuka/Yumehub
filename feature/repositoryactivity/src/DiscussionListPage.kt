@@ -32,20 +32,20 @@ import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.cache.repositoryCacheTag
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubDiscussionCard
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.DiscussionCard
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.WorkListControls
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
+import moe.yumeyuka.yumehub.ui.component.pagingItems
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.EditorSessionKind
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -64,11 +64,11 @@ internal fun DiscussionListPage(
     val filtered = filter.hasActiveCriteria(CollaborationStateFilter.Open, viewModel.scopes.first())
     val filterOptions by viewModel.options.collectAsStateWithLifecycle()
     val creationState by viewModel.creationState.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val open = rememberGithubUriHandler()
+    val strings = LocalAppStrings.current
+    val host = requireNotNull(LocalAppPageHost.current)
+    val open = rememberPageLinkHandler()
     val pages = remember(viewModel, filter) { viewModel.itemsFor(filter) }
-    GithubPagingContent(
+    PagingContent(
         pages,
         contentKey = Triple(account, route, filter),
         revalidation = remember(viewModel, filter) { viewModel.revalidationFor(filter) },
@@ -76,7 +76,7 @@ internal fun DiscussionListPage(
     ) { paging ->
         val items = paging.items
         val slots =
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 items,
                 "discussions:$filter",
                 paging.initialLoading,
@@ -93,13 +93,13 @@ internal fun DiscussionListPage(
             labels = filterOptions.labels,
             discussionCategories = filterOptions.categories,
         ) { actions, searching ->
-          GithubPage(
+          AppPage(
             title = route.heading?.takeIf(String::isNotBlank) ?: strings.Repository.Discussions,
             listState = paging.listState,
             itemSpacing = 12.dp,
             actions = actions,
           ) {
-            githubPagingItems(
+            pagingItems(
                 slots,
                 contentType = "discussion-card",
             ) { entry ->
@@ -114,7 +114,7 @@ internal fun DiscussionListPage(
                             }
                             ?.let { it[0] to it[1] }
                     }
-                GithubDiscussionCard(
+                DiscussionCard(
                     item = entry,
                     onClick =
                         if (entry != null && target != null) {
@@ -271,11 +271,11 @@ internal class DiscussionListViewModel(
         saveDraft()
     }
 
-    fun bodyEditor(title: String, saveLabel: String): GithubEditorSession {
-        lateinit var editor: GithubEditorSession
-        editor = GithubEditorSession(
+    fun bodyEditor(title: String, saveLabel: String): EditorSession {
+        lateinit var editor: EditorSession
+        editor = EditorSession(
             title = title,
-            kind = GithubEditorKind.Markdown,
+            kind = EditorSessionKind.Markdown,
             source = creationBody,
             repositoryRootUrl = "https://github.com/${route.owner}/${route.name}",
             onSourceChange = {

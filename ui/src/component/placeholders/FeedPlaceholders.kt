@@ -12,7 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.GithubActivityCard
+import moe.yumeyuka.yumehub.ui.component.ActivityCard
 import moe.yumeyuka.yumehub.ui.component.feedDetailTitleStyle
 import moe.yumeyuka.yumehub.ui.component.repositoryCardBodyStyle
 import moe.yumeyuka.yumehub.ui.component.repositoryCardHeadingStyle
@@ -33,7 +33,7 @@ fun FeedActivityPlaceholder() {
             AvatarPlaceholder(30.dp)
             TextLinePlaceholder(styles.footnote, Modifier.weight(1f), 0.7f)
         }
-        GithubActivityCard(
+        ActivityCard(
             header = {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

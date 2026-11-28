@@ -28,21 +28,21 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownActions
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.MarkdownActions
+import moe.yumeyuka.yumehub.ui.component.MarkdownContent
 import moe.yumeyuka.yumehub.ui.component.RetainVisibleMarkdownCard
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingOverlay
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingOverlay
+import moe.yumeyuka.yumehub.ui.component.placeholders.MarkdownPlaceholder
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalRouteEntryReady
 
 /** One document slot for body cards, READMEs and retained editor previews, independent of backend. */
 @Composable
 internal fun MarkdownSurface(
-    content: GithubMarkdownContent,
+    content: MarkdownContent,
     modifier: Modifier,
-    actions: GithubMarkdownActions,
+    actions: MarkdownActions,
     repository: GithubMarkdownRepository,
     isCurrentAccount: () -> Boolean,
     visible: Boolean = true,
@@ -51,9 +51,9 @@ internal fun MarkdownSurface(
     viewport: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
-    val page = LocalGithubPageHost.current
+    val page = LocalAppPageHost.current
     val active = hostActive && page?.isCurrent != false
-    val routeReady = LocalGithubRouteEntryReady.current
+    val routeReady = LocalRouteEntryReady.current
     // A hidden editor preview keeps its DOM/scroll, but does not follow edits or fetch a draft.
     var lastVisible by remember { mutableStateOf(content) }
     if (visible && content != lastVisible) SideEffect { lastVisible = content }
@@ -65,7 +65,7 @@ internal fun MarkdownSurface(
             isCurrentAccount,
             requestEnabled = routeReady && visible && active,
         )
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val direction = LocalLayoutDirection.current
@@ -111,7 +111,7 @@ internal fun MarkdownSurface(
             }
             val bodyVisible = visible && active && inViewport && drawable && failure == null
             if (!viewport) RetainVisibleMarkdownCard(bodyVisible)
-            GithubLoadingOverlay(
+            LoadingOverlay(
                 loading = !drawable && failure == null,
                 documentKey = state.revision,
                 layoutWidth = width,
@@ -122,11 +122,11 @@ internal fun MarkdownSurface(
                 visible = visible && inViewport,
                 onPresented = if (failure == null) actions.onReady else null,
                 placeholder = {
-                    if (viewport) GithubMarkdownPlaceholder(Modifier.padding(contentPadding).padding(16.dp))
-                    else GithubMarkdownPlaceholder(compact = true)
+                    if (viewport) MarkdownPlaceholder(Modifier.padding(contentPadding).padding(16.dp))
+                    else MarkdownPlaceholder(compact = true)
                 },
             ) {
-                if (!routeReady && !drawable && failure == null) return@GithubLoadingOverlay
+                if (!routeReady && !drawable && failure == null) return@LoadingOverlay
                 if (failure != null) {
                     Box(Modifier.padding(contentPadding)) {
                         GlasmioListRow(

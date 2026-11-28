@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Markdown(
+public data class MarkdownStrings(
     val LoadFailed: String,
     val RenderingFailed: String,
     val UnsupportedContent: String,
@@ -21,8 +21,8 @@ public data class GithubStrings_Markdown(
     val Retry: String = "",
 )
 
-internal val ZhHansMarkdownStrings: GithubStrings_Markdown =
-    GithubStrings_Markdown(
+internal val ZhHansMarkdownStrings: MarkdownStrings =
+    MarkdownStrings(
         LoadFailed = "内容加载失败",
         RenderingFailed = "内容显示失败",
         UnsupportedContent = "此内容暂时无法显示",
@@ -43,8 +43,8 @@ internal val ZhHansMarkdownStrings: GithubStrings_Markdown =
         Retry = "重试",
     )
 
-internal val EnMarkdownStrings: GithubStrings_Markdown =
-    GithubStrings_Markdown(
+internal val EnMarkdownStrings: MarkdownStrings =
+    MarkdownStrings(
         LoadFailed = "Unable to load content",
         RenderingFailed = "Unable to display content",
         UnsupportedContent = "This content cannot be displayed yet",

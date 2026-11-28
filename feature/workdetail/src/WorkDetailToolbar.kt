@@ -24,12 +24,12 @@ import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.locale.WorkDetailStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
-internal fun CollaborationSection.label(strings: GithubStrings_WorkDetail): String =
+internal fun CollaborationSection.label(strings: WorkDetailStrings): String =
     when (this) {
         CollaborationSection.Discussion -> strings.Discussion
         CollaborationSection.Reviews -> strings.Reviews
@@ -45,7 +45,7 @@ internal fun WorkDetailToolbar(
     onComment: () -> Unit,
     onSubscription: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val enabled = !state.submitting || state.sendingInBackground
     val canCompose =
         !state.sendingInBackground &&
@@ -74,7 +74,7 @@ internal fun WorkDetailToolbar(
                     state.subscription?.canSubscribe != false,
             size = 48.dp,
         ) {
-            GithubIcon(
+            AppIcon(
                 if (subscriptionState == "IGNORED") Lucide.BellOff else Lucide.Bell,
                 contentDescription =
                     when {
@@ -89,14 +89,14 @@ internal fun WorkDetailToolbar(
             val colors = LocalGlassColors.current
             CompositionLocalProvider(
                 LocalGlassColors provides
-                    if (merging) colors.copy(prominentContainer = GithubWorkColors.open)
+                    if (merging) colors.copy(prominentContainer = WorkColors.open)
                     else colors,
             ) {
                 GlasmioButton(
                     onClick = if (merging) onMerge else onComment,
                     enabled = if (merging) canMerge else enabled && canCompose,
                     emphasis = if (merging) GlassEmphasis.Prominent else GlassEmphasis.Regular,
-                    navigationSurfaceColor = if (merging) GithubWorkColors.open else null,
+                    navigationSurfaceColor = if (merging) WorkColors.open else null,
                     sampleBackdrop = true,
                     style = GlassSurfaceStyle.Navigation,
                     size = GlasmioButtonSize.Large,
@@ -108,7 +108,7 @@ internal fun WorkDetailToolbar(
                                     Modifier.border(
                                         width = 3.dp,
                                         color =
-                                            GithubWorkColors.onStatus.copy(
+                                            WorkColors.onStatus.copy(
                                                 alpha = if (canMerge) 0.85f else 0.45f,
                                             ),
                                         shape = RoundedCornerShape(50),
@@ -121,12 +121,12 @@ internal fun WorkDetailToolbar(
                             !merging -> strings.Comment
                             state.mergePhase == WritePhase.PENDING -> strings.Merging
                             state.mergePhase == WritePhase.UNCERTAIN ->
-                                LocalGithubStrings.current.Common.MutationUncertain
+                                LocalAppStrings.current.Common.MutationUncertain
                             else -> strings.Merge
                         },
                         style = GlasmioTheme.textStyles.body,
                         color =
-                            if (merging && canMerge) GithubWorkColors.onStatus
+                            if (merging && canMerge) WorkColors.onStatus
                             else GlasmioTheme.colors.content,
                     )
                 }
@@ -139,7 +139,7 @@ internal fun WorkDetailToolbar(
                     enabled = enabled && canCompose,
                     size = 48.dp,
                 ) {
-                    GithubIcon(Lucide.MessageSquare, contentDescription = strings.Comment)
+                    AppIcon(Lucide.MessageSquare, contentDescription = strings.Comment)
                 }
             }
         }

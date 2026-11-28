@@ -3,7 +3,7 @@ package moe.yumeyuka.yumehub.ui.component
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Modifier
 import androidx.paging.LoadState
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
@@ -11,7 +11,7 @@ import retrofit2.HttpException
 
 /** 分页列表共用的空态尾项，供各 feature 的列表直接复用。 */
 fun LazyListScope.collaborationPagingStatus(
-    slots: GithubPagingSlots<*>,
+    slots: PagingSlots<*>,
     title: String,
     emptyPlaceholder: Boolean = true,
     emptyMessage: String? = null,
@@ -22,9 +22,9 @@ fun LazyListScope.collaborationPagingStatus(
         (slots.items.loadState.refresh as? LoadState.Error)?.error?.isEmptyStateNetworkFailure() == true
     if ((slots.isEmptyResult || offline) && emptyPlaceholder) {
         item(key = "collaboration-page-empty") {
-            GithubEmptyState(
+            EmptyState(
                 scene = if (offline) EmptyScene.Offline else emptyScene,
-                title = if (offline) LocalGithubStrings.current.Repository.NetworkFailed
+                title = if (offline) LocalAppStrings.current.Repository.NetworkFailed
                     else emptyMessage ?: "暂无$title",
                 modifier = Modifier.fillParentMaxHeight(),
                 verticalBias = emptyVerticalBias,

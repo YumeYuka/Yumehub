@@ -11,10 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -23,9 +20,10 @@ import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun StarredListCreateSheet(
@@ -40,11 +38,11 @@ internal fun StarredListCreateSheet(
     onCreate: () -> Unit,
     onAcknowledgeUncertain: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val profile = strings.Profile
     val common = strings.Common
     var acknowledgeVisible by remember { mutableStateOf(false) }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
@@ -56,7 +54,7 @@ internal fun StarredListCreateSheet(
                 title = profile.NewList,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Cancel)
+                        AppIcon(Lucide.X, contentDescription = common.Cancel)
                     }
                 },
                 actions = {
@@ -64,7 +62,7 @@ internal fun StarredListCreateSheet(
                         onClick = onCreate,
                         enabled = ready && name.isNotBlank() && !creating && !uncertain,
                     ) {
-                        GithubIcon(Lucide.Check, contentDescription = profile.NewList)
+                        AppIcon(Lucide.Check, contentDescription = profile.NewList)
                     }
                 },
             )
@@ -74,7 +72,7 @@ internal fun StarredListCreateSheet(
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GithubSection(profile.ListNameLabel) {
+            ListSection(profile.ListNameLabel) {
                 GlasmioTextField(
                     value = name,
                     onValueChange = onNameChange,
@@ -101,27 +99,12 @@ internal fun StarredListCreateSheet(
         }
     }
     if (acknowledgeVisible && uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = common.MutationUncertain,
-            message = common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            onAcknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                onAcknowledgeUncertain()
+            },
         )
     }
 }

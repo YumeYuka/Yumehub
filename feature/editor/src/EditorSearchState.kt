@@ -13,15 +13,15 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import moe.yumeyuka.yumehub.ui.component.text.GithubCodeSearchHighlights
-import moe.yumeyuka.yumehub.ui.component.text.GithubCodeSearchResult
-import moe.yumeyuka.yumehub.ui.component.text.findGithubCodeMatches
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.ui.component.text.CodeSearchHighlights
+import moe.yumeyuka.yumehub.ui.component.text.CodeSearchResult
+import moe.yumeyuka.yumehub.ui.component.text.findCodeMatches
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 
 /** 查找框独占输入焦点，命中状态不借用正文的原生选区。 */
 internal class EditorSearchState {
     var query by mutableStateOf(TextFieldValue())
-    var result by mutableStateOf<GithubCodeSearchResult?>(null)
+    var result by mutableStateOf<CodeSearchResult?>(null)
         private set
 
     var currentIndex by mutableIntStateOf(-1)
@@ -30,7 +30,7 @@ internal class EditorSearchState {
     var revealRequest by mutableIntStateOf(0)
         private set
 
-    fun accept(next: GithubCodeSearchResult, caret: Int) {
+    fun accept(next: CodeSearchResult, caret: Int) {
         val offset = result?.matches?.getOrNull(currentIndex)?.start ?: caret
         result = next
         currentIndex = next.indexAtOrAfter(offset)
@@ -42,15 +42,15 @@ internal class EditorSearchState {
         revealRequest++
     }
 
-    fun highlights(source: String): GithubCodeSearchHighlights? =
+    fun highlights(source: String): CodeSearchHighlights? =
         result
             ?.takeIf { it.source == source && it.query == query.text }
-            ?.let { GithubCodeSearchHighlights(it, currentIndex, revealRequest) }
+            ?.let { CodeSearchHighlights(it, currentIndex, revealRequest) }
 }
 
 @Composable
 internal fun rememberEditorSearchState(
-    session: GithubEditorSession,
+    session: EditorSession,
     visible: Boolean,
 ): EditorSearchState {
     val search = remember(session) { EditorSearchState() }
@@ -62,7 +62,7 @@ internal fun rememberEditorSearchState(
         val next =
             withContext(Dispatchers.Default) {
                 val context = currentCoroutineContext()
-                findGithubCodeMatches(source, query, matchCase = false) { context.ensureActive() }
+                findCodeMatches(source, query, matchCase = false) { context.ensureActive() }
             }
         search.accept(next, session.markdownState.value.selection.start)
     }

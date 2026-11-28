@@ -28,27 +28,27 @@ import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.repository.GithubReleaseDetail
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
-import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
-import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.githubActivityTime
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.MarkdownBody
+import moe.yumeyuka.yumehub.ui.component.ReactionBar
+import moe.yumeyuka.yumehub.ui.component.ReadingFooter
+import moe.yumeyuka.yumehub.ui.component.ReadingGroup
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
+import moe.yumeyuka.yumehub.ui.component.formatActivityTime
+import moe.yumeyuka.yumehub.ui.component.placeholders.MarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseMetadataPlaceholder
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageState
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
@@ -56,7 +56,7 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
-data class ReleasesRoute(val owner: String, val name: String, val tag: String? = null) : GithubRoute
+data class ReleasesRoute(val owner: String, val name: String, val tag: String? = null) : AppRoute
 
 @Composable
 fun ReleasesPage(route: ReleasesRoute, account: String) {
@@ -66,8 +66,8 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             parameters = { parametersOf(route, account) },
         )
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val host = requireNotNull(LocalGithubPageHost.current)
-    val strings = LocalGithubStrings.current
+    val host = requireNotNull(LocalAppPageHost.current)
+    val strings = LocalAppStrings.current
     val downloads: DownloadStore = koinInject()
     val context = LocalContext.current
     val openExternal = rememberExternalUriHandler()
@@ -101,7 +101,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
         } else null
     val assetSlots =
         if (version != null && assets != null) {
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 assets,
                 "release-assets:${version.id}",
                 autoRefresh = false,
@@ -116,16 +116,16 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
     val title =
         version?.title ?: state.selectedVersion?.title ?: route.tag ?: strings.Repository.Releases
     val listState =
-        LocalGithubPageState.current?.listState(
+        LocalAppPageState.current?.listState(
             "release:${version?.id ?: state.selectedVersion?.id ?: route.tag.orEmpty()}",
         )
-    GithubLoadFailureToast(state.failure, strings.Release.LoadFailed)
-    GithubLoadFailureToast(
+    LoadFailureToast(state.failure, strings.Release.LoadFailed)
+    LoadFailureToast(
         (assets?.loadState?.refresh as? LoadState.Error)
             ?: (assets?.loadState?.append as? LoadState.Error),
         strings.Release.AssetsLoadFailed,
     )
-    GithubPage(
+    AppPage(
         title = title,
         smallTitle = strings.Repository.Releases,
         titleMaxLines = 4,
@@ -144,7 +144,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             }
         },
         actions = {
-            GithubToolbarActions(
+            ToolbarActions(
                 toolbarIcon(
                     Lucide.RotateCcwClock,
                     strings.Release.Timeline,
@@ -167,7 +167,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             }
         if (detail == null && state.result != null && state.failure == null)
             item(key = "release-empty") {
-                GithubEmptyState(
+                EmptyState(
                     scene = EmptyScene.Inbox,
                     title = strings.Release.Empty,
                     modifier = Modifier.fillParentMaxHeight(),
@@ -175,11 +175,11 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
             }
         if (detail != null || state.loading) {
             readingItem(key = "release-body") {
-                GithubReadingGroup(documentKey = detail?.html?.takeIf(String::isNotBlank)) {
+                ReadingGroup(documentKey = detail?.html?.takeIf(String::isNotBlank)) {
                     SkeletonSwap(
                         loading = detail == null,
                         placeholder = {
-                            GithubMarkdownPlaceholder(Modifier.padding(16.dp), compact = true)
+                            MarkdownPlaceholder(Modifier.padding(16.dp), compact = true)
                         },
                     ) {
                         val value = detail ?: return@SkeletonSwap
@@ -192,7 +192,7 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
                                     color = GlasmioTheme.colors.secondaryContent,
                                 )
                             else ->
-                                GithubMarkdown(
+                                MarkdownBody(
                                     text = "",
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     html = value.html,
@@ -202,8 +202,8 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
                                 )
                         }
                         if (value.canReact || value.reactions.isNotEmpty())
-                            GithubReadingFooter {
-                                GithubReactionBar(
+                            ReadingFooter {
+                                ReactionBar(
                                     subjectKey = value.version.id,
                                     sourceReactions = value.reactions,
                                     canReact = value.canReact,
@@ -272,19 +272,19 @@ fun ReleasesPage(route: ReleasesRoute, account: String) {
 @Composable
 private fun ReleaseReactionFailureToast(viewModel: ReleasesViewModel, message: String) {
     val failure by viewModel.reactionFailure.collectAsStateWithLifecycle()
-    GithubLoadFailureToast(failure, message)
+    LoadFailureToast(failure, message)
 }
 
 @Composable
 private fun ReleaseMetadata(detail: GithubReleaseDetail, enabled: Boolean, modifier: Modifier) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val copy = rememberCopyText()
     val tag = detail.version.tag
     GlasmioGroupedList(modifier = modifier) {
         GlasmioListRow(
             title = detail.author ?: strings.Workspaces.UnknownAuthor,
-            subtitle = githubActivityTime(detail.version.date),
-            leading = { GithubAvatar(detail.authorAvatarUrl, detail.author, size = 32.dp) },
+            subtitle = formatActivityTime(detail.version.date),
+            leading = { UserAvatar(detail.authorAvatarUrl, detail.author, size = 32.dp) },
             showTopSeparator = false,
         )
         if (tag.isNotBlank()) {
@@ -292,7 +292,7 @@ private fun ReleaseMetadata(detail: GithubReleaseDetail, enabled: Boolean, modif
                 title = strings.Release.Tag,
                 detail = tag,
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Tag,
                         contentDescription = strings.Release.CopyTag,
                         tint = GlasmioTheme.colors.secondaryContent,

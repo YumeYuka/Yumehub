@@ -56,9 +56,9 @@ import moe.yumeyuka.markdown.compose.NativeHtmlIconRequest
 import moe.yumeyuka.markdown.compose.NativeHtmlImageRequest
 import moe.yumeyuka.markdown.compose.NativeHtmlMediaRequest
 import moe.yumeyuka.markdown.compose.NativeHtmlSlots
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
 
 @Composable
 internal fun rememberNativeMarkdownSlots(
@@ -127,7 +127,7 @@ private fun NativeMarkdownIcon(request: NativeHtmlIconRequest, modifier: Modifie
             "git-merge" -> Lucide.GitMerge
             else -> Lucide.Info
         }
-    GithubIcon(
+    AppIcon(
         imageVector = icon,
         contentDescription = request.contentDescription,
         size = request.size,
@@ -149,7 +149,7 @@ private fun NativeMarkdownImage(
         resourceNamespace ?: remember(resourceRevision) { UUID.randomUUID().toString() }
     val currentDocument by rememberUpdatedState(isCurrentDocument)
     val latestRequest by rememberUpdatedState(request)
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val primaryUrl = request.url.takeIf { nativeMarkdownHttpsUri(it) != null }
     val fallbackUrl = request.fallbackUrl?.takeIf { nativeMarkdownHttpsUri(it) != null }
     val contentScale =
@@ -221,7 +221,7 @@ private fun NativeMarkdownImage(
                 filterQuality = FilterQuality.High,
             )
             if (failed && currentDocument())
-                GithubLoadFailureToast(result, strings.Markdown.ImageLoadFailed)
+                LoadFailureToast(result, strings.Markdown.ImageLoadFailed)
         }
     }
 }
@@ -234,7 +234,7 @@ private fun NativeMarkdownMedia(
     active: Boolean,
     isCurrentDocument: () -> Boolean,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val currentDocument by rememberUpdatedState(isCurrentDocument)
     val latestRequest by rememberUpdatedState(request)
     val url = request.url.takeIf { nativeMarkdownHttpsUri(it) != null }
@@ -243,7 +243,7 @@ private fun NativeMarkdownMedia(
             if (currentDocument()) latestRequest.onError?.invoke(strings.Markdown.MediaLoadFailed)
         }
         if (active && currentDocument())
-            GithubLoadFailureToast(request.url, strings.Markdown.MediaLoadFailed)
+            LoadFailureToast(request.url, strings.Markdown.MediaLoadFailed)
         return
     }
     NativeMarkdownMediaPlayer(request, Uri.parse(url), modifier, active, isCurrentDocument)
@@ -258,7 +258,7 @@ internal fun NativeMarkdownMediaPlayer(
     active: Boolean,
     isCurrentDocument: () -> Boolean,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val currentDocument by rememberUpdatedState(isCurrentDocument)
     val latestRequest by rememberUpdatedState(request)
     val latestActive by rememberUpdatedState(active)
@@ -349,7 +349,7 @@ internal fun NativeMarkdownMediaPlayer(
         }
         if (failed) {
             if (active && currentDocument())
-                GithubLoadFailureToast(request.url, strings.Markdown.MediaLoadFailed)
+                LoadFailureToast(request.url, strings.Markdown.MediaLoadFailed)
         } else if (request.controls) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 GlasmioIconButton(
@@ -367,7 +367,7 @@ internal fun NativeMarkdownMediaPlayer(
                     },
                     sampleBackdrop = false,
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         imageVector = if (playing) Lucide.Pause else Lucide.Play,
                         contentDescription =
                             if (playing) strings.Markdown.PauseMedia

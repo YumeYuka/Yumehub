@@ -22,7 +22,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import kotlinx.coroutines.flow.first
 import moe.yumeyuka.yumehub.feature.auth.AuthUiState
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
 
 @Composable
 internal fun AccountSwitchTransition(
@@ -73,7 +73,7 @@ internal fun AccountSwitchTransition(
                         }
                     },
             )
-            GithubBackHandler {}
+            AppBackHandler {}
         }
     }
 }

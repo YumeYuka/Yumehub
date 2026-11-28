@@ -10,9 +10,9 @@ import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.core.model.CollaborationListFilter
 import moe.yumeyuka.yumehub.core.model.CollaborationScopeFilter
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 /** 讨论不属于 Issue/PR 的 CollaborationKind；kind 为空时使用讨论筛选项。 */
 @Composable
@@ -29,8 +29,8 @@ fun WorkListControls(
     onShowFilters: (() -> Unit)? = null,
     content: @Composable (actions: @Composable () -> Unit, searching: Boolean) -> Unit,
 ) {
-    val common = LocalGithubStrings.current.Common
-    val enabled = requireNotNull(LocalGithubPageHost.current).navigationEnabled
+    val common = LocalAppStrings.current.Common
+    val enabled = requireNotNull(LocalAppPageHost.current).navigationEnabled
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var searching by remember { mutableStateOf(false) }
@@ -49,8 +49,8 @@ fun WorkListControls(
         delay(200)
         onQueryChange(input.text)
     }
-    GithubBackHandler(enabled = searching && !sheetVisible, onBack = dismissSearch)
-    GithubPageSearchLayout(
+    AppBackHandler(enabled = searching && !sheetVisible, onBack = dismissSearch)
+    PageSearchLayout(
         searching,
         input,
         { input = it },

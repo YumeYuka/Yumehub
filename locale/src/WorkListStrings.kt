@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_WorkList(
+public data class WorkListStrings(
     val Filter: String,
     val NoLabels: String,
     val NoAssignee: String,
@@ -54,8 +54,8 @@ public data class GithubStrings_WorkList(
     val CreationFailed: String,
 )
 
-internal val ZhHansWorkListStrings: GithubStrings_WorkList =
-    GithubStrings_WorkList(
+internal val ZhHansWorkListStrings: WorkListStrings =
+    WorkListStrings(
         Filter = "筛选",
         NoLabels = "无标签",
         NoAssignee = "未分配",
@@ -109,8 +109,8 @@ internal val ZhHansWorkListStrings: GithubStrings_WorkList =
         CreationFailed = "创建失败，请检查权限和输入后重试",
     )
 
-internal val EnWorkListStrings: GithubStrings_WorkList =
-    GithubStrings_WorkList(
+internal val EnWorkListStrings: WorkListStrings =
+    WorkListStrings(
         Filter = "Filter",
         NoLabels = "No labels",
         NoAssignee = "Unassigned",

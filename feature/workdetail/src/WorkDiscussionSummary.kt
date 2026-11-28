@@ -12,13 +12,13 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.githubDiffColors
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.diffColors
+import moe.yumeyuka.yumehub.ui.component.placeholders.AnimatedCardField
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 @Composable
 internal fun WorkDiscussionSummary(
@@ -28,16 +28,16 @@ internal fun WorkDiscussionSummary(
     onOpenFiles: () -> Unit,
     onOpenCommits: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     Column {
         WorkSummarySection(strings.Changes, item) { entry ->
             GlasmioListRow(
                 title = entry.changedFiles?.let(strings.FileCount) ?: strings.Files,
                 trailing = {
-                    GithubCardField(
+                    AnimatedCardField(
                         entry.takeIf { it.additions != null && it.deletions != null },
                     ) { diff ->
-                        val colors = githubDiffColors(GlasmioTheme.colors.isDark)
+                        val colors = diffColors(GlasmioTheme.colors.isDark)
                         Row {
                             Text(
                                 "+${diff.additions}",
@@ -54,7 +54,7 @@ internal fun WorkDiscussionSummary(
                     }
                 },
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.FileText,
                         contentDescription = null,
                         size = 20.dp,
@@ -68,7 +68,7 @@ internal fun WorkDiscussionSummary(
             GlasmioListRow(
                 title = entry.commitCount?.let(strings.CommitCount) ?: strings.Commits,
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.GitCommitHorizontal,
                         contentDescription = null,
                         size = 20.dp,
@@ -82,15 +82,15 @@ internal fun WorkDiscussionSummary(
         WorkSummarySection(strings.Status, item) { entry ->
             val reviewColor =
                 when (entry.viewerLatestReviewState.takeUnless { entry.viewerReviewRequested }) {
-                    "APPROVED" -> GithubWorkColors.open
-                    "CHANGES_REQUESTED" -> GithubWorkColors.closed
-                    else -> GithubWorkColors.draft
+                    "APPROVED" -> WorkColors.open
+                    "CHANGES_REQUESTED" -> WorkColors.closed
+                    else -> WorkColors.draft
                 }
             GlasmioListRow(
                 title = strings.Review,
                 detail = entry.viewerReviewLabel(strings),
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.MessageCircleCheck,
                         contentDescription = null,
                         size = 20.dp,
@@ -115,9 +115,9 @@ internal fun WorkDiscussionSummary(
                 }
             val checksColor =
                 when {
-                    entry.allStatusChecksPassed -> GithubWorkColors.open
-                    failedChecks > 0 -> GithubWorkColors.closed
-                    checksPending -> GithubWorkColors.draft
+                    entry.allStatusChecksPassed -> WorkColors.open
+                    failedChecks > 0 -> WorkColors.closed
+                    checksPending -> WorkColors.draft
                     else -> GlasmioTheme.colors.secondaryContent
                 }
             val requiredCount = entry.requiredStatusCheckCount ?: 0
@@ -125,7 +125,7 @@ internal fun WorkDiscussionSummary(
             GlasmioListRow(
                 title = strings.Checks,
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         checksIcon,
                         contentDescription = null,
                         size = 20.dp,
@@ -146,8 +146,8 @@ private fun WorkSummarySection(
     item: CollaborationItemDto?,
     rows: @Composable (CollaborationItemDto) -> Unit,
 ) {
-    GithubSection(title) {
-        GithubLoadingContent(
+    ListSection(title) {
+        LoadingContent(
             loading = item == null,
             placeholder = {
                 Column {

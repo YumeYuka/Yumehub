@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_MyRepositories(
+public data class MyRepositoriesStrings(
     val Title: String,
     val Search: String,
     val Filter: String,
@@ -22,8 +22,8 @@ public data class GithubStrings_MyRepositories(
     val EmptyFiltered: String,
 )
 
-internal val ZhHansMyRepositoriesStrings: GithubStrings_MyRepositories =
-    GithubStrings_MyRepositories(
+internal val ZhHansMyRepositoriesStrings: MyRepositoriesStrings =
+    MyRepositoriesStrings(
         Title = "我的仓库",
         Search = "搜索仓库",
         Filter = "筛选",
@@ -45,8 +45,8 @@ internal val ZhHansMyRepositoriesStrings: GithubStrings_MyRepositories =
         EmptyFiltered = "没有匹配的仓库",
     )
 
-internal val EnMyRepositoriesStrings: GithubStrings_MyRepositories =
-    GithubStrings_MyRepositories(
+internal val EnMyRepositoriesStrings: MyRepositoriesStrings =
+    MyRepositoriesStrings(
         Title = "My repositories",
         Search = "Search repositories",
         Filter = "Filter",

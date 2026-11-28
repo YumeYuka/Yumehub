@@ -21,13 +21,14 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.UsersRound
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun WorkReviewRequestsSheet(
@@ -35,7 +36,7 @@ internal fun WorkReviewRequestsSheet(
     viewModel: WorkInfoViewModel?,
     onDismiss: () -> Unit,
 ) {
-    val locale = LocalGithubStrings.current
+    val locale = LocalAppStrings.current
     val strings = locale.WorkDetail
     val live = state.editor?.takeIf { it.property == WorkProperty.Reviewers }
     // 保存成功后编辑器即被清空；保留最近一次快照，退出动画期间内容不变成空白。
@@ -43,7 +44,7 @@ internal fun WorkReviewRequestsSheet(
     androidx.compose.runtime.SideEffect { if (live != null) retained = live }
     val editor = live ?: retained
     LaunchedEffect(viewModel) { viewModel?.edit(WorkProperty.Reviewers) }
-    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    if (state.saveFailed) LoadFailureToast(Unit, strings.PropertySaveFailed)
     val editable =
         live != null &&
             live.editable &&
@@ -52,7 +53,7 @@ internal fun WorkReviewRequestsSheet(
             !live.needsReconcile &&
             !state.submitting
     val shown = remember(editor) { editor?.reviewerGroups() }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发。
         visible = true,
         title = strings.RequestReview,
@@ -75,7 +76,7 @@ internal fun WorkReviewRequestsSheet(
             }
         },
     ) {
-        if (editor == null || shown == null || editor.loading) return@GithubSearchSelectionSheet
+        if (editor == null || shown == null || editor.loading) return@SearchSelectionSheet
         if (editor.failed || editor.needsReconcile) {
             item("review-requests-retry") {
                 var acknowledgeVisible by remember { mutableStateOf(false) }
@@ -103,29 +104,12 @@ internal fun WorkReviewRequestsSheet(
                     }
                 }
                 if (acknowledgeVisible && state.uncertain) {
-                    io.github.neoruaa.glasmio.ui.GlasmioAlertDialog(
-                        visible = true,
-                        title = locale.Common.MutationUncertain,
-                        message = locale.Common.MutationAcknowledgeWarning,
-                        buttons =
-                            listOf(
-                                io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
-                                    locale.Common.Cancel,
-                                    onClick = { acknowledgeVisible = false },
-                                    role =
-                                        io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Cancel,
-                                ),
-                                io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec(
-                                    locale.Common.MutationAcknowledged,
-                                    onClick = {
-                                        acknowledgeVisible = false
-                                        viewModel?.acknowledgeUncertain()
-                                    },
-                                    role =
-                                        io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole.Default,
-                                ),
-                            ),
-                        onDismissRequest = { acknowledgeVisible = false },
+                    MutationAcknowledgementDialog(
+                        onDismiss = { acknowledgeVisible = false },
+                        onAcknowledge = {
+                            acknowledgeVisible = false
+                            viewModel?.acknowledgeUncertain()
+                        },
                     )
                 }
             }
@@ -199,12 +183,12 @@ private fun LazyListScope.reviewerGroup(
 ) {
     if (reviewers.isEmpty()) return
     item("review-requests:$group") {
-        GithubSectionHeader(title, Modifier.animateItem().padding(bottom = 8.dp))
+        SectionHeader(title, Modifier.animateItem().padding(bottom = 8.dp))
     }
     itemsIndexed(reviewers, key = { _, reviewer -> "review-request:${reviewer.id}" }) {
         index,
         reviewer ->
-        val strings = LocalGithubStrings.current.WorkDetail
+        val strings = LocalAppStrings.current.WorkDetail
         val pending = group == "pending"
         val detail =
             when {
@@ -235,9 +219,9 @@ private fun LazyListScope.reviewerGroup(
                 detail = detail,
                 leading = {
                     if (!reviewer.avatarUrl.isNullOrBlank()) {
-                        GithubAvatar(reviewer.avatarUrl, reviewer.title, size = 20.dp)
+                        UserAvatar(reviewer.avatarUrl, reviewer.title, size = 20.dp)
                     } else {
-                        GithubIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
+                        AppIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
                     }
                 },
                 onClick = if (editable && reviewer.editable) ({ onToggle(reviewer) }) else null,

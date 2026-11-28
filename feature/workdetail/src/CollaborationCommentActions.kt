@@ -13,18 +13,18 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationCommentDto
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.locale.GithubStrings_Common
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubCommentAuthorHeader
-import moe.yumeyuka.yumehub.ui.component.GithubMutationRecoveryRow
-import moe.yumeyuka.yumehub.ui.component.GithubReactionBar
-import moe.yumeyuka.yumehub.ui.component.GithubReadingFooter
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.githubRelativeTime
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.locale.CommonStrings
+import moe.yumeyuka.yumehub.locale.WorkDetailStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.CommentAuthorHeader
+import moe.yumeyuka.yumehub.ui.component.MutationRecoveryRow
+import moe.yumeyuka.yumehub.ui.component.ReactionBar
+import moe.yumeyuka.yumehub.ui.component.ReadingFooter
+import moe.yumeyuka.yumehub.ui.component.ReadingGroup
+import moe.yumeyuka.yumehub.ui.component.formatRelativeTime
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import moe.yumeyuka.yumehub.ui.platform.rememberCopyText
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 
 @Composable
 internal fun WorkDescriptionContent(
@@ -32,9 +32,9 @@ internal fun WorkDescriptionContent(
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val work = strings.WorkDetail
-    val navigationEnabled = LocalGithubPageHost.current?.navigationEnabled == true
+    val navigationEnabled = LocalAppPageHost.current?.navigationEnabled == true
     val enabled = navigationEnabled && (!state.submitting || state.sendingInBackground)
     val copy = rememberCopyText()
     val url = entry.htmlUrl ?: state.browserUrl
@@ -72,10 +72,10 @@ internal fun WorkDescriptionContent(
             )
         }
     }
-    GithubCommentAuthorHeader(
+    CommentAuthorHeader(
         entry.user?.login,
         entry.user?.avatarUrl,
-        githubRelativeTime(entry.createdAt, strings.Notifications),
+        formatRelativeTime(entry.createdAt, strings.Notifications),
         menuItems = menuItems,
         menuEnabled = enabled,
     )
@@ -89,8 +89,8 @@ internal fun WorkDescriptionContent(
     )
     val subjectId = entry.nodeId
     if (subjectId != null)
-        GithubReadingFooter {
-            GithubReactionBar(
+        ReadingFooter {
+            ReactionBar(
                 subjectKey = subjectId,
                 sourceReactions = entry.reactions,
                 canReact = entry.viewerCanReact,
@@ -116,13 +116,13 @@ internal fun CommentDiscussionEntry(
         }
     if (write?.deletion?.result != null) return
     val shownComment = remember(write, comment) { write?.apply(comment) ?: comment }
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val mutable = write?.busy != true && write?.uncertain != true
     val canEdit = mutable && viewModel.canManageComment(shownComment)
     val canHide = mutable && viewModel.canHideComment(shownComment)
     val copy = rememberCopyText()
-    val open = rememberGithubUriHandler()
-    val navigationEnabled = LocalGithubPageHost.current?.navigationEnabled == true
+    val open = rememberPageLinkHandler()
+    val navigationEnabled = LocalAppPageHost.current?.navigationEnabled == true
     val enabled = navigationEnabled && (!state.submitting || state.sendingInBackground)
     val referenceUrl =
         remember(shownComment.url, shownComment.body, shownComment.user?.login, state.browserUrl) {
@@ -131,7 +131,7 @@ internal fun CommentDiscussionEntry(
     val menuItems =
         commentActionItems(
             strings = strings,
-            common = LocalGithubStrings.current.Common,
+            common = LocalAppStrings.current.Common,
             canEdit = canEdit,
             canHide = canHide,
             canCopyLink = !shownComment.url.isNullOrBlank(),
@@ -151,13 +151,13 @@ internal fun CommentDiscussionEntry(
         else
             shownComment.bodyHtml?.takeIf(String::isNotBlank)
                 ?: shownComment.body?.takeIf(String::isNotBlank)
-    GithubReadingGroup(documentKey = revision) {
-        val common = LocalGithubStrings.current.Common
+    ReadingGroup(documentKey = revision) {
+        val common = LocalAppStrings.current.Common
         val editMarker = write?.editOperationId
         when {
             write?.busy == true -> GlasmioListRow(title = common.MutationPending)
             editMarker != null ->
-                GithubMutationRecoveryRow(
+                MutationRecoveryRow(
                     editMarker,
                     common.MutationUncertain,
                     viewModel::acknowledgeOperation,
@@ -166,10 +166,10 @@ internal fun CommentDiscussionEntry(
             write?.edit?.phase == WritePhase.REJECTED ->
                 GlasmioListRow(title = common.MutationNotSubmitted)
         }
-        GithubCommentAuthorHeader(
+        CommentAuthorHeader(
             shownComment.user?.login,
             shownComment.user?.avatarUrl,
-            githubRelativeTime(shownComment.createdAt, LocalGithubStrings.current.Notifications),
+            formatRelativeTime(shownComment.createdAt, LocalAppStrings.current.Notifications),
             role =
                 if (shownComment.isMinimized) {
                     shownComment.minimizedReason?.let {
@@ -194,8 +194,8 @@ internal fun CommentDiscussionEntry(
         }
         val subjectId = shownComment.nodeId
         if (!shownComment.isMinimized && subjectId != null)
-            GithubReadingFooter {
-                GithubReactionBar(
+            ReadingFooter {
+                ReactionBar(
                     subjectKey = subjectId,
                     sourceReactions = shownComment.reactions,
                     canReact = shownComment.viewerCanReact,
@@ -209,8 +209,8 @@ internal fun CommentDiscussionEntry(
 }
 
 private fun commentActionItems(
-    strings: GithubStrings_WorkDetail,
-    common: GithubStrings_Common,
+    strings: WorkDetailStrings,
+    common: CommonStrings,
     canEdit: Boolean,
     canHide: Boolean,
     canCopyLink: Boolean,
@@ -290,7 +290,7 @@ private fun commentActionItems(
     }
 }
 
-private fun CommentHideReason.label(strings: GithubStrings_WorkDetail): String =
+private fun CommentHideReason.label(strings: WorkDetailStrings): String =
     when (this) {
         CommentHideReason.OffTopic -> strings.HideReasonOffTopic
         CommentHideReason.Outdated -> strings.HideReasonOutdated
@@ -299,7 +299,7 @@ private fun CommentHideReason.label(strings: GithubStrings_WorkDetail): String =
         CommentHideReason.Abuse -> strings.HideReasonAbuse
     }
 
-private fun String.label(strings: GithubStrings_WorkDetail): String =
+private fun String.label(strings: WorkDetailStrings): String =
     CommentHideReason.entries.firstOrNull { it.apiValue == this }?.label(strings) ?: this
 
 private fun referenceInNewIssueUrl(
@@ -331,8 +331,8 @@ internal fun CollaborationDeleteCommentDialog(
     state: CollaborationDetailUiState,
     viewModel: CollaborationDetailViewModel,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     GlasmioAlertDialog(
         visible = state.deleteComment != null,
         onDismissRequest = viewModel::dismissDeleteComment,

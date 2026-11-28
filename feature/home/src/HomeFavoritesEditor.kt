@@ -25,12 +25,12 @@ import io.github.yumeyucca.lucide.Lucide
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
 @Composable
@@ -44,7 +44,7 @@ internal fun HomeFavoritesEditor(
     favorites: HomeFavoritesViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val draft = if (searching) edit.searchDraft ?: edit.draft else edit.draft
     val request = pane.request
     LaunchedEffect(pane, request, active) {
@@ -116,7 +116,7 @@ internal fun HomeFavoritesEditor(
                     val title =
                         if (query.isEmpty()) strings.MyRepositories.Title
                         else strings.Home.RepositoryResults
-                    GithubSectionHeader(title, modifier = Modifier.padding(bottom = 8.dp))
+                    SectionHeader(title, modifier = Modifier.padding(bottom = 8.dp))
                 }
                 itemsIndexed(candidates, key = { _, repo -> "candidate:${repo.nodeId}" }) {
                     index, repo ->
@@ -151,7 +151,7 @@ internal fun HomeFavoritesEditor(
                     }
                 pane.items.isEmpty() ->
                     item {
-                        GithubEmptyState(
+                        EmptyState(
                             scene = if (query.isBlank()) EmptyScene.Inbox else EmptyScene.Search,
                             title = if (query.isBlank()) strings.MyRepositories.Empty else strings.MyRepositories.EmptyFiltered,
                         )
@@ -214,7 +214,7 @@ private fun FavoriteRepositoryRow(
             showTopSeparator = !first,
             showDisclosure = false,
             trailing = {
-                if (checked) GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
+                if (checked) AppIcon(Lucide.Check, contentDescription = null, size = 20.dp)
             },
             enabled = enabled,
             onClick = { onToggle(repository) },
@@ -225,5 +225,5 @@ private fun FavoriteRepositoryRow(
 @Composable
 private fun FavoriteOwnerAvatar(repository: RepositoryDto) {
     val owner = repository.owner
-    GithubAvatar(url = owner?.avatarUrl, login = owner?.login, type = owner?.type, size = 28.dp)
+    UserAvatar(url = owner?.avatarUrl, login = owner?.login, type = owner?.type, size = 28.dp)
 }

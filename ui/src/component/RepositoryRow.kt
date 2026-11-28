@@ -24,10 +24,10 @@ import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
+import moe.yumeyuka.yumehub.ui.component.placeholders.AnimatedCardField
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.RepositoryCardPlaceholderContent
-import moe.yumeyuka.yumehub.ui.theme.githubLanguageColor
+import moe.yumeyuka.yumehub.ui.theme.languageColor
 
 /** 小头像标识仓库归属，名称为主信息，描述和统计使用次要色。 */
 @Composable
@@ -58,7 +58,7 @@ fun RepositoryLoadingCard(
     showCoverPlaceholder: Boolean = false,
     showCover: Boolean = true,
 ) {
-    GithubLoadingCard(
+    LoadingCard(
         loading = repository == null,
         modifier = modifier,
         placeholder = { RepositoryCardPlaceholderContent(showCover && showCoverPlaceholder) },
@@ -79,14 +79,14 @@ private fun RepositoryCardContent(
 ) {
     val colors = GlasmioTheme.colors
     val textStyles = GlasmioTheme.textStyles
-    GithubActivityCardContent(
-        cover = if (showCover) ({ GithubRepositoryCover(repository.openGraphImageUrl) }) else null,
+    ActivityCardContent(
+        cover = if (showCover) ({ RepositoryCover(repository.openGraphImageUrl) }) else null,
         onClick = onClick,
         action = action,
         header = {
             Column(Modifier.fillMaxWidth()) {
                 RepositoryCardHeading(repository)
-                GithubCardField(repository.description?.takeIf(String::isNotBlank)) { description ->
+                AnimatedCardField(repository.description?.takeIf(String::isNotBlank)) { description ->
                     Text(
                         description,
                         modifier = Modifier.padding(top = 14.dp),
@@ -104,16 +104,16 @@ private fun RepositoryCardContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                GithubCardField(repository.stargazersCount) { stars ->
+                AnimatedCardField(repository.stargazersCount) { stars ->
                     Stat(Lucide.Star, stars.toString(), "星标 $stars")
                 }
-                GithubCardField(contributorsCount ?: repository.forksCount) { count ->
+                AnimatedCardField(contributorsCount ?: repository.forksCount) { count ->
                     if (contributorsCount != null)
                         Stat(Lucide.UserRound, "$count 个贡献者", "$count 个贡献者")
                     else Stat(Lucide.BookCopy, count.toString(), "派生 $count")
                 }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    GithubCardField(repository.language?.takeIf(String::isNotBlank)) { language ->
+                    AnimatedCardField(repository.language?.takeIf(String::isNotBlank)) { language ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -121,7 +121,7 @@ private fun RepositoryCardContent(
                             Box(
                                 Modifier.size(9.dp)
                                     .clip(CircleShape)
-                                    .background(githubLanguageColor(language)),
+                                    .background(languageColor(language)),
                             )
                             Text(
                                 language,
@@ -155,7 +155,7 @@ internal fun RepositoryCardHeading(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GithubAvatar(owner?.avatarUrl, owner?.login, type = owner?.type, size = 18.dp)
+        UserAvatar(owner?.avatarUrl, owner?.login, type = owner?.type, size = 18.dp)
         Row(
             Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -199,7 +199,7 @@ private fun Stat(icon: ImageVector, value: String, description: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        GithubIcon(icon, contentDescription = null, size = 17.dp, tint = colors.secondaryContent)
+        AppIcon(icon, contentDescription = null, size = 17.dp, tint = colors.secondaryContent)
         Text(
             value,
             style = GlasmioTheme.textStyles.footnote.copy(fontSize = 15.sp, lineHeight = 20.sp),
@@ -220,14 +220,14 @@ private fun CompactRepositoryRow(
     val owner =
         repository.owner?.login?.takeIf { it.isNotBlank() }
             ?: repository.fullName?.substringBefore('/')?.takeIf { it.isNotBlank() }
-    GithubListRow(
+    LeadingContentListRow(
         title =
             repository.name?.takeIf { it.isNotBlank() }
                 ?: repository.fullName?.substringAfter('/')?.takeIf { it.isNotBlank() }
                 ?: "未命名仓库",
         subtitle = owner,
         leading = {
-            GithubAvatar(
+            UserAvatar(
                 url = repository.owner?.avatarUrl,
                 login = owner,
                 type = repository.owner?.type,

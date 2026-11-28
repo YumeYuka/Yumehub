@@ -22,15 +22,15 @@ import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.RotateCcw
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 @Composable
 internal fun DownloadDirectorySection(viewModel: SettingsPageViewModel) {
-    val strings = LocalGithubStrings.current.Downloads
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val strings = LocalAppStrings.current.Downloads
+    val host = requireNotNull(LocalAppPageHost.current)
     val context = LocalContext.current
     val resolver = context.contentResolver
     val directory by viewModel.downloadDirectory.collectAsStateWithLifecycle()
@@ -59,13 +59,13 @@ internal fun DownloadDirectorySection(viewModel: SettingsPageViewModel) {
             }
         }
 
-    GithubSection(strings.Title) {
+    ListSection(strings.Title) {
         GlasmioListRow(
             title = strings.Directory,
             subtitle =
                 if (tree == null) "${Environment.DIRECTORY_DOWNLOADS}/Yumehub"
                 else name ?: tree.lastPathSegment,
-            leading = { GithubIcon(Lucide.Folder, contentDescription = null) },
+            leading = { AppIcon(Lucide.Folder, contentDescription = null) },
             enabled = host.navigationEnabled,
             onClick = {
                 try {
@@ -83,7 +83,7 @@ internal fun DownloadDirectorySection(viewModel: SettingsPageViewModel) {
                             enabled = host.navigationEnabled,
                             sampleBackdrop = false,
                         ) {
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.RotateCcw,
                                 contentDescription = strings.ResetDirectory,
                             )

@@ -14,25 +14,25 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.repository.WorkDetailReviewChangedException
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubDiffFileCard
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.DiffFileCard
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.PagingContent
+import moe.yumeyuka.yumehub.ui.component.IdlePagingRevalidation
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
-import moe.yumeyuka.yumehub.ui.component.rememberGithubDiffExpansions
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.component.pagingItems
+import moe.yumeyuka.yumehub.ui.component.rememberDiffExpansions
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
-data class PullRequestDiffRoute(val owner: String, val name: String, val number: Int) : GithubRoute
+data class PullRequestDiffRoute(val owner: String, val name: String, val number: Int) : AppRoute
 
 @Composable
 fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
@@ -43,25 +43,25 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
         )
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 首屏由 ViewModel init 发起；首次激活再强刷会作废刚创建的分页。
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Work,
         refreshOnFirstActivation = false,
         onRefresh = viewModel::refresh,
     )
-    val strings = LocalGithubStrings.current
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val strings = LocalAppStrings.current
+    val host = requireNotNull(LocalAppPageHost.current)
     val denied = state.error?.invalidatesCachedContent() == true
     val head = state.data?.head?.sha?.takeIf { it.isNotBlank() && !denied }
     val missingHead = head == null && state.data != null && !denied
     val contentKey = "pr-diff:$account:$route:$head"
-    val expansions = rememberGithubDiffExpansions(contentKey)
+    val expansions = rememberDiffExpansions(contentKey)
     val source = remember(viewModel, head) { viewModel.files(head) }
     val sync =
         remember(viewModel, head) {
-            head?.let(viewModel::revalidation) ?: IdleGithubPagingRevalidation
+            head?.let(viewModel::revalidation) ?: IdlePagingRevalidation
         }
-    GithubPagingContent(
+    PagingContent(
         source,
         contentKey = contentKey,
         revalidation = sync,
@@ -69,7 +69,7 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
     ) { paging ->
         val pages = paging.items
         val slots =
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 pages,
                 contentKey,
                 if (head == null) state.data == null && state.error == null
@@ -89,8 +89,8 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
         LaunchedEffect(viewModel, head, revisionChanged, currentPage) {
             if (currentPage && revisionChanged) viewModel.recoverRevision(head)
         }
-        GithubLoadFailureToast(state.error, strings.WorkDetail.LoadFailed)
-        GithubPage(
+        LoadFailureToast(state.error, strings.WorkDetail.LoadFailed)
+        AppPage(
             title = strings.WorkDetail.Files,
             smallTitle = strings.WorkDetail.Files,
             showTitle = false,
@@ -98,8 +98,8 @@ fun PullRequestDiffPage(route: PullRequestDiffRoute, account: String) {
             itemSpacing = 8.dp,
         ) {
             if (head != null || (state.data == null && state.error == null)) {
-                githubPagingItems(slots, contentType = "pr-diff-file", reading = true) { file ->
-                    GithubDiffFileCard(file, expansions, Modifier.fillMaxWidth())
+                pagingItems(slots, contentType = "pr-diff-file", reading = true) { file ->
+                    DiffFileCard(file, expansions, Modifier.fillMaxWidth())
                 }
             }
             if (head != null && state.error == null && pageError == null) {

@@ -7,10 +7,10 @@ import androidx.paging.cachedIn
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.RepositoryActivityKind
 import moe.yumeyuka.yumehub.data.repository.RepositoryActivityRepository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubActivityListPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.ActivityListPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.parameter.parametersOf
@@ -25,7 +25,7 @@ data class RepositoryActivityRoute(
     val projectNumber: Int? = null,
     val organization: Boolean = false,
     val createInitially: Boolean = false,
-) : GithubRoute
+) : AppRoute
 
 private val RepositoryActivityKind.isDiscussion: Boolean
     get() =
@@ -42,8 +42,8 @@ fun RepositoryActivityPage(
         DiscussionListPage(route, account, onOpenDiscussion = onOpenDiscussion)
         return
     }
-    val strings = LocalGithubStrings.current.Repository
-    val open = rememberGithubUriHandler()
+    val strings = LocalAppStrings.current.Repository
+    val open = rememberPageLinkHandler()
     val viewModel: RepositoryActivityViewModel =
         koinViewModel(
             key = "repository-activity:$account:$route",
@@ -65,7 +65,7 @@ fun RepositoryActivityPage(
                 RepositoryActivityKind.Contributors -> strings.Contributors
                 RepositoryActivityKind.Watchers -> strings.Watchers
             }
-    GithubActivityListPage(
+    ActivityListPage(
         title = title,
         source = viewModel.items,
         revalidation = viewModel.revalidation,

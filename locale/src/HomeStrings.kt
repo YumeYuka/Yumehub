@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Home(
+public data class HomeStrings(
     val Title: String,
     val RefreshFavorites: String,
     val Favorites: String,
@@ -42,8 +42,8 @@ public data class GithubStrings_Home(
     val FavoritesSaveFailed: String,
 )
 
-internal val ZhHansHomeStrings: GithubStrings_Home =
-    GithubStrings_Home(
+internal val ZhHansHomeStrings: HomeStrings =
+    HomeStrings(
         Title = "首页",
         RefreshFavorites = "刷新收藏",
         Favorites = "收藏的仓库",
@@ -85,8 +85,8 @@ internal val ZhHansHomeStrings: GithubStrings_Home =
         FavoritesSaveFailed = "收藏保存失败，请刷新后重试",
     )
 
-internal val EnHomeStrings: GithubStrings_Home =
-    GithubStrings_Home(
+internal val EnHomeStrings: HomeStrings =
+    HomeStrings(
         Title = "Home",
         RefreshFavorites = "Refresh favorites",
         Favorites = "Favorite repositories",

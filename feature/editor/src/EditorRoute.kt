@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.feature.editor
 
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 
-data class EditorRoute(val session: GithubEditorSession) : GithubRoute
+data class EditorRoute(val session: EditorSession) : AppRoute

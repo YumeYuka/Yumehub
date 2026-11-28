@@ -34,19 +34,19 @@ import moe.yumeyuka.yumehub.ui.component.rememberWorkRowProjection
 import moe.yumeyuka.yumehub.ui.component.workMergeProgress
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.api.dto.NotificationPreviewDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubWorkStatusTokens
-import moe.yumeyuka.yumehub.ui.component.GithubWorkflowStatusIcon
-import moe.yumeyuka.yumehub.ui.component.githubRelativeTime
-import moe.yumeyuka.yumehub.ui.component.githubTitleOpticalCenter
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardField
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingCard
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.WorkStatusTokens
+import moe.yumeyuka.yumehub.ui.component.WorkflowStatusIcon
+import moe.yumeyuka.yumehub.ui.component.formatRelativeTime
+import moe.yumeyuka.yumehub.ui.component.titleOpticalCenter
+import moe.yumeyuka.yumehub.ui.component.placeholders.AnimatedCardField
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingCard
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.NotificationRowTokens
-import moe.yumeyuka.yumehub.ui.theme.GithubActivityColors
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.theme.ActivityColors
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 @Composable
 internal fun NotificationCard(
@@ -57,7 +57,7 @@ internal fun NotificationCard(
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
-    GithubLoadingCard(
+    LoadingCard(
         loading = notification == null,
         placeholder = { NotificationRowPlaceholder() },
     ) {
@@ -83,7 +83,7 @@ private fun NotificationCardContent(
     onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)?,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
+    val strings = LocalAppStrings.current.Notifications
     val colors = GlasmioTheme.colors
     val styles = GlasmioTheme.textStyles
     val metadataStyle =
@@ -108,7 +108,7 @@ private fun NotificationCardContent(
     val title = write.title ?: write.confirmed?.title ?: notification.subject?.title?.takeIf(String::isNotBlank) ?: strings.Untitled
     val statusSlotSize =
         maxOf(
-            GithubWorkStatusTokens.IconSize,
+            WorkStatusTokens.IconSize,
             with(LocalDensity.current) { titleStyle.lineHeight.toDp() },
         )
     val statusAlignment = with(LocalDensity.current) { statusSlotSize.roundToPx() / 2 }
@@ -143,7 +143,7 @@ private fun NotificationCardContent(
                     NotificationSubjectIcon(
                         notification.subject?.type,
                         preview,
-                        GithubWorkStatusTokens.IconSize,
+                        WorkStatusTokens.IconSize,
                         merged = write.merged || write.confirmed?.merged == true,
                         state = write.state ?: write.confirmed?.state,
                     )
@@ -151,13 +151,13 @@ private fun NotificationCardContent(
                 if (!isSelecting && notification.unread) {
                     Box(
                         Modifier.size(10.dp)
-                            .background(GithubActivityColors.accent, CircleShape)
+                            .background(ActivityColors.accent, CircleShape)
                             .semantics { contentDescription = strings.Unread },
                     )
                 }
             }
             Column(
-                Modifier.weight(1f).alignBy(githubTitleOpticalCenter(title, titleStyle)),
+                Modifier.weight(1f).alignBy(titleOpticalCenter(title, titleStyle)),
             ) {
                 Text(
                     title,
@@ -179,7 +179,7 @@ private fun NotificationCardContent(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    githubRelativeTime(notification.updatedAt, strings)?.let { time ->
+                    formatRelativeTime(notification.updatedAt, strings)?.let { time ->
                         Text(
                             time,
                             style = metadataStyle,
@@ -188,13 +188,13 @@ private fun NotificationCardContent(
                         )
                     }
                     if (isSelecting && isSelected) {
-                        GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
+                        AppIcon(Lucide.Check, contentDescription = null, size = 20.dp)
                     }
                 }
                 workMergeProgress(write.mergePhase)?.let {
                     Text(it, modifier = Modifier.padding(top = 3.dp), style = metadataStyle, color = colors.secondaryContent)
                 }
-                GithubCardField(activity) { shown ->
+                AnimatedCardField(activity) { shown ->
                     NotificationPreviewContent(
                         preview = shown,
                         metadataStyle = metadataStyle,
@@ -216,7 +216,7 @@ private fun NotificationPreviewContent(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         preview.author?.let { actor ->
-            GithubAvatar(
+            UserAvatar(
                 url = actor.avatarUrl,
                 login = actor.login,
                 type = actor.type,
@@ -246,7 +246,7 @@ private fun NotificationSubjectIcon(
     state: String?,
 ) {
     if (type == "CheckSuite" || type == "WorkflowRun") {
-        GithubWorkflowStatusIcon(preview?.state, contentDescription = null, size = iconSize)
+        WorkflowStatusIcon(preview?.state, contentDescription = null, size = iconSize)
         return
     }
     val pullRequest = type == "PullRequest"
@@ -274,12 +274,12 @@ private fun NotificationSubjectIcon(
         }
     val color =
         when {
-            pullRequest && (merged || preview?.merged == true) || completed -> GithubWorkColors.merged
-            pullRequest && closed -> GithubWorkColors.closed
-            closed || preview?.draft == true -> GithubWorkColors.draft
+            pullRequest && (merged || preview?.merged == true) || completed -> WorkColors.merged
+            pullRequest && closed -> WorkColors.closed
+            closed || preview?.draft == true -> WorkColors.draft
             type in listOf("Issue", "PullRequest") && preview?.state == "OPEN" ->
-                GithubWorkColors.open
+                WorkColors.open
             else -> GlasmioTheme.colors.secondaryContent
         }
-    GithubIcon(icon, contentDescription = null, tint = color, size = iconSize)
+    AppIcon(icon, contentDescription = null, tint = color, size = iconSize)
 }

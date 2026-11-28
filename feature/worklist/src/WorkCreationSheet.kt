@@ -29,7 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.CornerDownRight
 import io.github.yumeyucca.lucide.Feather
@@ -43,14 +43,15 @@ import moe.yumeyuka.yumehub.data.api.dto.CollaborationLabelDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueTemplateOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.IssueTypeOptionDto
 import moe.yumeyuka.yumehub.data.api.dto.MilestoneOptionDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubChoiceSheet
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.ChoiceSheet
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.ListSection
 import moe.yumeyuka.yumehub.ui.component.replaceFormText
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun WorkCreationSheet(
@@ -74,7 +75,7 @@ internal fun WorkCreationSheet(
     onAssigneeRetry: () -> Unit,
     onAssigneeLoadMore: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val work = strings.WorkList
     val branchStrings = strings.Workspaces
     val availableLabels =
@@ -127,7 +128,7 @@ internal fun WorkCreationSheet(
         if (visible && ready && base.isBlank()) base = branchPicker.defaultBranch.orEmpty()
     }
     val scroll = rememberScrollState()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         dismissOnBackPress = true,
@@ -139,7 +140,7 @@ internal fun WorkCreationSheet(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
@@ -154,7 +155,7 @@ internal fun WorkCreationSheet(
                             onSubmit(draft())
                         },
                     ) {
-                        GithubIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
+                        AppIcon(Lucide.Check, contentDescription = strings.Common.Confirm)
                     }
                 },
             )
@@ -298,11 +299,11 @@ internal fun WorkCreationSheet(
             }
             if (kind == CollaborationKind.PullRequest) {
                 val editable = ready && !submitting && !uncertain
-                GithubSection(branchStrings.Branches) {
+                ListSection(branchStrings.Branches) {
                     GlasmioListRow(
                         title = head.ifBlank { work.HeadBranch },
                         leading = {
-                            GithubIcon(Lucide.Feather, contentDescription = work.HeadBranch, size = 20.dp)
+                            AppIcon(Lucide.Feather, contentDescription = work.HeadBranch, size = 20.dp)
                         },
                         showTopSeparator = false,
                         enabled = editable,
@@ -311,7 +312,7 @@ internal fun WorkCreationSheet(
                     GlasmioListRow(
                         title = base.ifBlank { work.BaseBranch },
                         leading = {
-                            GithubIcon(Lucide.CornerDownRight, contentDescription = work.BaseBranch, size = 20.dp)
+                            AppIcon(Lucide.CornerDownRight, contentDescription = work.BaseBranch, size = 20.dp)
                         },
                         enabled = editable,
                         onClick = { branchTarget = BranchTarget.Base },
@@ -345,30 +346,15 @@ internal fun WorkCreationSheet(
         }
     }
     if (acknowledgeVisible && uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = strings.Common.MutationUncertain,
-            message = strings.Common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        strings.Common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        strings.Common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            onAcknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                onAcknowledgeUncertain()
+            },
         )
     }
-    GithubChoiceSheet(
+    ChoiceSheet(
         visible = branchTarget != null,
         title = if (branchTarget == BranchTarget.Head) work.HeadBranch else work.BaseBranch,
         placeholder = branchStrings.BranchSearchPlaceholder,
@@ -404,7 +390,7 @@ internal fun WorkCreationSheet(
         },
         label = { it.removePrefix("refs/heads/") },
     )
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = labelsVisible,
         title = work.Labels,
         placeholder = work.Labels,
@@ -430,17 +416,17 @@ internal fun WorkCreationSheet(
                     onClick = {
                         draftLabelIds = if (checked) draftLabelIds - id else draftLabelIds + id
                     },
-                    trailing = { if (checked) GithubIcon(Lucide.Check, contentDescription = null) },
+                    trailing = { if (checked) AppIcon(Lucide.Check, contentDescription = null) },
                 )
             }
         }
     }
     if (assigneesVisible && assigneePicker.failed) {
-        GithubLoadFailureToast(Unit, strings.WorkDetail.PropertyLoadFailed)
+        LoadFailureToast(Unit, strings.WorkDetail.PropertyLoadFailed)
     }
     val visibleAssignees =
         (assigneePicker.assignees + draftAssignees).distinctBy(AssigneeOptionDto::id)
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = assigneesVisible,
         title = strings.WorkDetail.Assignees,
         placeholder = strings.WorkDetail.PropertySearch,
@@ -490,7 +476,7 @@ internal fun WorkCreationSheet(
                                     else draftAssignees + assignee
                             },
                             trailing = {
-                                if (checked) GithubIcon(Lucide.Check, contentDescription = null)
+                                if (checked) AppIcon(Lucide.Check, contentDescription = null)
                             },
                         )
                     }

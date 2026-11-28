@@ -7,14 +7,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.data.storage.mmkv.AccountAvatar
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 
-data object ProfileRoute : GithubRoute
+data object ProfileRoute : AppRoute
 
 @Composable
 fun ProfilePage(
@@ -27,11 +27,11 @@ fun ProfilePage(
     onOpenStarred: (String) -> Unit,
     onOpenOrganizations: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val viewModel: ProfileViewModel = koinViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val statusEditor by viewModel.statusEditor.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Profile,
         DataDomain.Relationships,
@@ -40,9 +40,9 @@ fun ProfilePage(
         viewModel.refresh()
     }
     if (statusEditor?.let { !it.visible && it.failed } == true) {
-        GithubLoadFailureToast(Unit, strings.Profile.StatusSaveFailed)
+        LoadFailureToast(Unit, strings.Profile.StatusSaveFailed)
     }
-    GithubPage(
+    AppPage(
         title = strings.Profile.Title,
         showTitle = false,
         back = true,

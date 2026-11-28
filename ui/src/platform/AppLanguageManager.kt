@@ -6,7 +6,7 @@ import android.content.res.Resources
 import android.os.LocaleList
 import java.util.Locale
 import moe.yumeyuka.yumehub.locale.AppLanguage
-import moe.yumeyuka.yumehub.locale.GithubLocaleManager
+import moe.yumeyuka.yumehub.locale.AppLocaleManager
 
 object AppLanguageManager {
     fun current(context: Context): AppLanguage {
@@ -30,7 +30,7 @@ object AppLanguageManager {
     private fun syncLocale(language: AppLanguage) {
         val locale = resolveLocale(language)
         Locale.setDefault(locale)
-        GithubLocaleManager.updateLocale(locale.toLanguageTag().lowercase())
+        AppLocaleManager.updateLocale(locale.toLanguageTag().lowercase())
     }
 
     private fun resolveLocale(language: AppLanguage): Locale =

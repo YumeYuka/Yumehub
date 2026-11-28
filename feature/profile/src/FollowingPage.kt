@@ -9,14 +9,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.GithubUserCard
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.PagingContent
+import moe.yumeyuka.yumehub.ui.component.UserCard
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.ui.component.pagingItems
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -24,7 +24,7 @@ data class FollowingRoute(
     val login: String,
     val instance: String = java.util.UUID.randomUUID().toString(),
     val initialFollowing: Boolean = true,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun FollowingPage(
@@ -32,16 +32,16 @@ fun FollowingPage(
     onOpenUser: (login: String, avatarUrl: String?, name: String?, nodeId: String?) -> Unit,
     initialFollowing: Boolean = true,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val viewModel: FollowViewModel = koinViewModel(parameters = { parametersOf(login) })
     var following by rememberSaveable(login, initialFollowing) { mutableStateOf(initialFollowing) }
-    GithubPagingContent(
+    PagingContent(
         source = if (following) viewModel.following else viewModel.followers,
         contentKey = "$login:$following",
     ) { paging ->
         val pages = paging.items
         val slots =
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 pages,
                 "follow-$following",
                 initialLoading = paging.initialLoading,
@@ -50,7 +50,7 @@ fun FollowingPage(
             }
         val sectionTitle =
             if (following) strings.Profile.FollowingTab else strings.Profile.FollowersTab
-        GithubPage(
+        AppPage(
             title = strings.Profile.FollowingTitle,
             listState = paging.listState,
             itemSpacing = 12.dp,
@@ -68,8 +68,8 @@ fun FollowingPage(
                 )
             },
         ) {
-            githubPagingItems(slots, contentType = "user") { user ->
-                GithubUserCard(
+            pagingItems(slots, contentType = "user") { user ->
+                UserCard(
                     loading = user == null,
                     login = user?.login,
                     name = user?.name,

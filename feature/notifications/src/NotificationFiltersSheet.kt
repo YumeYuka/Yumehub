@@ -14,10 +14,10 @@ import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
 
 @Composable
 internal fun NotificationFiltersSheet(
@@ -29,8 +29,8 @@ internal fun NotificationFiltersSheet(
     onDismiss: () -> Unit,
     onApply: (String?, NotificationReasonFilter) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Notifications
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.Notifications
+    val common = LocalAppStrings.current.Common
     var query by remember(visible) { mutableStateOf("") }
     var draftRepository by remember(visible, selectedRepository) {
         mutableStateOf(selectedRepository)
@@ -47,7 +47,7 @@ internal fun NotificationFiltersSheet(
             it.label(strings).contains(normalizedQuery, ignoreCase = true)
         }
 
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         visible = visible,
         title = strings.FilterTitle,
         placeholder = common.Search,
@@ -68,7 +68,7 @@ internal fun NotificationFiltersSheet(
             }
         } else {
             if (repositoryOptions.isNotEmpty()) {
-                item { GithubSectionHeader(strings.Repository) }
+                item { SectionHeader(strings.Repository) }
                 item {
                     GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
                         repositoryOptions.forEachIndexed { index, (repository, label) ->
@@ -84,7 +84,7 @@ internal fun NotificationFiltersSheet(
             }
 
             if (reasonOptions.isNotEmpty()) {
-                item { GithubSectionHeader(strings.Reason) }
+                item { SectionHeader(strings.Reason) }
                 item {
                     GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
                         reasonOptions.forEachIndexed { index, reason ->
@@ -113,7 +113,7 @@ private fun filterRow(
         title = title,
         modifier = Modifier.semantics { this.selected = selected },
         trailing = {
-            if (selected) GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
+            if (selected) AppIcon(Lucide.Check, contentDescription = null, size = 20.dp)
         },
         showDisclosure = false,
         showTopSeparator = showTopSeparator,

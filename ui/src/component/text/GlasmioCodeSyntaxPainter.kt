@@ -22,16 +22,16 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import moe.yumeyuka.yumehub.ui.component.GithubTextMateSpan
+import moe.yumeyuka.yumehub.ui.component.TextMateSpan
 
 /** Worker 线程生成的完整语法快照；仅 source 匹配当前正文时才能查询全局 UTF-16 偏移。 */
 public data class GlasmioCodeSyntax(
     val source: String,
-    val spans: List<GithubTextMateSpan>,
+    val spans: List<TextMateSpan>,
 )
 
 /** 主线程接入时可使用的短名称。 */
-public typealias GithubEditorSyntax = GlasmioCodeSyntax
+public typealias EditorSyntax = GlasmioCodeSyntax
 
 /**
  * 只绘制可见代码（包括尚未着色的纯文本），不参与 BasicTextField 的测量、输入、选区或 IME 映射。
@@ -86,7 +86,7 @@ public class GlasmioCodeSyntaxPainter(
         viewportRight: Float,
         textOrigin: Offset = Offset.Zero,
         composition: TextRange? = null,
-        searchHighlights: GithubCodeSearchHighlights? = null,
+        searchHighlights: CodeSearchHighlights? = null,
         searchColor: Color = Color.Unspecified,
         searchBorderColor: Color = Color.Unspecified,
     ) {
@@ -217,7 +217,7 @@ public class GlasmioCodeSyntaxPainter(
 
     private fun measureLine(
         text: String,
-        spans: List<GithubTextMateSpan>,
+        spans: List<TextMateSpan>,
         direction: TextDirection,
         underline: IntRange?,
     ): TextLayoutResult {
@@ -290,16 +290,16 @@ internal class CodeLineStyleCache(private val limit: Int) {
     }
 
     private val entries =
-        object : LinkedHashMap<String, List<GithubTextMateSpan>>(limit, 0.75f, true) {
+        object : LinkedHashMap<String, List<TextMateSpan>>(limit, 0.75f, true) {
             override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, List<GithubTextMateSpan>>?,
+                eldest: MutableMap.MutableEntry<String, List<TextMateSpan>>?,
             ): Boolean = size > limit
         }
 
     fun resolve(
         text: String,
-        fresh: List<GithubTextMateSpan>?,
-    ): List<GithubTextMateSpan> {
+        fresh: List<TextMateSpan>?,
+    ): List<TextMateSpan> {
         if (fresh != null) {
             entries[text] = fresh
             return fresh
@@ -316,10 +316,10 @@ internal fun canWindowCodeLine(source: String, start: Int, end: Int): Boolean {
 }
 
 internal fun visibleCodeSpans(
-    spans: List<GithubTextMateSpan>?,
+    spans: List<TextMateSpan>?,
     start: Int,
     end: Int,
-): List<GithubTextMateSpan> {
+): List<TextMateSpan> {
     if (spans.isNullOrEmpty() || start >= end) return emptyList()
     var low = 0
     var high = spans.size
@@ -329,7 +329,7 @@ internal fun visibleCodeSpans(
     }
     var index = (low - 1).coerceAtLeast(0)
     while (index > 0 && spans[index - 1].end > start) index--
-    val result = ArrayList<GithubTextMateSpan>()
+    val result = ArrayList<TextMateSpan>()
     while (index < spans.size) {
         val span = spans[index]
         if (span.start >= end) break

@@ -1,7 +1,7 @@
 package moe.yumeyuka.yumehub.locale
 
-public val ZhHansStrings: GithubStrings =
-    GithubStrings(
+public val ZhHansStrings: AppStrings =
+    AppStrings(
         Settings = ZhHansSettingsStrings,
         Downloads = ZhHansDownloadsStrings,
         Activity = ZhHansActivityStrings,

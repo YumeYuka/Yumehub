@@ -12,12 +12,12 @@ import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.PagingSlotKeys
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 
 @Composable
@@ -29,8 +29,8 @@ internal fun WorkEditMenu(
     onExpandedChange: (Boolean) -> Unit,
     menuAnchor: io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     val item = state.item
     val isPullRequest = viewModel.kind == CollaborationKind.PullRequest
     var confirmation by remember { mutableStateOf<String?>(null) }
@@ -48,7 +48,7 @@ internal fun WorkEditMenu(
                 if (item?.locked == true) strings.UnlockConversation else strings.LockConversation,
             backdrop = backdrop,
             enabled = available && item?.viewerCanModerate == true && !state.unknownField("locked"),
-            icon = { GithubIcon(Lucide.Lock, contentDescription = null, size = 20.dp) },
+            icon = { AppIcon(Lucide.Lock, contentDescription = null, size = 20.dp) },
             onClick = {
                 close()
                 confirmation = "lock"
@@ -67,7 +67,7 @@ internal fun WorkEditMenu(
                     item.state == "open" &&
                     (!isPullRequest || !item.merged),
             icon = {
-                GithubIcon(
+                AppIcon(
                     if (isPullRequest) Lucide.GitPullRequestClosed else Lucide.CircleX,
                     contentDescription = null,
                     size = 20.dp,
@@ -122,12 +122,12 @@ internal fun WorkBaseBranchSheet(
     canChangeBase: Boolean,
     onDismiss: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     val current = state.item?.baseRefName
     var selected by remember(viewModel, current) { mutableStateOf(current) }
     val branchChoices = state.branchChoices
-    val branchSlots = remember(state.branchQuery) { GithubPagingSlotKeys("base-branch") }
+    val branchSlots = remember(state.branchQuery) { PagingSlotKeys("base-branch") }
     val branchKeys =
         remember(
             branchSlots,
@@ -142,8 +142,8 @@ internal fun WorkBaseBranchSheet(
                 initialLoading = state.branchLoading && branchChoices.isEmpty(),
             )
         }
-    if (state.branchError) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
-    GithubSearchSelectionSheet(
+    if (state.branchError) LoadFailureToast(Unit, strings.PropertyLoadFailed)
+    SearchSelectionSheet(
         visible = true,
         title = strings.ChangeBaseBranch,
         placeholder = strings.PropertySearch,
@@ -180,7 +180,7 @@ internal fun WorkBaseBranchSheet(
                 state.branchCursor == null
         ) {
             item(key = "base-branch-empty") {
-                GlasmioListRow(title = LocalGithubStrings.current.Workspaces.NoMatchingBranches)
+                GlasmioListRow(title = LocalAppStrings.current.Workspaces.NoMatchingBranches)
             }
         }
         itemsIndexed(
@@ -205,7 +205,7 @@ internal fun WorkBaseBranchSheet(
                         ),
                     ),
             ) {
-                GithubLoadingContent(
+                LoadingContent(
                     loading = branch == null,
                     placeholder = { TitleRowPlaceholder(showTopSeparator = index > 0) },
                 ) {
@@ -223,7 +223,7 @@ internal fun WorkBaseBranchSheet(
                                 ),
                             trailing = {
                                 if (checked) {
-                                    GithubIcon(Lucide.Check, contentDescription = null)
+                                    AppIcon(Lucide.Check, contentDescription = null)
                                 }
                             },
                             showTopSeparator = index > 0,

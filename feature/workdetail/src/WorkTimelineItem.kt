@@ -37,14 +37,14 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEntry
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEventKind
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEventKind.*
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
+import moe.yumeyuka.yumehub.locale.WorkDetailStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ReadingGroup
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 
 private val TimelineIconSize = 20.dp
 private val TimelineIconGap = 12.dp
@@ -116,7 +116,7 @@ internal fun WorkActivityCard(
                 val showSeparator = index > 0
                 when (item) {
                     is WorkTimelineEntry.Event ->
-                        TimelineEventRow(item, LocalGithubStrings.current.WorkDetail, showSeparator)
+                        TimelineEventRow(item, LocalAppStrings.current.WorkDetail, showSeparator)
                     is WorkTimelineEntry.Commit ->
                         CommitActivityRow(item.value, showSeparator, onOpenCommit)
                     is WorkTimelineEntry.Comment ->
@@ -134,7 +134,7 @@ internal fun WorkActivityCard(
     }
     when (first) {
         is WorkTimelineEntry.Comment -> rows()
-        is WorkTimelineEntry.Review -> GithubReadingGroup { rows() }
+        is WorkTimelineEntry.Review -> ReadingGroup { rows() }
         else ->
             GlasmioGroupedList {
                 if (
@@ -142,7 +142,7 @@ internal fun WorkActivityCard(
                         entries.size > 1 &&
                         onOpenCommitGroup != null
                 ) {
-                    val strings = LocalGithubStrings.current
+                    val strings = LocalAppStrings.current
                     val author =
                         first.value.login?.takeIf(String::isNotBlank)
                             ?: strings.Workspaces.UnknownAuthor
@@ -170,7 +170,7 @@ private fun ReviewActivityRow(
     pageUrl: String?,
     onOpenCommit: ((String) -> Unit)?,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val author = review.user?.login ?: strings.Workspaces.UnknownAuthor
     val summary =
         strings.WorkDetail.TimelineReviewAction(
@@ -248,7 +248,7 @@ private fun TimelineActivityRow(
 ) {
     val colors = GlasmioTheme.colors
     val inset = GlasmioListRowDefaults.horizontalPadding
-    val enabled = onClick != null && requireNotNull(LocalGithubPageHost.current).navigationEnabled
+    val enabled = onClick != null && requireNotNull(LocalAppPageHost.current).navigationEnabled
     DisableSelection {
         Row(
             Modifier.fillMaxWidth()
@@ -281,7 +281,7 @@ private fun ActivityIcon(
     tint: Color = GlasmioTheme.colors.secondaryContent,
     size: Dp = TimelineIconSize,
 ) {
-    GithubIcon(icon, contentDescription = null, size = size, tint = tint)
+    AppIcon(icon, contentDescription = null, size = size, tint = tint)
 }
 
 @Composable
@@ -292,7 +292,7 @@ internal fun WorkTimelinePlaceholder() {
 @Composable
 private fun TimelineEventRow(
     item: WorkTimelineEntry.Event,
-    strings: GithubStrings_WorkDetail,
+    strings: WorkDetailStrings,
     showTopSeparator: Boolean,
 ) {
     val author = item.actor?.takeIf(String::isNotBlank)
@@ -323,8 +323,8 @@ private fun TimelineEventRow(
 @Composable
 private fun activityLink(url: String?): (() -> Unit)? {
     if (url.isNullOrBlank()) return null
-    val open = rememberGithubUriHandler()
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val open = rememberPageLinkHandler()
+    val host = requireNotNull(LocalAppPageHost.current)
     return { if (host.navigationEnabled) open(url) }
 }
 
@@ -332,7 +332,7 @@ private fun activityLink(url: String?): (() -> Unit)? {
 private fun commitActivityLink(url: String?, onOpenCommit: ((String) -> Unit)?): (() -> Unit)? {
     val oid = url?.substringAfterLast('/')?.takeIf(String::isNotBlank)
     if (onOpenCommit == null || oid == null) return activityLink(url)
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val host = requireNotNull(LocalAppPageHost.current)
     return { if (host.navigationEnabled) onOpenCommit(oid) }
 }
 
@@ -346,8 +346,8 @@ private fun reviewIcon(state: String?): ImageVector =
 @Composable
 private fun reviewTint(state: String?): Color =
     when (state) {
-        "APPROVED" -> GithubWorkColors.open
-        "CHANGES_REQUESTED" -> GithubWorkColors.closed
+        "APPROVED" -> WorkColors.open
+        "CHANGES_REQUESTED" -> WorkColors.closed
         else -> GlasmioTheme.colors.secondaryContent
     }
 
@@ -417,20 +417,20 @@ private fun eventTint(item: WorkTimelineEntry.Event): Color {
         WorkTimelineEventKind.CommentDeleted,
         WorkTimelineEventKind.HeadRefDeleted,
         WorkTimelineEventKind.UserBlocked,
-        WorkTimelineEventKind.CopilotWorkFinishedFailure -> GithubWorkColors.closed
+        WorkTimelineEventKind.CopilotWorkFinishedFailure -> WorkColors.closed
         WorkTimelineEventKind.Reopened,
         WorkTimelineEventKind.HeadRefRestored,
-        WorkTimelineEventKind.ReadyForReview -> GithubWorkColors.open
+        WorkTimelineEventKind.ReadyForReview -> WorkColors.open
         WorkTimelineEventKind.Merged,
         WorkTimelineEventKind.AutoMergeEnabled,
         WorkTimelineEventKind.AutoRebaseEnabled,
         WorkTimelineEventKind.AutoSquashEnabled,
         WorkTimelineEventKind.AddedToMergeQueue,
-        WorkTimelineEventKind.CopilotWorkFinished -> GithubWorkColors.merged
+        WorkTimelineEventKind.CopilotWorkFinished -> WorkColors.merged
         WorkTimelineEventKind.ConvertedToDraft,
         WorkTimelineEventKind.HeadRefForcePushed,
         WorkTimelineEventKind.BaseRefForcePushed,
-        WorkTimelineEventKind.AutoMergeDisabled -> GithubWorkColors.draft
+        WorkTimelineEventKind.AutoMergeDisabled -> WorkColors.draft
         WorkTimelineEventKind.CrossReferenced,
         WorkTimelineEventKind.Referenced,
         WorkTimelineEventKind.Connected,
@@ -438,7 +438,7 @@ private fun eventTint(item: WorkTimelineEntry.Event): Color {
         WorkTimelineEventKind.BaseRefChanged,
         WorkTimelineEventKind.AutomaticBaseChanged,
         WorkTimelineEventKind.Deployed,
-        WorkTimelineEventKind.ConvertedToDiscussion -> GithubWorkColors.branchForeground
+        WorkTimelineEventKind.ConvertedToDiscussion -> WorkColors.branchForeground
         WorkTimelineEventKind.ReviewRequested,
         WorkTimelineEventKind.Milestoned,
         WorkTimelineEventKind.Demilestoned,

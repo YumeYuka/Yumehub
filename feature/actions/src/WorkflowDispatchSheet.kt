@@ -7,16 +7,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.*
 import kotlinx.coroutines.CancellationException
 import moe.yumeyuka.yumehub.data.repository.WorkflowInput
 import moe.yumeyuka.yumehub.data.repository.WorkflowOption
 import moe.yumeyuka.yumehub.data.repository.WorkflowRepository
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
 
 private class DispatchForm {
@@ -36,7 +36,7 @@ internal fun WorkflowDispatchSheet(
     onClose: () -> Unit,
     onDispatch: (branch: String, inputs: Map<String, String>) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     var branch by remember { mutableStateOf(defaultBranch) }
     var pickBranch by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
@@ -84,7 +84,7 @@ internal fun WorkflowDispatchSheet(
         }
         return
     }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = true,
         onDismissRequest = onClose,
         title = strings.Activity.RunWorkflow,
@@ -95,7 +95,7 @@ internal fun WorkflowDispatchSheet(
                 subtitle = workflow.name,
                 navigation = {
                     GlasmioIconButton(onClick = onClose) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
@@ -105,7 +105,7 @@ internal fun WorkflowDispatchSheet(
                             if (ready) onDispatch(branch, values.filterValues { it.isNotEmpty() })
                         },
                     ) {
-                        GithubIcon(Lucide.Play, contentDescription = strings.Activity.RunWorkflow)
+                        AppIcon(Lucide.Play, contentDescription = strings.Activity.RunWorkflow)
                     }
                 },
             )
@@ -117,13 +117,13 @@ internal fun WorkflowDispatchSheet(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GithubSection(strings.Activity.RunBranch) {
+            ListSection(strings.Activity.RunBranch) {
                 GlasmioListRow(
                     title = branch.ifBlank { strings.Workspaces.Branches },
                     onClick = { pickBranch = true },
                 )
             }
-            GithubLoadingContent(
+            LoadingContent(
                 loading = !failed && !unavailable && fields == null && branch.isNotBlank(),
                 placeholder = { ListRowPlaceholder() },
             ) {
@@ -134,7 +134,7 @@ internal fun WorkflowDispatchSheet(
                         unavailable -> GlasmioListRow(title = strings.Activity.ManualUnavailable)
                     }
                     fields.orEmpty().forEach { field ->
-                        GithubSection(field.key) {
+                        ListSection(field.key) {
                             field.description
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let { GlasmioListRow(title = it) }

@@ -19,7 +19,7 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 
 /** 文件列表沿用真实文件头的 48dp 行槽，卡片外壳由调用方保留。 */
 @Composable
-fun GithubDiffFileHeaderPlaceholder() {
+fun DiffFileHeaderPlaceholder() {
     Row(
         Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -35,7 +35,7 @@ fun GithubDiffFileHeaderPlaceholder() {
 
 /** 解析／高亮期间使用与代码相同的文字行槽，不用加载文案占位。 */
 @Composable
-fun GithubDiffCodePlaceholder(
+fun DiffCodePlaceholder(
     style: TextStyle,
     modifier: Modifier = Modifier,
     gutterWidth: Dp = 88.dp,

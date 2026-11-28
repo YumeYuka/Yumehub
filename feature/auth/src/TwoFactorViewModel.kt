@@ -30,7 +30,7 @@ import moe.yumeyuka.yumehub.data.twofactor.TwoFactorException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorNotifier
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRegistrationUncertainException
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorRepository
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import retrofit2.HttpException
 
 enum class TwoFactorPhase {
@@ -239,13 +239,13 @@ class TwoFactorViewModel(
                 when {
                     result.phase == WritePhase.UNCERTAIN -> {
                         uncertainRequestId = request.id
-                        current.copy(phase = TwoFactorPhase.Prompt, submissionUncertain = true, error = GithubTxt.current.Common.MutationUncertain)
+                        current.copy(phase = TwoFactorPhase.Prompt, submissionUncertain = true, error = CurrentAppStrings.current.Common.MutationUncertain)
                     }
                     receipt != null && result.phase == WritePhase.IDLE && result.result == CommandAccepted -> {
                         settledRequestId = request.id
                         current.withoutRequest()
                     }
-                    else -> current.copy(phase = TwoFactorPhase.Prompt, error = result.message ?: GithubTxt.current.Common.MutationNotSubmitted)
+                    else -> current.copy(phase = TwoFactorPhase.Prompt, error = result.message ?: CurrentAppStrings.current.Common.MutationNotSubmitted)
                 }
             }
         }
@@ -323,7 +323,7 @@ class TwoFactorViewModel(
                         mutableState.value =
                             mutableState.value.copy(
                                 registrationUncertain = true,
-                                receivingError = GithubTxt.current.Common.MutationUncertain,
+                                receivingError = CurrentAppStrings.current.Common.MutationUncertain,
                             )
                     }
                     requestFailed = true

@@ -15,21 +15,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.GitCommitHorizontal
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
 import moe.yumeyuka.yumehub.data.repository.WorkspaceCommitDraft
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubCommitMessageFields
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.CommitMessageFields
+import moe.yumeyuka.yumehub.ui.component.AppIcon
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 
 @Composable
 internal fun WorkspaceCommitSheet(
     visible: Boolean,
-    editor: GithubEditorSession,
+    editor: EditorSession,
     draft: WorkspaceCommitDraft?,
     baseChanged: Boolean,
     onDraftChange: (WorkspaceCommitDraft) -> Unit,
@@ -37,13 +37,13 @@ internal fun WorkspaceCommitSheet(
     onDismiss: () -> Unit,
     onConfirm: (WorkspaceCommitDraft) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val work = strings.Workspaces
     val busy = editor.submitting || draft == null
     var choosing by rememberSaveable(editor.id, visible) { mutableStateOf(false) }
     var reviewed by rememberSaveable(editor.id, editor.filePath, visible, baseChanged) { mutableStateOf(false) }
     val browser = rememberExternalUriHandler()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible && !choosing && !editor.closeRequested,
         onDismissRequest = { if (!choosing) onDismiss() },
         dismissOnBackPress = true,
@@ -55,7 +55,7 @@ internal fun WorkspaceCommitSheet(
                 title = work.CommitChanges,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
@@ -63,7 +63,7 @@ internal fun WorkspaceCommitSheet(
                         enabled = editor.submitEnabled && !busy && (!baseChanged || reviewed) && !draft?.headline.isNullOrBlank(),
                         onClick = { draft?.let(onConfirm) },
                     ) {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.GitCommitHorizontal,
                             contentDescription = work.CommitChanges,
                         )
@@ -98,7 +98,7 @@ internal fun WorkspaceCommitSheet(
                             }),
                 )
             }
-            GithubCommitMessageFields(
+            CommitMessageFields(
                 headline = draft?.headline.orEmpty(),
                 onHeadlineChange = { text -> draft?.let { onDraftChange(it.copy(headline = text)) } },
                 body = draft?.body.orEmpty(),

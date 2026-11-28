@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Repository(
+public data class RepositoryStrings(
     val Code: String,
     val Public: String,
     val Private: String,
@@ -135,8 +135,8 @@ public data class GithubStrings_Repository(
     val HttpFailed: (Int) -> String,
 )
 
-internal val ZhHansRepositoryStrings: GithubStrings_Repository =
-    GithubStrings_Repository(
+internal val ZhHansRepositoryStrings: RepositoryStrings =
+    RepositoryStrings(
         Code = "代码",
         Public = "公开",
         Private = "私有",
@@ -271,8 +271,8 @@ internal val ZhHansRepositoryStrings: GithubStrings_Repository =
         HttpFailed = { code -> "GitHub 请求失败（HTTP $code）" },
     )
 
-internal val EnRepositoryStrings: GithubStrings_Repository =
-    GithubStrings_Repository(
+internal val EnRepositoryStrings: RepositoryStrings =
+    RepositoryStrings(
         Code = "Code",
         Public = "Public",
         Private = "Private",

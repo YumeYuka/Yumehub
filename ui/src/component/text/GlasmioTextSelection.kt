@@ -112,7 +112,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
 
 @Immutable
 data class GlasmioTextSelectionLabels(
@@ -163,7 +163,7 @@ fun GlasmioTextSelectionMenu(
         }
     }
     var moreExpanded by remember { mutableStateOf(false) }
-    GithubBackHandler(
+    AppBackHandler(
         enabled = visible && hasActions && expanded && !moreExpanded,
         onBack = onDismiss,
     )

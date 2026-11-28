@@ -25,9 +25,9 @@ import moe.yumeyuka.yumehub.data.cache.MutationKind
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.download.DownloadStore
 import moe.yumeyuka.yumehub.data.repository.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.ReleaseAssetPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import moe.yumeyuka.yumehub.ui.navigation.*
@@ -45,7 +45,7 @@ data class ActionsRoute(
     val suite: String? = null,
     val workflowName: String? = null,
     val runNumber: Int? = null,
-) : GithubRoute
+) : AppRoute
 
 internal class ActionsDetailModel(
     private val repo: WorkflowRepository,
@@ -225,7 +225,7 @@ fun ActionsPage(
     account: String,
     open: (ActionsRoute) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val repo: WorkflowRepository = koinInject()
     if (route.run == null && route.suite == null) {
         ActionsHistoryPage(route, account) { row ->
@@ -246,7 +246,7 @@ fun ActionsPage(
     val suite = detail?.suite ?: route.suite
     val command = vm.commands.stateFor(suite)
     val downloads: DownloadStore = koinInject()
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val host = requireNotNull(LocalAppPageHost.current)
     var confirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(vm, context, strings) {
@@ -272,7 +272,7 @@ fun ActionsPage(
         if (workflowName != null && runNumber != null) {
             strings.Activity.WorkflowRunTitle(workflowName, runNumber)
         } else null
-    GithubPage(
+    AppPage(
         title = workflowName ?: strings.Repository.ActionsTitle,
         smallTitle = smallTitle,
         titleMaxLines = 3,
@@ -285,7 +285,7 @@ fun ActionsPage(
             ),
         itemSpacing = 12.dp,
         actions = {
-            GithubToolbarActions(
+            ToolbarActions(
                 toolbarIcon(Lucide.RefreshCw, strings.Repository.Refresh) {
                     vm.load()
                     vm.retryArtifacts()
@@ -308,8 +308,8 @@ fun ActionsPage(
         }
         // Keep the first section anchored while an external run link resolves its data.
         item(key = "artifacts") {
-            GithubSection(strings.Release.Artifacts) {
-                GithubLoadingContent(
+            ListSection(strings.Release.Artifacts) {
+                LoadingContent(
                     loading = vm.waitingForArtifacts,
                     placeholder = { ReleaseAssetPlaceholder(showTopSeparator = false) },
                 ) {
@@ -330,7 +330,7 @@ fun ActionsPage(
                                 }
                             }
                         }
-                        GithubLoadingContent(
+                        LoadingContent(
                             loading = vm.artifactPageLoading != null,
                             placeholder = { ReleaseAssetPlaceholder(showTopSeparator = files.isNotEmpty()) },
                         ) {
@@ -354,7 +354,7 @@ fun ActionsPage(
         }
         item(key = "jobs") {
             GlasmioGroupedList {
-                GithubLoadingContent(
+                LoadingContent(
                     loading = vm.loading && detail == null,
                     placeholder = { TitleRowPlaceholder() },
                 ) {
@@ -362,7 +362,7 @@ fun ActionsPage(
                         detail?.jobs?.forEachIndexed { index, job ->
                             key(job.id) { WorkflowRow(job, onClick = null, separator = index > 0) }
                         }
-                        GithubLoadingContent(
+                        LoadingContent(
                             loading = vm.appending,
                             placeholder = { TitleRowPlaceholder(showTopSeparator = true) },
                         ) {
@@ -406,8 +406,8 @@ private fun ArtifactRow(
     enabled: Boolean,
     onDownload: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
-    GithubDownloadFileRow(
+    val strings = LocalAppStrings.current
+    DownloadFileRow(
         name = file.name,
         bytes = file.bytes,
         digest = file.digest,

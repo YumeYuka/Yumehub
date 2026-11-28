@@ -9,13 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 
 /** 仅提供评论目标的上下文，正文、预览与提交统一由共享 Markdown 编辑器承载。 */
 @Composable
 internal fun CollaborationEditorHeader(viewModel: CollaborationDetailViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     state.reviewLine?.let { line ->
         Text(
             strings.LineContext(line.path, line.line, line.side == "RIGHT"),

@@ -22,13 +22,13 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.Link
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Settings
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
 
 @Composable
 internal fun LinkHandlingSection() {
-    val strings = LocalGithubStrings.current.LinkHandling
+    val strings = LocalAppStrings.current.LinkHandling
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var officialInstalled by remember(context) { mutableStateOf(false) }
@@ -57,16 +57,16 @@ internal fun LinkHandlingSection() {
             Toast.makeText(context, strings.SettingsOpenFailed, Toast.LENGTH_SHORT).show()
         }
     }
-    GithubSection(strings.Title) {
+    ListSection(strings.Title) {
         GlasmioListRow(
             title = strings.OpenWithYumehub,
-            leading = { GithubIcon(Lucide.Link, contentDescription = null) },
+            leading = { AppIcon(Lucide.Link, contentDescription = null) },
             onClick = { openSettings(context.packageName) },
         )
         if (officialInstalled) {
             GlasmioListRow(
                 title = strings.OfficialGithub,
-                leading = { GithubIcon(Lucide.Settings, contentDescription = null) },
+                leading = { AppIcon(Lucide.Settings, contentDescription = null) },
                 onClick = { openSettings(OfficialGithubPackage) },
             )
         }

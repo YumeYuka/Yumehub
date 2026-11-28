@@ -40,29 +40,30 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.capsule.ContinuousRoundedRectangle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
 import moe.yumeyuka.yumehub.data.api.dto.WorkProperty
 import moe.yumeyuka.yumehub.data.api.dto.WorkPropertyOption
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
+import moe.yumeyuka.yumehub.locale.WorkDetailStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
 import moe.yumeyuka.yumehub.ui.component.GithubBrandIcon
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSearchSelectionSheet
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.githubActivityTime
-import moe.yumeyuka.yumehub.ui.component.githubLabelColor
-import moe.yumeyuka.yumehub.ui.component.githubWorkStatusVisual
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.SearchSelectionSheet
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
+import moe.yumeyuka.yumehub.ui.component.formatActivityTime
+import moe.yumeyuka.yumehub.ui.component.labelColor
+import moe.yumeyuka.yumehub.ui.component.workStatusVisual
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextPlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubWorkColors
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
+import moe.yumeyuka.yumehub.ui.theme.WorkColors
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -86,8 +87,8 @@ internal fun WorkInfoSheet(
     var opened by remember { mutableStateOf(false) }
     SideEffect { if (visible) opened = true }
     if (!visible && !opened) return
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     val scroll = rememberScrollState()
     val title =
         if (kind == CollaborationKind.PullRequest) strings.PullRequestInformation
@@ -101,10 +102,10 @@ internal fun WorkInfoSheet(
             onDismiss()
         }
     }
-    if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
-    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    if (state.failed) LoadFailureToast(Unit, strings.PropertyLoadFailed)
+    if (state.saveFailed) LoadFailureToast(Unit, strings.PropertySaveFailed)
     // 保存写回在后台继续，弹窗提交期间不再禁止关闭与交互。
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = title,
@@ -114,7 +115,7 @@ internal fun WorkInfoSheet(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
@@ -123,7 +124,7 @@ internal fun WorkInfoSheet(
                             onClick = { viewModel.saveAll() },
                             enabled = !state.submitting,
                         ) {
-                            GithubIcon(Lucide.Check, contentDescription = strings.SaveChanges)
+                            AppIcon(Lucide.Check, contentDescription = strings.SaveChanges)
                         }
                     }
                 },
@@ -150,7 +151,7 @@ internal fun WorkInfoSheet(
                         onSubmitTitle(trimmedTitle)
                     }
                 }
-                GithubSectionHeader(strings.EditTitle)
+                SectionHeader(strings.EditTitle)
                 GlasmioGroupedList {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -180,7 +181,7 @@ internal fun WorkInfoSheet(
                                 onClick = submitTitleChange,
                                 enabled = titleEditable && !state.submitting,
                             ) {
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.Check,
                                     contentDescription = strings.SaveChanges,
                                     size = 18.dp,
@@ -231,7 +232,7 @@ internal fun WorkPropertySheet(
     onDismiss: () -> Unit,
 ) {
     if (!visible || property == null) return
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     val viewModel = workInfoViewModel(owner, name, kind, number, login)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     if (property == WorkProperty.Reviewers) {
@@ -246,8 +247,8 @@ internal fun WorkPropertySheet(
             viewModel.edit(property)
         }
     }
-    if (state.failed) GithubLoadFailureToast(Unit, strings.PropertyLoadFailed)
-    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    if (state.failed) LoadFailureToast(Unit, strings.PropertyLoadFailed)
+    if (state.saveFailed) LoadFailureToast(Unit, strings.PropertySaveFailed)
     WorkPropertySelectionSheet(
         state,
         viewModel,
@@ -268,7 +269,7 @@ private fun WorkInfoSections(
     onOpenBaseBranch: (() -> Unit)?,
     onOpenIssueFields: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
+    val strings = LocalAppStrings.current.WorkDetail
     item?.let {
         WorkInfoDetailsSection(it)
         if (kind == CollaborationKind.PullRequest) WorkInfoStatusSection(it, kind, onOpenBaseBranch)
@@ -281,7 +282,7 @@ private fun WorkInfoSections(
         ) {
             val fields = state.issueFields?.fields
             if (state.fieldsFailed) WorkSheetRetry(viewModel::retryFields)
-            GithubLoadingContent(
+            LoadingContent(
                 loading = fields == null && !state.fieldsFailed,
                 placeholder = { WorkInfoRowPlaceholder() },
             ) {
@@ -305,7 +306,7 @@ private fun WorkInfoSections(
         }
     }
     if (state.referencesFailed || !state.references.isNullOrEmpty()) {
-        GithubSection(strings.ReferencedItems) {
+        ListSection(strings.ReferencedItems) {
             if (state.referencesFailed) WorkSheetRetry(viewModel::retryReferences)
             state.references?.forEachIndexed { index, option ->
                 WorkLinkedItemRow(option, repo, index > 0, onOpenWork)
@@ -320,7 +321,7 @@ private fun WorkInfoSections(
         } else {
             GlasmioGroupedList {
                 GlasmioListRow(
-                    title = LocalGithubStrings.current.Common.Retry,
+                    title = LocalAppStrings.current.Common.Retry,
                     subtitle = strings.PropertyLoadFailed,
                     showTopSeparator = false,
                     onClick = viewModel::retry,
@@ -340,7 +341,7 @@ private fun WorkInfoSections(
         } else {
             GlasmioListRow(
                 title = milestone,
-                leading = { GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp) },
+                leading = { AppIcon(Lucide.Milestone, contentDescription = null, size = 20.dp) },
                 showTopSeparator = false,
                 showDisclosure = false,
             )
@@ -373,8 +374,8 @@ private fun WorkInfoSections(
 @Composable
 private fun WorkSheetRetry(onRetry: () -> Unit) {
     GlasmioListRow(
-        title = LocalGithubStrings.current.Common.Retry,
-        subtitle = LocalGithubStrings.current.WorkDetail.PropertyLoadFailed,
+        title = LocalAppStrings.current.Common.Retry,
+        subtitle = LocalAppStrings.current.WorkDetail.PropertyLoadFailed,
         onClick = onRetry,
     )
 }
@@ -385,7 +386,7 @@ private fun WorkInfoStatusSection(
     kind: CollaborationKind,
     onOpenBaseBranch: (() -> Unit)?,
 ) {
-    val all = LocalGithubStrings.current
+    val all = LocalAppStrings.current
     val strings = all.WorkDetail
     val total = item.requiredStatusCheckCount ?: 0
     val checks = item.requiredStatusChecks
@@ -396,9 +397,9 @@ private fun WorkInfoStatusSection(
     }
     val checksColor =
         when {
-            item.allStatusChecksPassed -> GithubWorkColors.open
-            failed -> GithubWorkColors.closed
-            pending -> GithubWorkColors.draft
+            item.allStatusChecksPassed -> WorkColors.open
+            failed -> WorkColors.closed
+            pending -> WorkColors.draft
             else -> GlasmioTheme.colors.secondaryContent
         }
     val checksIcon =
@@ -409,17 +410,17 @@ private fun WorkInfoStatusSection(
         }
     val reviewColor =
         when (item.reviewDecision) {
-            "APPROVED" -> GithubWorkColors.open
-            "CHANGES_REQUESTED" -> GithubWorkColors.closed
+            "APPROVED" -> WorkColors.open
+            "CHANGES_REQUESTED" -> WorkColors.closed
             else -> GlasmioTheme.colors.secondaryContent
         }
-    GithubSection(strings.Status) {
+    ListSection(strings.Status) {
         if (kind == CollaborationKind.PullRequest) {
             GlasmioListRow(
                 title = strings.ReviewResults,
                 detail = strings.ReviewDecision(item.reviewDecision.orEmpty()),
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.MessageCircleCheck,
                         contentDescription = null,
                         size = 20.dp,
@@ -433,7 +434,7 @@ private fun WorkInfoStatusSection(
             title = strings.Checks,
             detail = if (total > 0) "$passed/$total" else null,
             leading = {
-                GithubIcon(checksIcon, contentDescription = null, size = 20.dp, tint = checksColor)
+                AppIcon(checksIcon, contentDescription = null, size = 20.dp, tint = checksColor)
             },
             showTopSeparator = kind == CollaborationKind.PullRequest,
         )
@@ -441,13 +442,13 @@ private fun WorkInfoStatusSection(
     val head = item.head?.ref?.takeIf(String::isNotBlank)
     val base = item.baseRefName?.takeIf(String::isNotBlank)
     if (head == null && base == null) return
-    val branchColor = githubWorkStatusVisual(kind, item.state, item.draft, item.merged).color
-    GithubSection(all.Workspaces.Branches) {
+    val branchColor = workStatusVisual(kind, item.state, item.draft, item.merged).color
+    ListSection(all.Workspaces.Branches) {
         head?.let { ref ->
             GlasmioListRow(
                 title = ref,
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Feather,
                         contentDescription = all.WorkList.HeadBranch,
                         size = 20.dp,
@@ -461,7 +462,7 @@ private fun WorkInfoStatusSection(
             GlasmioListRow(
                 title = ref,
                 leading = {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.CornerDownRight,
                         contentDescription = all.WorkList.BaseBranch,
                         size = 20.dp,
@@ -477,13 +478,13 @@ private fun WorkInfoStatusSection(
 
 @Composable
 private fun WorkInfoDetailsSection(item: CollaborationItemDto) {
-    val all = LocalGithubStrings.current
+    val all = LocalAppStrings.current
     val login = item.user?.login?.takeIf(String::isNotBlank) ?: all.Workspaces.UnknownAuthor
     GlasmioGroupedList {
         GlasmioListRow(
             title = all.WorkDetail.Author,
             leading = {
-                GithubIcon(
+                AppIcon(
                     Lucide.AtSign,
                     contentDescription = null,
                     size = 20.dp,
@@ -497,7 +498,7 @@ private fun WorkInfoDetailsSection(item: CollaborationItemDto) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    GithubAvatar(item.user?.avatarUrl, login, size = 20.dp)
+                    UserAvatar(item.user?.avatarUrl, login, size = 20.dp)
                     Text(
                         text = login,
                         style = GlasmioTheme.textStyles.body,
@@ -508,9 +509,9 @@ private fun WorkInfoDetailsSection(item: CollaborationItemDto) {
         )
         GlasmioListRow(
             title = all.WorkDetail.CreatedAt,
-            detail = item.createdAt?.let(::githubActivityTime),
+            detail = item.createdAt?.let(::formatActivityTime),
             leading = {
-                GithubIcon(
+                AppIcon(
                     Lucide.Clock,
                     contentDescription = null,
                     size = 20.dp,
@@ -551,12 +552,12 @@ private fun WorkEditableSection(
     onEdit: () -> Unit,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    GithubSection(
+    ListSection(
         title = title,
         trailing =
             if (editable) {
                 {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Pencil,
                         modifier =
                             Modifier.clickable(
@@ -564,7 +565,7 @@ private fun WorkEditableSection(
                                 indication = null,
                                 onClick = onEdit,
                             ),
-                        contentDescription = LocalGithubStrings.current.WorkDetail.EditProperty,
+                        contentDescription = LocalAppStrings.current.WorkDetail.EditProperty,
                         size = 14.dp,
                         tint = GlasmioTheme.colors.secondaryContent,
                     )
@@ -589,14 +590,14 @@ private fun WorkLinkedItemRow(
     val number = option.number
     val owner = option.subtitle?.takeIf { it.contains('/') }?.substringBefore('/')
     val name = option.subtitle?.takeIf { it.contains('/') }?.substringAfter('/')
-    val visual = githubWorkStatusVisual(kind, option.state, merged = option.state == "MERGED")
+    val visual = workStatusVisual(kind, option.state, merged = option.state == "MERGED")
     GlasmioListRow(
         title = option.title,
         subtitle = option.subtitle?.takeIf { !it.equals(repo, ignoreCase = true) },
         showTopSeparator = showTopSeparator,
         showDisclosure = false,
         leading = {
-            GithubIcon(
+            AppIcon(
                 GithubBrandIcon,
                 contentDescription = null,
                 tint = GlasmioTheme.colors.secondaryContent,
@@ -615,7 +616,7 @@ private fun WorkLinkedItemRow(
                         maxLines = 1,
                     )
                 }
-                GithubIcon(
+                AppIcon(
                     visual.icon,
                     contentDescription = null,
                     size = 18.dp,
@@ -635,7 +636,7 @@ private fun WorkLinkedItemRow(
 @Composable
 private fun workInfoPlaceholders(
     kind: CollaborationKind,
-    strings: GithubStrings_WorkDetail,
+    strings: WorkDetailStrings,
 ) {
     WorkInfoSectionPlaceholder(strings.Milestone, showArrow = false)
     WorkInfoSectionPlaceholder(strings.LinkedItems)
@@ -647,7 +648,7 @@ private fun workInfoPlaceholders(
 @Composable
 private fun WorkInfoSectionPlaceholder(title: String, showArrow: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        GithubSectionHeader(title)
+        SectionHeader(title)
         GlasmioGroupedList { WorkInfoRowPlaceholder(showArrow = showArrow) }
     }
 }
@@ -691,15 +692,15 @@ private fun WorkPropertySelectionSheet(
     var retained by remember(requestedProperty) { mutableStateOf<WorkPropertyEditor?>(null) }
     SideEffect { if (live != null) retained = live }
     val editor = live ?: retained
-    val strings = LocalGithubStrings.current.WorkDetail
-    if (state.saveFailed) GithubLoadFailureToast(Unit, strings.PropertySaveFailed)
+    val strings = LocalAppStrings.current.WorkDetail
+    if (state.saveFailed) LoadFailureToast(Unit, strings.PropertySaveFailed)
     if (editor?.failed == true || editor?.needsReconcile == true || editor?.moreFailed == true) {
-        GithubLoadFailureToast(
+        LoadFailureToast(
             Unit,
             if (editor.needsReconcile) strings.PropertySaveFailed else strings.PropertyLoadFailed,
         )
     }
-    GithubSearchSelectionSheet(
+    SearchSelectionSheet(
         // visible 保持 true 直到收起动画结束：动画完成后 onDismissRequest 才触发，
         // 由那里清空 retained 与调用方状态，收起期间内容用快照渲染。
         visible = requestedProperty != null || live != null || retained != null,
@@ -734,7 +735,7 @@ private fun WorkPropertySelectionSheet(
                 item(key = "work-property-load-retry") {
                     GlasmioGroupedList {
                         GlasmioListRow(
-                            title = LocalGithubStrings.current.Common.Retry,
+                            title = LocalAppStrings.current.Common.Retry,
                             subtitle = strings.PropertyLoadFailed,
                             showTopSeparator = false,
                             onClick = { viewModel?.retry() },
@@ -742,12 +743,12 @@ private fun WorkPropertySelectionSheet(
                     }
                 }
             }
-            return@GithubSearchSelectionSheet
+            return@SearchSelectionSheet
         }
         if (!editor.loading && (editor.failed || editor.needsReconcile)) {
             item(key = "work-property-retry") {
                 var acknowledgeVisible by remember { mutableStateOf(false) }
-                val common = LocalGithubStrings.current.Common
+                val common = LocalAppStrings.current.Common
                 GlasmioGroupedList {
                     GlasmioListRow(
                         title = if (state.uncertain) common.MutationReconcile else common.Retry,
@@ -769,31 +770,16 @@ private fun WorkPropertySelectionSheet(
                     }
                 }
                 if (acknowledgeVisible && state.uncertain) {
-                    GlasmioAlertDialog(
-                        visible = true,
-                        title = common.MutationUncertain,
-                        message = common.MutationAcknowledgeWarning,
-                        buttons =
-                            listOf(
-                                GlasmioAlertButtonSpec(
-                                    common.Cancel,
-                                    onClick = { acknowledgeVisible = false },
-                                    role = GlasmioAlertButtonRole.Cancel,
-                                ),
-                                GlasmioAlertButtonSpec(
-                                    common.MutationAcknowledged,
-                                    onClick = {
-                                        acknowledgeVisible = false
-                                        viewModel?.acknowledgeUncertain()
-                                    },
-                                    role = GlasmioAlertButtonRole.Default,
-                                ),
-                            ),
-                        onDismissRequest = { acknowledgeVisible = false },
+                    MutationAcknowledgementDialog(
+                        onDismiss = { acknowledgeVisible = false },
+                        onAcknowledge = {
+                            acknowledgeVisible = false
+                            viewModel?.acknowledgeUncertain()
+                        },
                     )
                 }
             }
-            return@GithubSearchSelectionSheet
+            return@SearchSelectionSheet
         }
         when {
             editor.loading -> Unit
@@ -915,7 +901,7 @@ private fun WorkPropertyOptionRow(
         leading = { propertyOptionIcon(property, option) },
         trailing = {
             Box(Modifier.width(23.dp), contentAlignment = Alignment.Center) {
-                if (checked) GithubIcon(Lucide.Check, contentDescription = null)
+                if (checked) AppIcon(Lucide.Check, contentDescription = null)
             }
         },
         onClick = onSelect?.takeIf { option.editable },
@@ -927,27 +913,27 @@ private fun propertyOptionIcon(property: WorkProperty, option: WorkPropertyOptio
     when (property) {
         WorkProperty.Reviewers -> {
             val avatar = option.avatarUrl?.takeIf(String::isNotBlank)
-            if (avatar != null) GithubAvatar(avatar, option.title, size = 20.dp)
-            else GithubIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
+            if (avatar != null) UserAvatar(avatar, option.title, size = 20.dp)
+            else AppIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
         }
         WorkProperty.Labels ->
-            GithubIcon(
+            AppIcon(
                 Lucide.Tag,
                 contentDescription = null,
                 size = 20.dp,
-                tint = githubLabelColor(option.color),
+                tint = labelColor(option.color),
             )
         WorkProperty.Milestone ->
-            GithubIcon(Lucide.Milestone, contentDescription = null, size = 20.dp)
+            AppIcon(Lucide.Milestone, contentDescription = null, size = 20.dp)
         WorkProperty.LinkedItems -> LinkedItemIcon(option)
         WorkProperty.SubIssues ->
-            GithubIcon(Lucide.ListPlus, contentDescription = null, size = 20.dp)
+            AppIcon(Lucide.ListPlus, contentDescription = null, size = 20.dp)
         WorkProperty.Projects ->
-            GithubIcon(Lucide.FolderKanban, contentDescription = null, size = 20.dp)
+            AppIcon(Lucide.FolderKanban, contentDescription = null, size = 20.dp)
         WorkProperty.Assignees -> {
             val avatar = option.avatarUrl?.takeIf(String::isNotBlank)
-            if (avatar != null) GithubAvatar(avatar, option.title, size = 20.dp)
-            else GithubIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
+            if (avatar != null) UserAvatar(avatar, option.title, size = 20.dp)
+            else AppIcon(Lucide.UsersRound, contentDescription = null, size = 20.dp)
         }
     }
 }
@@ -956,7 +942,7 @@ private fun propertyOptionIcon(property: WorkProperty, option: WorkPropertyOptio
 private fun LinkedItemIcon(option: WorkPropertyOption) {
     val closed = option.state == "CLOSED"
     val merged = option.state == "MERGED"
-    GithubIcon(
+    AppIcon(
         imageVector =
             when {
                 merged -> Lucide.GitMerge
@@ -969,14 +955,14 @@ private fun LinkedItemIcon(option: WorkPropertyOption) {
         size = 20.dp,
         tint =
             when {
-                merged -> GithubWorkColors.merged
-                closed -> GithubWorkColors.closed
-                else -> GithubWorkColors.open
+                merged -> WorkColors.merged
+                closed -> WorkColors.closed
+                else -> WorkColors.open
             },
     )
 }
 
-internal fun WorkProperty.title(strings: GithubStrings_WorkDetail) =
+internal fun WorkProperty.title(strings: WorkDetailStrings) =
     when (this) {
         WorkProperty.Reviewers -> strings.RequestedReviewers
         WorkProperty.Assignees -> strings.Assignees
@@ -987,5 +973,5 @@ internal fun WorkProperty.title(strings: GithubStrings_WorkDetail) =
         WorkProperty.Projects -> strings.Projects
     }
 
-private fun WorkProperty.selectionTitle(strings: GithubStrings_WorkDetail) =
+private fun WorkProperty.selectionTitle(strings: WorkDetailStrings) =
     if (this == WorkProperty.Reviewers) strings.RequestReview else title(strings)

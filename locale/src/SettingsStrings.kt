@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Settings(
+public data class SettingsStrings(
     val AppLanguage: String,
     val System: String,
     val Chinese: String,
@@ -42,8 +42,8 @@ public data class GithubStrings_Settings(
     val TopBarBlurReduceTransparencyOn: String,
 )
 
-internal val ZhHansSettingsStrings: GithubStrings_Settings =
-    GithubStrings_Settings(
+internal val ZhHansSettingsStrings: SettingsStrings =
+    SettingsStrings(
         AppLanguage = "应用语言",
         System = "跟随系统",
         Chinese = "简体中文",
@@ -85,8 +85,8 @@ internal val ZhHansSettingsStrings: GithubStrings_Settings =
         TopBarBlurReduceTransparencyOn = "降低透明度已开启",
     )
 
-internal val EnSettingsStrings: GithubStrings_Settings =
-    GithubStrings_Settings(
+internal val EnSettingsStrings: SettingsStrings =
+    SettingsStrings(
         TopBarBlur = "Top bar progressive blur",
         AppLanguage = "App language",
         System = "System default",

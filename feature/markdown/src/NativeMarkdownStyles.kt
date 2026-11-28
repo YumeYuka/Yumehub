@@ -19,7 +19,7 @@ import moe.yumeyuka.markdown.compose.HtmlPalette
 import moe.yumeyuka.markdown.compose.HtmlStrings
 import moe.yumeyuka.markdown.compose.HtmlStyles
 import moe.yumeyuka.markdown.compose.HtmlTypography
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 
 internal data class NativeMarkdownStyleState(val styles: HtmlStyles?, val failed: Boolean)
 
@@ -31,7 +31,7 @@ internal fun rememberNativeMarkdownStyles(
 ): NativeMarkdownStyleState {
     val assets = LocalContext.current.applicationContext.assets
     val colors = GlasmioTheme.colors
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val dark = colors.isDark
     var reference by
         remember(assets, dark) { mutableStateOf(NativeMarkdownStyleAssets.cached(dark)) }

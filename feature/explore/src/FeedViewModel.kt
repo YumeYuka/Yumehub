@@ -35,7 +35,7 @@ import moe.yumeyuka.yumehub.data.repository.DashboardFeedRepository
 import moe.yumeyuka.yumehub.data.repository.PagingRepository
 import moe.yumeyuka.yumehub.data.repository.RepositoryContentRepository
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import moe.yumeyuka.yumehub.ui.component.FeedCardState
 import moe.yumeyuka.yumehub.ui.component.initialCard
 
@@ -349,7 +349,7 @@ internal class FeedViewModel(
             )
         if (!accepted) {
             val current = mutableCards[key]?.value ?: state
-            update(key, current.copy(actionError = GithubTxt.current.Common.MutationUncertain))
+            update(key, current.copy(actionError = CurrentAppStrings.current.Common.MutationUncertain))
         }
     }
 
@@ -436,8 +436,8 @@ internal class FeedViewModel(
             } else currentRepo
         val actionError =
             when (phase) {
-                WritePhase.UNCERTAIN -> GithubTxt.current.Common.MutationUncertain
-                WritePhase.REJECTED -> message ?: GithubTxt.current.Common.MutationNotSubmitted
+                WritePhase.UNCERTAIN -> CurrentAppStrings.current.Common.MutationUncertain
+                WritePhase.REJECTED -> message ?: CurrentAppStrings.current.Common.MutationNotSubmitted
                 WritePhase.IDLE,
                 WritePhase.PENDING -> null
             }

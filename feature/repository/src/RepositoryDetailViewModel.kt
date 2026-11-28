@@ -20,7 +20,7 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryTextContent
 import moe.yumeyuka.yumehub.data.repository.WorkspacesRepository
 import moe.yumeyuka.yumehub.data.repository.WorkspacesTimeoutException
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import retrofit2.HttpException
 
 sealed interface RepositoryLoad<out T> {
@@ -224,7 +224,7 @@ class RepositoryDetailViewModel(
     private fun initialRepositoryState(): RepositoryLoad<RepositoryDto> =
         activeAccount.takeIf(String::isNotBlank)?.let {
             contentRepository.details(it, owner, repository).state.value.toLoad()
-        } ?: RepositoryLoad.Error(GithubTxt.current.Repository.SessionExpired)
+        } ?: RepositoryLoad.Error(CurrentAppStrings.current.Repository.SessionExpired)
 
     private fun bindAccount(account: String) {
         activeAccount = account
@@ -261,17 +261,17 @@ class RepositoryDetailViewModel(
     private fun Throwable.readErrorMessage(): String =
         when (this) {
             is RepositoryContentTimeoutException,
-            is WorkspacesTimeoutException -> GithubTxt.current.Repository.RequestTimeout
-            is IOException -> GithubTxt.current.Repository.NetworkFailed
+            is WorkspacesTimeoutException -> CurrentAppStrings.current.Repository.RequestTimeout
+            is IOException -> CurrentAppStrings.current.Repository.NetworkFailed
             is HttpException ->
                 when (code()) {
-                    401 -> GithubTxt.current.Repository.SessionExpired
-                    403 -> GithubTxt.current.Repository.ReadForbidden
-                    404 -> GithubTxt.current.Repository.ReadNotFound
-                    422 -> GithubTxt.current.Repository.InvalidRef
-                    else -> GithubTxt.current.Repository.HttpFailed(code())
+                    401 -> CurrentAppStrings.current.Repository.SessionExpired
+                    403 -> CurrentAppStrings.current.Repository.ReadForbidden
+                    404 -> CurrentAppStrings.current.Repository.ReadNotFound
+                    422 -> CurrentAppStrings.current.Repository.InvalidRef
+                    else -> CurrentAppStrings.current.Repository.HttpFailed(code())
                 }
-            is SerializationException -> GithubTxt.current.Repository.ParseFailed
-            else -> GithubTxt.current.Repository.LoadRetry
+            is SerializationException -> CurrentAppStrings.current.Repository.ParseFailed
+            else -> CurrentAppStrings.current.Repository.LoadRetry
         }
 }

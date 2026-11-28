@@ -19,9 +19,9 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.placeholders.CardSizeSpec
 
 @Composable
 internal fun RepositoryNotificationOptions(
@@ -31,7 +31,7 @@ internal fun RepositoryNotificationOptions(
     visible: Boolean,
     onSubscriptionChange: (String, Set<String>) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Repository
+    val strings = LocalAppStrings.current.Repository
     val colors = GlasmioTheme.colors
     val custom = subscription == "CUSTOM" || subscription == "RELEASES_ONLY"
     var expanded by remember { mutableStateOf(custom) }
@@ -57,7 +57,7 @@ internal fun RepositoryNotificationOptions(
                     showDisclosure = false,
                     trailing = {
                         if (selected)
-                            GithubIcon(
+                            AppIcon(
                                 Lucide.Check,
                                 contentDescription = null,
                                 tint = colors.accent,
@@ -66,7 +66,7 @@ internal fun RepositoryNotificationOptions(
                 )
             }
     }
-    GlasmioGroupedList(modifier = Modifier.animateContentSize(GithubCardSizeSpec)) {
+    GlasmioGroupedList(modifier = Modifier.animateContentSize(CardSizeSpec)) {
         GlasmioListRow(
             title = strings.WatchCustom,
             modifier =
@@ -79,7 +79,7 @@ internal fun RepositoryNotificationOptions(
             showDisclosure = false,
             trailing = {
                 if (custom)
-                    GithubIcon(
+                    AppIcon(
                         Lucide.Check,
                         contentDescription = null,
                         tint = colors.accent,
@@ -116,7 +116,7 @@ internal fun RepositoryNotificationOptions(
                         showDisclosure = false,
                         trailing = {
                             if (checked)
-                                GithubIcon(
+                                AppIcon(
                                     Lucide.Check,
                                     contentDescription = null,
                                     tint = colors.accent,

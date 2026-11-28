@@ -27,19 +27,19 @@ import kotlinx.coroutines.withContext
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
 import moe.yumeyuka.yumehub.data.repository.SearchCodeLine
 import moe.yumeyuka.yumehub.data.repository.previewLines
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubDiffCardFrame
-import moe.yumeyuka.yumehub.ui.component.GithubTextMateSpan
-import moe.yumeyuka.yumehub.ui.component.githubAnnotatedCode
-import moe.yumeyuka.yumehub.ui.component.githubCodeLanguageForFilename
-import moe.yumeyuka.yumehub.ui.component.githubDiffColors
-import moe.yumeyuka.yumehub.ui.component.highlightGithubTextMate
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.DiffCardFrame
+import moe.yumeyuka.yumehub.ui.component.TextMateSpan
+import moe.yumeyuka.yumehub.ui.component.AnnotatedCode
+import moe.yumeyuka.yumehub.ui.component.codeLanguageForFilename
+import moe.yumeyuka.yumehub.ui.component.diffColors
+import moe.yumeyuka.yumehub.ui.component.highlightTextMate
 import moe.yumeyuka.yumehub.ui.component.placeholders.AvatarPlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDiffCodePlaceholder
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.DiffCodePlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TextLinePlaceholder
-import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
-import moe.yumeyuka.yumehub.ui.theme.githubLanguageColor
+import moe.yumeyuka.yumehub.ui.theme.EditorFontFamily
+import moe.yumeyuka.yumehub.ui.theme.languageColor
 
 private const val PreviewLineCount = 5
 
@@ -48,7 +48,7 @@ internal fun CodeResult(
     file: SearchCodeFile?,
     onOpenFile: (SearchCodeFile, Int?) -> Unit,
 ) {
-    GithubLoadingContent(
+    LoadingContent(
         loading = file == null,
         placeholder = { CodeResultBody(null, onOpenFile) },
     ) {
@@ -60,9 +60,9 @@ internal fun CodeResult(
 private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, Int?) -> Unit) {
     val colors = GlasmioTheme.colors
     val styles = GlasmioTheme.textStyles
-    val diffColors = remember(colors.isDark) { githubDiffColors(colors.isDark) }
+    val diffColors = remember(colors.isDark) { diffColors(colors.isDark) }
     val lines = remember(file) { file?.previewLines(PreviewLineCount).orEmpty() }
-    GithubDiffCardFrame(
+    DiffCardFrame(
         if (file == null) Modifier.clearAndSetSemantics {}
         else Modifier.clickable { onOpenFile(file, file.snippets.firstOrNull()?.jump) },
     ) {
@@ -78,7 +78,7 @@ private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, I
                     AvatarPlaceholder(18.dp)
                     TextLinePlaceholder(styles.footnote, fraction = 0.4f)
                 } else {
-                    GithubAvatar(file.ownerAvatarUrl, file.owner, size = 18.dp)
+                    UserAvatar(file.ownerAvatarUrl, file.owner, size = 18.dp)
                     BasicText(
                         "${file.owner} / ${file.repository}",
                         style = styles.footnote.copy(color = colors.secondaryContent),
@@ -99,7 +99,7 @@ private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, I
                     )
                 }
                 file?.language?.let { language ->
-                    Box(Modifier.size(9.dp).background(githubLanguageColor(language), CircleShape))
+                    Box(Modifier.size(9.dp).background(languageColor(language), CircleShape))
                     BasicText(
                         language,
                         style = styles.caption1.copy(color = colors.secondaryContent),
@@ -111,7 +111,7 @@ private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, I
             val codeStyle =
                 styles.footnote.copy(
                     color = diffColors.foreground,
-                    fontFamily = GithubEditorFontFamily,
+                    fontFamily = EditorFontFamily,
                     fontSize = 12.sp,
                     lineHeight = 20.sp,
                 )
@@ -122,7 +122,7 @@ private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, I
                     measurer.measure("9".repeat(digits), codeStyle).size.width.toDp() + 8.dp
                 }
             if (file == null) {
-                GithubDiffCodePlaceholder(
+                DiffCodePlaceholder(
                     codeStyle,
                     Modifier.padding(start = 16.dp),
                     gutter,
@@ -130,7 +130,7 @@ private fun CodeResultBody(file: SearchCodeFile?, onOpenFile: (SearchCodeFile, I
                 )
                 return@Column
             }
-            val language = githubCodeLanguageForFilename(file.path) ?: file.language?.lowercase()
+            val language = codeLanguageForFilename(file.path) ?: file.language?.lowercase()
             val rowHeight =
                 with(LocalDensity.current) { codeStyle.lineHeight.toDp().coerceAtLeast(20.dp) }
             BoxWithConstraints(
@@ -178,14 +178,14 @@ private fun annotatedMatchLine(line: SearchCodeLine, language: String?): Annotat
     val context = LocalContext.current.applicationContext
     val colors = GlasmioTheme.colors
     val dark = colors.isDark
-    var tokens by remember(text, language, dark) { mutableStateOf(emptyList<GithubTextMateSpan>()) }
+    var tokens by remember(text, language, dark) { mutableStateOf(emptyList<TextMateSpan>()) }
     LaunchedEffect(text, language, dark) {
         tokens =
             withContext(Dispatchers.Default) {
-                highlightGithubTextMate(context, text, language, dark) { isActive }
+                highlightTextMate(context, text, language, dark) { isActive }
             }
     }
-    val source = githubAnnotatedCode(text, tokens)
+    val source = AnnotatedCode(text, tokens)
     val mark = colors.accent.copy(alpha = if (dark) 0.38f else 0.24f)
     return remember(source, line.matches, mark) {
         buildAnnotatedString {

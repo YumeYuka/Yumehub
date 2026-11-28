@@ -1,15 +1,15 @@
 package moe.yumeyuka.yumehub.feature.notifications
 
-import moe.yumeyuka.yumehub.locale.GithubStrings_Notifications
+import moe.yumeyuka.yumehub.locale.NotificationsStrings
 
-internal fun NotificationFilter.label(strings: GithubStrings_Notifications): String =
+internal fun NotificationFilter.label(strings: NotificationsStrings): String =
     when (this) {
         NotificationFilter.Unread -> strings.Unread
         NotificationFilter.Inbox -> strings.Inbox
         NotificationFilter.Done -> strings.Done
     }
 
-internal fun NotificationReasonFilter.label(strings: GithubStrings_Notifications): String =
+internal fun NotificationReasonFilter.label(strings: NotificationsStrings): String =
     when (this) {
         NotificationReasonFilter.All -> strings.AllReasons
         NotificationReasonFilter.Mention -> strings.ReasonMention

@@ -10,7 +10,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.di.appModule
-import moe.yumeyuka.yumehub.ui.component.initializeGithubImageLoader
+import moe.yumeyuka.yumehub.ui.component.initializeImageLoader
 import moe.yumeyuka.yumehub.ui.platform.AppLanguageManager
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
@@ -38,7 +38,7 @@ class App : Application(), KoinComponent {
                     MMKV.initialize(this@App)
                     get<SettingsStore>().loadUiPreferences()
                     val client = get<OkHttpClient>()
-                    initializeGithubImageLoader(this@App, client)
+                    initializeImageLoader(this@App, client)
                 }
                 storageReady = true
             }

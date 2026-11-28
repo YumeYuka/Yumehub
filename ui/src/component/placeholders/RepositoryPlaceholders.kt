@@ -18,21 +18,21 @@ import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioButtonDefaults
 import io.github.neoruaa.glasmio.ui.GlasmioListRowDefaults
-import moe.yumeyuka.yumehub.ui.component.GithubActivityCardContent
-import moe.yumeyuka.yumehub.ui.component.GithubActivityCardSpacing
+import moe.yumeyuka.yumehub.ui.component.ActivityCardContent
+import moe.yumeyuka.yumehub.ui.component.ActivityCardSpacing
 import moe.yumeyuka.yumehub.ui.component.RepositoryCoverShape
 
 /** 卡片内部内容：18dp 头像、标题、两行描述与三个统计槽。 */
 @Composable
 fun RepositoryCardPlaceholderContent(showCover: Boolean = false) {
     val styles = GlasmioTheme.textStyles
-    GithubActivityCardContent(
+    ActivityCardContent(
         cover =
             if (showCover) {
                 {
                     Spacer(
                         Modifier.fillMaxWidth()
-                            .padding(bottom = GithubActivityCardSpacing)
+                            .padding(bottom = ActivityCardSpacing)
                             .aspectRatio(1.91f)
                             .placeholderFill(RepositoryCoverShape),
                     )

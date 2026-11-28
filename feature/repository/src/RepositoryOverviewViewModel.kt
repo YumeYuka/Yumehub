@@ -26,7 +26,7 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryOverview
 import moe.yumeyuka.yumehub.data.repository.RepositoryOverviewRepository
 import moe.yumeyuka.yumehub.data.repository.updatedDashboardPins
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 
 internal const val RepositoryDescriptionMaxLength = 350
 
@@ -109,7 +109,7 @@ internal class RepositoryOverviewViewModel(
                     mutableState.value.copy(
                         overview = projectOverview(it.data),
                         loading = it.loading,
-                        error = it.error?.let { GithubTxt.current.Repository.OperationFailed },
+                        error = it.error?.let { CurrentAppStrings.current.Repository.OperationFailed },
                     )
             }
         }
@@ -136,7 +136,7 @@ internal class RepositoryOverviewViewModel(
                     if (write.phase == WritePhase.REJECTED) {
                         mutableEvents.trySend(
                             RepositoryOverviewEvent.Failed(
-                                write.message ?: GithubTxt.current.Repository.OperationFailed,
+                                write.message ?: CurrentAppStrings.current.Repository.OperationFailed,
                             ),
                         )
                     }
@@ -157,7 +157,7 @@ internal class RepositoryOverviewViewModel(
                     if (write.phase == WritePhase.REJECTED) {
                         mutableEvents.trySend(
                             RepositoryOverviewEvent.Failed(
-                                write.message ?: GithubTxt.current.Repository.OperationFailed,
+                                write.message ?: CurrentAppStrings.current.Repository.OperationFailed,
                             ),
                         )
                     }
@@ -180,7 +180,7 @@ internal class RepositoryOverviewViewModel(
                     if (write.phase == WritePhase.REJECTED) {
                         mutableEvents.trySend(
                             RepositoryOverviewEvent.Failed(
-                                write.message ?: GithubTxt.current.Repository.OperationFailed,
+                                write.message ?: CurrentAppStrings.current.Repository.OperationFailed,
                             ),
                         )
                     }
@@ -197,7 +197,7 @@ internal class RepositoryOverviewViewModel(
                     if (write.phase == WritePhase.REJECTED) {
                         mutableEvents.trySend(
                             RepositoryOverviewEvent.Failed(
-                                write.message ?: GithubTxt.current.Repository.OperationFailed,
+                                write.message ?: CurrentAppStrings.current.Repository.OperationFailed,
                             ),
                         )
                     }
@@ -332,7 +332,7 @@ internal class RepositoryOverviewViewModel(
                     if (active())
                         mutableEvents.trySend(
                             RepositoryOverviewEvent.Failed(
-                                GithubTxt.current.Repository.OperationFailed,
+                                CurrentAppStrings.current.Repository.OperationFailed,
                             ),
                         )
                 }
@@ -394,7 +394,7 @@ internal class RepositoryOverviewViewModel(
             )
         if (!accepted && active()) {
             mutableEvents.trySend(
-                RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationUncertain),
+                RepositoryOverviewEvent.Failed(CurrentAppStrings.current.Common.MutationUncertain),
             )
         }
     }
@@ -405,7 +405,7 @@ internal class RepositoryOverviewViewModel(
         val currentIds = coord.current(pinsKey).visible
         if (currentIds == null) {
             mutableEvents.trySend(
-                RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationPreparing),
+                RepositoryOverviewEvent.Failed(CurrentAppStrings.current.Common.MutationPreparing),
             )
             return
         }
@@ -415,7 +415,7 @@ internal class RepositoryOverviewViewModel(
             } catch (_: RepositoryFavoritesLimitException) {
                 mutableEvents.trySend(
                     RepositoryOverviewEvent.Failed(
-                        GithubTxt.current.Repository.FavoriteLimitReached,
+                        CurrentAppStrings.current.Repository.FavoriteLimitReached,
                     ),
                 )
                 return
@@ -432,7 +432,7 @@ internal class RepositoryOverviewViewModel(
                 )
             if (!accepted && active()) {
                 mutableEvents.trySend(
-                    RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationUncertain),
+                    RepositoryOverviewEvent.Failed(CurrentAppStrings.current.Common.MutationUncertain),
                 )
             }
         }
@@ -486,7 +486,7 @@ internal class RepositoryOverviewViewModel(
             )
         if (!accepted && active()) {
             mutableEvents.trySend(
-                RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationUncertain),
+                RepositoryOverviewEvent.Failed(CurrentAppStrings.current.Common.MutationUncertain),
             )
         }
     }
@@ -518,7 +518,7 @@ internal class RepositoryOverviewViewModel(
                     )
                 if (!accepted && active()) {
                     mutableEvents.trySend(
-                        RepositoryOverviewEvent.Failed(GithubTxt.current.Common.MutationUncertain),
+                        RepositoryOverviewEvent.Failed(CurrentAppStrings.current.Common.MutationUncertain),
                     )
                 }
             }

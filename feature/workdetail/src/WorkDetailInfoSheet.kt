@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import java.io.IOException
 import kotlinx.serialization.SerializationException
 import moe.yumeyuka.yumehub.data.api.dto.CollaborationItemDto
@@ -34,15 +34,15 @@ import moe.yumeyuka.yumehub.data.api.dto.canMerge
 import moe.yumeyuka.yumehub.data.cache.WritePhase
 import moe.yumeyuka.yumehub.data.repository.GithubPageException
 import moe.yumeyuka.yumehub.data.repository.WorkMergeMessage
-import moe.yumeyuka.yumehub.locale.GithubStrings_WorkDetail
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubCommitMessageFields
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubMessageBodyField
+import moe.yumeyuka.yumehub.locale.WorkDetailStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.CommitMessageFields
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.MessageBodyField
 import retrofit2.HttpException
 
-internal fun CollaborationItemDto.viewerReviewLabel(strings: GithubStrings_WorkDetail): String? =
+internal fun CollaborationItemDto.viewerReviewLabel(strings: WorkDetailStrings): String? =
     if (viewerReviewRequested) strings.ReviewPending
     else viewerLatestReviewState?.let(strings.ReviewState)
 
@@ -53,11 +53,11 @@ internal fun WorkChecksSheet(
     onDismiss: () -> Unit,
     checks: @Composable () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val title = strings.WorkDetail.Checks
     val scroll = rememberScrollState()
     val contentPadding = 12.dp
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = title,
@@ -68,7 +68,7 @@ internal fun WorkChecksSheet(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
             )
@@ -103,13 +103,13 @@ internal fun WorkReviewSheet(
     onBodyChange: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val review = strings.WorkDetail
     val busy = state.submitting
     val editable = state.canReview && !busy
     val result = state.item?.viewerReviewLabel(review)
     val scroll = rememberScrollState()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         fitContent = true,
@@ -119,12 +119,12 @@ internal fun WorkReviewSheet(
                 title = review.Review,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = strings.Common.Close)
+                        AppIcon(Lucide.X, contentDescription = strings.Common.Close)
                     }
                 },
                 actions = {
                     GlasmioIconButton(onClick = onSubmit, enabled = state.canSubmitReview) {
-                        GithubIcon(
+                        AppIcon(
                             Lucide.MessageCircleCheck,
                             contentDescription = review.SubmitReview,
                         )
@@ -171,7 +171,7 @@ internal fun WorkReviewSheet(
                         },
                     )
                 }
-                GithubMessageBodyField(
+                MessageBodyField(
                     state.reviewDraft,
                     onBodyChange,
                     review.WriteComment,
@@ -194,8 +194,8 @@ internal fun WorkMergeSheet(
     loadMessage: suspend (id: String, method: String) -> WorkMergeMessage,
     onMerge: (CollaborationItemDto, String, WorkMergeMessage?) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     val item = state.item
     val methods =
         listOfNotNull(
@@ -231,7 +231,7 @@ internal fun WorkMergeSheet(
             failed = true
         }
     }
-    GithubLoadFailureToast(
+    LoadFailureToast(
         failure = retry.takeIf { visible && failed },
         message = strings.MergeMessageLoadFailed,
     )
@@ -250,7 +250,7 @@ internal fun WorkMergeSheet(
             state.mergePhase != WritePhase.UNCERTAIN &&
             (!editMessage || messageReady && headline.isNotBlank())
     val scroll = rememberScrollState()
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = strings.MergePullRequest,
@@ -260,7 +260,7 @@ internal fun WorkMergeSheet(
                 title = strings.MergePullRequest,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
@@ -275,7 +275,7 @@ internal fun WorkMergeSheet(
                         },
                         enabled = canConfirm,
                     ) {
-                        GithubIcon(Lucide.Check, contentDescription = strings.MergePullRequest)
+                        AppIcon(Lucide.Check, contentDescription = strings.MergePullRequest)
                     }
                 },
             )
@@ -294,7 +294,7 @@ internal fun WorkMergeSheet(
                         systemName = null,
                         trailing = {
                             if (selected == method)
-                                GithubIcon(Lucide.Check, contentDescription = null)
+                                AppIcon(Lucide.Check, contentDescription = null)
                         },
                         onClick = if (busy) null else ({ selected = method }),
                     )
@@ -306,7 +306,7 @@ internal fun WorkMergeSheet(
                 exit = shrinkVertically(shrinkTowards = Alignment.Top),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GithubCommitMessageFields(
+                    CommitMessageFields(
                         headline = headline,
                         onHeadlineChange = { editedHeadline = it },
                         body = body,
@@ -335,8 +335,8 @@ internal fun WorkSubscriptionSheet(
     onSelect: (String) -> Unit,
     onRetry: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.WorkDetail
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.WorkDetail
+    val common = LocalAppStrings.current.Common
     val colors = GlasmioTheme.colors
     val subscriptionState = state.desiredSubscription ?: state.subscription?.state
     val canSelect =
@@ -353,7 +353,7 @@ internal fun WorkSubscriptionSheet(
             ),
             Triple("IGNORED", strings.SubscribeIgnoring, strings.SubscribeIgnoringDescription),
         )
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
         title = strings.NotificationSettings,
@@ -363,7 +363,7 @@ internal fun WorkSubscriptionSheet(
                 title = strings.NotificationSettings,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
             )
@@ -404,7 +404,7 @@ internal fun WorkSubscriptionSheet(
                             },
                             trailing = {
                                 if (selected) {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.Check,
                                         contentDescription = null,
                                         tint = colors.accent,

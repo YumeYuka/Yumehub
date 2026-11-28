@@ -15,12 +15,12 @@ import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.storage.mmkv.AccountAvatar
 import moe.yumeyuka.yumehub.data.storage.mmkv.MaxSavedAccounts
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAvatar
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.UserAvatar
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 
 @Composable
 internal fun ProfileAccountMenu(
@@ -28,12 +28,12 @@ internal fun ProfileAccountMenu(
     onAdd: () -> Unit,
     onSwitch: (String) -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Profile
-    val enabled = LocalGithubPageHost.current?.navigationEnabled == true
+    val strings = LocalAppStrings.current.Profile
+    val enabled = LocalAppPageHost.current?.navigationEnabled == true
     var expanded by remember { mutableStateOf(false) }
     val anchor = rememberGlasmioMenuAnchorState()
     val canAdd = accounts.size < MaxSavedAccounts
-    GithubToolbarActions(
+    ToolbarActions(
         toolbarIcon(
             Lucide.Users,
             strings.SwitchAccount,
@@ -57,10 +57,10 @@ internal fun ProfileAccountMenu(
             GlasmioMenuItem(
                 title = account.login,
                 modifier = Modifier.semantics { selected = index == 0 },
-                icon = { GithubAvatar(account.avatarUrl, login = null, size = 24.dp) },
+                icon = { UserAvatar(account.avatarUrl, login = null, size = 24.dp) },
                 trailing = {
                     if (index == 0)
-                        GithubIcon(Lucide.Check, contentDescription = null, size = 20.dp)
+                        AppIcon(Lucide.Check, contentDescription = null, size = 20.dp)
                 },
                 backdrop = backdrop,
                 onClick = {
@@ -72,7 +72,7 @@ internal fun ProfileAccountMenu(
         if (canAdd) {
             GlasmioMenuItem(
                 title = strings.AddAccount,
-                icon = { GithubIcon(Lucide.UserPlus, contentDescription = null, size = 20.dp) },
+                icon = { AppIcon(Lucide.UserPlus, contentDescription = null, size = 20.dp) },
                 backdrop = backdrop,
                 onClick = {
                     close()

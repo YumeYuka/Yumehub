@@ -32,20 +32,20 @@ import io.github.yumeyucca.lucide.RemoveFormatting
 import io.github.yumeyucca.lucide.Search
 import io.github.yumeyucca.lucide.TextWrap
 import io.github.yumeyucca.lucide.Undo2
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubCodeLanguages
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.CodeLanguages
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorSessionKind
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 
 @Composable
-internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> Unit) {
-    val isCode = session.kind == GithubEditorKind.Code
+internal fun EditorTopBarActions(session: EditorSession, onSearch: () -> Unit) {
+    val isCode = session.kind == EditorSessionKind.Code
     val showMenu = isCode || session.editable
 
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val menu = strings.EditorMenu
     var expanded by remember(session) { mutableStateOf(false) }
     val menuAnchor = rememberGlasmioMenuAnchorState()
@@ -78,7 +78,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
     val selectedLanguage = session.language.orEmpty().let { if (it == "plaintext") "" else it }
     val languages =
         remember(selectedLanguage) {
-            (listOf("") + GithubCodeLanguages + selectedLanguage)
+            (listOf("") + CodeLanguages + selectedLanguage)
                 .filter { it != "plaintext" }
                 .distinct()
         }
@@ -91,7 +91,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                 coordinates.localToScreen(Offset.Zero) - coordinates.localToWindow(Offset.Zero)
         },
     ) {
-        GithubToolbarActions(
+        ToolbarActions(
             if (showMenu || session.onRequestEdit != null)
                 toolbarIcon(
                     if (session.editable) Lucide.Check else Lucide.Pencil,
@@ -136,7 +136,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                                 GlasmioCascadingMenuItem(
                                     title = menu.Undo,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.Undo2,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -151,7 +151,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                                 GlasmioCascadingMenuItem(
                                     title = menu.Redo,
                                     icon = {
-                                        GithubIcon(
+                                        AppIcon(
                                             Lucide.Redo2,
                                             contentDescription = null,
                                             size = 20.dp,
@@ -172,7 +172,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                             GlasmioCascadingMenuItem(
                                 title = strings.Common.Search,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.Search,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -186,7 +186,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                                 title = menu.WordWrap,
                                 checked = session.wordWrap,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.TextWrap,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -201,7 +201,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                                 title = menu.LineNumbers,
                                 checked = session.lineNumbers,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.ListOrdered,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -215,7 +215,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                             GlasmioCascadingMenuItem(
                                 title = strings.Common.FontSize,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.RemoveFormatting,
                                         contentDescription = null,
                                         size = 20.dp,
@@ -237,7 +237,7 @@ internal fun EditorTopBarActions(session: GithubEditorSession, onSearch: () -> U
                             GlasmioCascadingMenuItem(
                                 title = menu.Language,
                                 icon = {
-                                    GithubIcon(
+                                    AppIcon(
                                         Lucide.Languages,
                                         contentDescription = null,
                                         size = 20.dp,

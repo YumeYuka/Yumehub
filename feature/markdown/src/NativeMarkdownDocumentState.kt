@@ -25,19 +25,19 @@ import moe.yumeyuka.markdown.core.HtmlParseOptions
 import moe.yumeyuka.yumehub.core.model.GithubLinkTarget
 import moe.yumeyuka.yumehub.core.model.parseGithubLink
 import moe.yumeyuka.yumehub.data.markdown.GithubMarkdownRepository
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubDocumentGeometry
+import moe.yumeyuka.yumehub.ui.component.MarkdownContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.DocumentGeometry
 
 /** 引用身份区分 A → B → A 的内容更新，不把相同原文误认为同一轮请求。 */
 internal class NativeMarkdownRevision
 
 internal data class NativeMarkdownDocument(
-    val request: GithubMarkdownContent,
+    val request: MarkdownContent,
     val revision: NativeMarkdownRevision,
     val html: String,
     val content: HtmlDocument,
     val viewerLogin: String? = null,
-    val geometry: GithubDocumentGeometry,
+    val geometry: DocumentGeometry,
 )
 
 internal enum class NativeMarkdownFailure {
@@ -46,7 +46,7 @@ internal enum class NativeMarkdownFailure {
 }
 
 internal data class NativeMarkdownDocumentState(
-    val request: GithubMarkdownContent,
+    val request: MarkdownContent,
     val revision: NativeMarkdownRevision,
     val document: NativeMarkdownDocument?,
     val loading: Boolean,
@@ -65,7 +65,7 @@ private const val MaxRetainedMarkdownDocuments = 6
 private const val MaxRetainedMarkdownHtmlCharacters = 4 * 1024 * 1024
 
 private data class NativeMarkdownDocumentCacheKey(
-    val request: GithubMarkdownContent,
+    val request: MarkdownContent,
     val viewerLogin: String?,
 )
 
@@ -73,7 +73,7 @@ internal data class CachedNativeMarkdownDocument(
     val html: String,
     val content: HtmlDocument,
     val viewerLogin: String?,
-    val geometry: GithubDocumentGeometry = GithubDocumentGeometry(),
+    val geometry: DocumentGeometry = DocumentGeometry(),
 )
 
 /** 路由仍存活时保留已解析正文，避免 LazyColumn 回收阅读 item 后再次请求和解析。 */
@@ -96,14 +96,14 @@ internal class NativeMarkdownDocumentCacheViewModel : ViewModel() {
     }
 
     @Synchronized
-    fun get(request: GithubMarkdownContent, viewerLogin: String?): CachedNativeMarkdownDocument? {
+    fun get(request: MarkdownContent, viewerLogin: String?): CachedNativeMarkdownDocument? {
         clearForAccount(viewerLogin)
         return documents[NativeMarkdownDocumentCacheKey(request, viewerLogin)]
     }
 
     @Synchronized
     fun put(
-        request: GithubMarkdownContent,
+        request: MarkdownContent,
         viewerLogin: String?,
         html: String,
         content: HtmlDocument,
@@ -113,7 +113,7 @@ internal class NativeMarkdownDocumentCacheViewModel : ViewModel() {
         val previous = documents.remove(key)
         previous?.let { cachedHtmlCharacters -= it.html.length }
         val cached = CachedNativeMarkdownDocument(html, content, viewerLogin,
-            previous?.takeIf { it.html == html }?.geometry ?: GithubDocumentGeometry())
+            previous?.takeIf { it.html == html }?.geometry ?: DocumentGeometry())
         if (html.length <= MaxRetainedMarkdownHtmlCharacters) {
             documents[key] = cached
             cachedHtmlCharacters += html.length
@@ -145,7 +145,7 @@ internal class NativeMarkdownDocumentCacheViewModel : ViewModel() {
 /** HTML 获取沿用数据仓库；解析在 Default 上执行，状态和回调不进入可复用库。 */
 @Composable
 internal fun rememberNativeMarkdownDocument(
-    content: GithubMarkdownContent,
+    content: MarkdownContent,
     repository: GithubMarkdownRepository,
     isCurrentAccount: () -> Boolean,
     requestEnabled: Boolean = true,
@@ -258,7 +258,7 @@ internal fun rememberNativeMarkdownDocument(
 }
 
 internal fun shouldUnfurlNativeMarkdownReferences(
-    request: GithubMarkdownContent,
+    request: MarkdownContent,
     document: HtmlDocument,
 ): Boolean {
     if (request.html == null || request.preview || request.readme) return false

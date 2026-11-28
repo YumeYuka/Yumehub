@@ -19,33 +19,33 @@ import moe.yumeyuka.yumehub.data.repository.RepositoryActivityEntry
 import moe.yumeyuka.yumehub.data.repository.RevalidationState
 import moe.yumeyuka.yumehub.data.repository.ThreadWindowState
 import moe.yumeyuka.yumehub.data.repository.WorkTimelineEntry
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubDiffExpansions
-import moe.yumeyuka.yumehub.ui.component.GithubDiffFileCard
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdown
-import moe.yumeyuka.yumehub.ui.component.GithubMutationRecoveryRow
-import moe.yumeyuka.yumehub.ui.component.GithubPagingSlots
-import moe.yumeyuka.yumehub.ui.component.GithubReadingGroup
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.GithubThreadContentPlaceholder
-import moe.yumeyuka.yumehub.ui.component.githubPagingItems
-import moe.yumeyuka.yumehub.ui.component.githubThreadGroupedItems
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubMarkdownPlaceholder
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.DiffExpansions
+import moe.yumeyuka.yumehub.ui.component.DiffFileCard
+import moe.yumeyuka.yumehub.ui.component.MarkdownBody
+import moe.yumeyuka.yumehub.ui.component.MutationRecoveryRow
+import moe.yumeyuka.yumehub.ui.component.PagingSlots
+import moe.yumeyuka.yumehub.ui.component.ReadingGroup
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
+import moe.yumeyuka.yumehub.ui.component.ThreadContentPlaceholder
+import moe.yumeyuka.yumehub.ui.component.pagingItems
+import moe.yumeyuka.yumehub.ui.component.threadGroupedItems
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.MarkdownPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.OrganizationRowPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 
 internal fun LazyListScope.CollaborationDetailScreen(
     state: CollaborationDetailUiState,
     entries: LazyPagingItems<CollaborationEntry>?,
-    entrySlots: GithubPagingSlots<CollaborationEntry>?,
+    entrySlots: PagingSlots<CollaborationEntry>?,
     validation: RevalidationState.Failed?,
     timeline: ThreadWindowState<WorkTimelineEntry>?,
     activityGroups: List<List<WorkTimelineEntry>>,
     viewModel: CollaborationDetailViewModel,
-    expansions: GithubDiffExpansions,
+    expansions: DiffExpansions,
     onOpenFiles: () -> Unit,
     onOpenCommits: () -> Unit,
     onOpenCommitGroup: (List<RepositoryActivityEntry>) -> Unit,
@@ -58,7 +58,7 @@ internal fun LazyListScope.CollaborationDetailScreen(
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = state.error,
-                    detail = LocalGithubStrings.current.Common.Retry,
+                    detail = LocalAppStrings.current.Common.Retry,
                     onClick = viewModel::retryDetail,
                 )
             }
@@ -67,12 +67,12 @@ internal fun LazyListScope.CollaborationDetailScreen(
     }
     if (state.submitting)
         item(key = "collaboration-submission-progress") {
-            GlasmioListRow(title = LocalGithubStrings.current.Common.MutationPending)
+            GlasmioListRow(title = LocalAppStrings.current.Common.MutationPending)
         }
     if (state.uncertainOperations.isNotEmpty()) {
         item(key = "collaboration-submission-recovery") {
-            val strings = LocalGithubStrings.current
-            GithubSection(strings.WorkDetail.RecoveryTitle) {
+            val strings = LocalAppStrings.current
+            ListSection(strings.WorkDetail.RecoveryTitle) {
                 GlasmioListRow(
                     title = strings.WorkDetail.SubmissionUncertain,
                     subtitle = strings.WorkDetail.RecoveryMessage,
@@ -84,7 +84,7 @@ internal fun LazyListScope.CollaborationDetailScreen(
                     onClick = viewModel::refresh,
                 )
                 state.uncertainOperations.forEach { op ->
-                    GithubMutationRecoveryRow(
+                    MutationRecoveryRow(
                         op.operationId,
                         viewModel.operationLabel(op),
                         viewModel::acknowledgeOperation,
@@ -96,14 +96,14 @@ internal fun LazyListScope.CollaborationDetailScreen(
 
     if (state.section == CollaborationSection.Discussion) {
         readingItem(key = "collaboration-detail-description") {
-            GithubReadingGroup(
+            ReadingGroup(
                 documentKey =
                     entry?.bodyHtml?.takeIf(String::isNotBlank)
                         ?: entry?.body?.takeIf(String::isNotBlank),
             ) {
-                GithubLoadingContent(
+                LoadingContent(
                     loading = entry == null,
-                    placeholder = { GithubThreadContentPlaceholder() },
+                    placeholder = { ThreadContentPlaceholder() },
                 ) {
                     if (entry != null) WorkDescriptionContent(entry, state, viewModel)
                 }
@@ -111,7 +111,7 @@ internal fun LazyListScope.CollaborationDetailScreen(
         }
         if (viewModel.kind == CollaborationKind.PullRequest) {
             item(key = "collaboration-discussion-summary") {
-                val host = requireNotNull(LocalGithubPageHost.current)
+                val host = requireNotNull(LocalAppPageHost.current)
                 WorkDiscussionSummary(
                     item = entry,
                     enabled = host.navigationEnabled,
@@ -122,17 +122,17 @@ internal fun LazyListScope.CollaborationDetailScreen(
             }
         }
         item(key = "collaboration-activity-heading") {
-            GithubSectionHeader(LocalGithubStrings.current.WorkDetail.Activity)
+            SectionHeader(LocalAppStrings.current.WorkDetail.Activity)
         }
         if (timeline != null) {
-            githubThreadGroupedItems(
+            threadGroupedItems(
                 state = timeline,
                 groups = activityGroups,
                 key = { it.first().key },
                 load = viewModel.timeline::load,
                 placeholder = { WorkTimelinePlaceholder() },
             ) { group ->
-                val host = requireNotNull(LocalGithubPageHost.current)
+                val host = requireNotNull(LocalAppPageHost.current)
                 WorkActivityCard(
                     group,
                     state,
@@ -149,8 +149,8 @@ internal fun LazyListScope.CollaborationDetailScreen(
     if (entry == null) return
     if (state.section != CollaborationSection.Files) {
         item(key = "collaboration-section-navigation") {
-            val strings = LocalGithubStrings.current.WorkDetail
-            val host = requireNotNull(LocalGithubPageHost.current)
+            val strings = LocalAppStrings.current.WorkDetail
+            val host = requireNotNull(LocalAppPageHost.current)
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = state.section.label(strings),
@@ -172,14 +172,14 @@ internal fun LazyListScope.CollaborationDetailScreen(
     ) {
         item(key = "work-section-retry:${state.section}") {
             GlasmioListRow(
-                title = LocalGithubStrings.current.Common.Retry,
+                title = LocalAppStrings.current.Common.Retry,
                 onClick = entries::retry,
             )
         }
     }
     if (validation != null) {
         item(key = "work-section-sync-failed:${state.section.name}") {
-            val common = LocalGithubStrings.current.Common
+            val common = LocalAppStrings.current.Common
             GlasmioGroupedList {
                 GlasmioListRow(
                     title = common.CacheSyncFailed,
@@ -191,21 +191,21 @@ internal fun LazyListScope.CollaborationDetailScreen(
         }
     }
     if (state.section == CollaborationSection.Files) {
-        githubPagingItems(entrySlots, contentType = "work-${state.section}", reading = true) { item
+        pagingItems(entrySlots, contentType = "work-${state.section}", reading = true) { item
             ->
             val file = item as? CollaborationEntry.File
             if (file == null || file.headSha == headSha) FileEntry(file?.value, state, expansions)
         }
         return
     }
-    githubPagingItems(
+    pagingItems(
         entrySlots,
         contentType = "work-${state.section}",
         reading = state.section == CollaborationSection.Reviews,
         placeholder = {
             if (state.section == CollaborationSection.Reviews) {
-                GithubReadingGroup {
-                    GithubMarkdownPlaceholder(
+                ReadingGroup {
+                    MarkdownPlaceholder(
                         Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         compact = true,
                     )
@@ -223,15 +223,15 @@ internal fun LazyListScope.CollaborationDetailScreen(
                     item.value.submittedAt,
                     item.value.body,
                     state.browserUrl,
-                    LocalGithubStrings.current.WorkDetail.ReviewState(item.value.state),
+                    LocalAppStrings.current.WorkDetail.ReviewState(item.value.state),
                     html = item.value.bodyHtml,
                     nodeId = item.value.nodeId,
                 )
             is CollaborationEntry.File ->
                 if (item.headSha == headSha) FileEntry(item.value, state, expansions)
             is CollaborationEntry.Commit -> {
-                val open = moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler()
-                val host = requireNotNull(LocalGithubPageHost.current)
+                val open = moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler()
+                val host = requireNotNull(LocalAppPageHost.current)
                 GlasmioGroupedList {
                     GlasmioListRow(
                         title = item.value.title,
@@ -258,10 +258,10 @@ private fun DiscussionEntry(
     html: String? = null,
     nodeId: String? = null,
 ) {
-    GithubReadingGroup {
+    ReadingGroup {
         DisableSelection {
             GlasmioListRow(
-                title = author ?: LocalGithubStrings.current.Workspaces.UnknownAuthor,
+                title = author ?: LocalAppStrings.current.Workspaces.UnknownAuthor,
                 subtitle = date?.take(10),
                 detail = status,
                 systemName = null,
@@ -270,7 +270,7 @@ private fun DiscussionEntry(
         if (!body.isNullOrBlank() || !html.isNullOrBlank()) {
             CollaborationText(
                 body,
-                LocalGithubStrings.current.WorkDetail.NoBody,
+                LocalAppStrings.current.WorkDetail.NoBody,
                 pageUrl,
                 html = html,
                 nodeId = nodeId,
@@ -283,25 +283,25 @@ private fun DiscussionEntry(
 private fun FileEntry(
     file: PullRequestFileDto?,
     state: CollaborationDetailUiState,
-    expansions: GithubDiffExpansions,
+    expansions: DiffExpansions,
 ) {
-    GithubDiffFileCard(file = file, expansions = expansions, modifier = Modifier.fillMaxWidth()) {
+    DiffFileCard(file = file, expansions = expansions, modifier = Modifier.fillMaxWidth()) {
         state.lastLineComment
             ?.takeIf { it.path == file?.filename }
             ?.let { posted ->
                 DisableSelection {
                     GlasmioListRow(
-                        title = LocalGithubStrings.current.WorkDetail.CommentPosted,
+                        title = LocalAppStrings.current.WorkDetail.CommentPosted,
                         subtitle =
                             posted.line?.let {
-                                LocalGithubStrings.current.WorkDetail.LineNumber(it)
+                                LocalAppStrings.current.WorkDetail.LineNumber(it)
                             },
                         systemName = null,
                     )
                 }
                 CollaborationText(
                     posted.body,
-                    LocalGithubStrings.current.WorkDetail.NoBody,
+                    LocalAppStrings.current.WorkDetail.NoBody,
                     posted.htmlUrl ?: state.browserUrl,
                     html = posted.bodyHtml,
                     nodeId = posted.nodeId,
@@ -333,7 +333,7 @@ internal fun CollaborationText(
             )
         }
     } else {
-        GithubMarkdown(
+        MarkdownBody(
             body.orEmpty(),
             modifier,
             pageUrl = pageUrl,

@@ -22,23 +22,23 @@ import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
 import moe.yumeyuka.yumehub.data.repository.SearchCodeFile
-import moe.yumeyuka.yumehub.locale.GithubStrings
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.AppStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubPageSearchLayout
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.PageSearchLayout
+import moe.yumeyuka.yumehub.ui.component.PagingContent
 import moe.yumeyuka.yumehub.ui.component.collaborationPagingStatus
 import moe.yumeyuka.yumehub.ui.component.pageSearchClearance
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
+import moe.yumeyuka.yumehub.ui.navigation.LocalAppPageHost
 import org.koin.androidx.compose.koinViewModel
 
 /** 独立搜索页的路由键。从详情返回时保留原搜索结果。 */
-data object ExploreSearchRoute : GithubRoute
+data object ExploreSearchRoute : AppRoute
 
 @Composable
 fun ExploreSearchPage(
@@ -50,8 +50,8 @@ fun ExploreSearchPage(
     val viewModel: ExploreViewModel = koinViewModel()
     val search by viewModel.searchState.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
-    val strings = LocalGithubStrings.current
-    val host = requireNotNull(LocalGithubPageHost.current)
+    val strings = LocalAppStrings.current
+    val host = requireNotNull(LocalAppPageHost.current)
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val autoFocus = remember { query.isBlank() }
@@ -71,7 +71,7 @@ fun ExploreSearchPage(
             host.onBack()
         }
     }
-    GithubPageSearchLayout(
+    PageSearchLayout(
         visible = true,
         query = input,
         onQueryChange = {
@@ -86,7 +86,7 @@ fun ExploreSearchPage(
         placeholder = strings.Search.Placeholder(search.category.label(strings)),
         autoFocus = autoFocus,
     ) {
-        GithubPagingContent(
+        PagingContent(
             search.items,
             contentKey = Triple(search.session, search.category, search.query),
             revalidation = search.revalidation,
@@ -94,7 +94,7 @@ fun ExploreSearchPage(
         ) { paging ->
             val results = paging.items
             val slots =
-                rememberGithubPagingSlots(
+                rememberPagingSlots(
                     results,
                     "explore-search",
                     paging.initialLoading,
@@ -108,7 +108,7 @@ fun ExploreSearchPage(
                             with(result.file) { "$owner/$repository:$ref:$path" }
                     }
                 }
-            GithubPage(
+            AppPage(
                 title = strings.Common.Search,
                 back = true,
                 onBack = closeSearch,
@@ -117,7 +117,7 @@ fun ExploreSearchPage(
                 actions = {
                     var expanded by remember { mutableStateOf(false) }
                     val anchor = io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState()
-                    moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                    moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                         moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                             Lucide.ListFilter,
                             strings.Search.Filter,
@@ -142,7 +142,7 @@ fun ExploreSearchPage(
                                 backdrop = backdrop,
                                 trailing = {
                                     if (choice == search.category) {
-                                        GithubIcon(Lucide.Check, contentDescription = null)
+                                        AppIcon(Lucide.Check, contentDescription = null)
                                     }
                                 },
                                 onClick = {
@@ -157,7 +157,7 @@ fun ExploreSearchPage(
             ) {
                 if (search.needsQuery) {
                     item(key = "search-prompt") {
-                        GithubEmptyState(
+                        EmptyState(
                             scene = EmptyScene.Search,
                             title = strings.Search.Placeholder(search.category.label(strings)),
                             modifier = Modifier.fillParentMaxHeight(),
@@ -185,7 +185,7 @@ fun ExploreSearchPage(
     }
 }
 
-private fun ExploreCategory.label(strings: GithubStrings): String =
+private fun ExploreCategory.label(strings: AppStrings): String =
     when (this) {
         ExploreCategory.Repositories -> strings.Home.Repositories
         ExploreCategory.Issues -> strings.Home.Issues

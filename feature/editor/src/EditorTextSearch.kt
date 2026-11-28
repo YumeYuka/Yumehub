@@ -18,22 +18,22 @@ import io.github.neoruaa.glasmio.ui.GlasmioSearchToolbar
 import io.github.yumeyucca.lucide.ChevronDown
 import io.github.yumeyucca.lucide.ChevronUp
 import io.github.yumeyucca.lucide.Lucide
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubEditorDock
-import moe.yumeyuka.yumehub.ui.component.GithubEditorDockActionSize
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.EditorDock
+import moe.yumeyuka.yumehub.ui.component.EditorDockActionSize
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 
 /** 沿用 MeiloX 的 Glasmio 原生底部悬浮搜索栏；系统和键盘 inset 由编辑视口统一消费。 */
 @Composable
 internal fun EditorTextSearch(
-    session: GithubEditorSession,
+    session: EditorSession,
     search: EditorSearchState,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val strings = LocalGithubStrings.current.EditorSearch
+    val strings = LocalAppStrings.current.EditorSearch
     val colors = GlasmioTheme.colors
     val available = !session.submitting && !session.closeRequested
     val highlights = search.highlights(session.source)
@@ -54,14 +54,14 @@ internal fun EditorTextSearch(
         keyboard?.hide()
         onDismiss()
     }
-    GithubBackHandler(enabled = available, onBack = dismiss)
+    AppBackHandler(enabled = available, onBack = dismiss)
     Column(
         modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (search.query.text.isNotEmpty()) {
-            GithubEditorDock {
+            EditorDock {
                 BasicText(
                     text = resultText,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -70,11 +70,11 @@ internal fun EditorTextSearch(
                 GlasmioIconButton(
                     onClick = { search.move(forward = false) },
                     enabled = available && count > 0,
-                    size = GithubEditorDockActionSize,
+                    size = EditorDockActionSize,
                     navigationSurfaceColor = buttonColor,
                     sampleBackdrop = false,
                 ) {
-                    GithubIcon(
+                    AppIcon(
                         Lucide.ChevronUp,
                         contentDescription = strings.Previous,
                         size = 20.dp,
@@ -83,11 +83,11 @@ internal fun EditorTextSearch(
                 GlasmioIconButton(
                     onClick = { search.move(forward = true) },
                     enabled = available && count > 0,
-                    size = GithubEditorDockActionSize,
+                    size = EditorDockActionSize,
                     navigationSurfaceColor = buttonColor,
                     sampleBackdrop = false,
                 ) {
-                    GithubIcon(Lucide.ChevronDown, contentDescription = strings.Next, size = 20.dp)
+                    AppIcon(Lucide.ChevronDown, contentDescription = strings.Next, size = 20.dp)
                 }
             }
         }

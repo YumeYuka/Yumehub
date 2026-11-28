@@ -46,12 +46,12 @@ import moe.yumeyuka.yumehub.data.repository.isRepositoryContentPath
 import moe.yumeyuka.yumehub.data.repository.invalidatesCachedContent
 import moe.yumeyuka.yumehub.data.storage.mmkv.CommentDraftStore
 import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
-import moe.yumeyuka.yumehub.locale.GithubStrings_Workspaces
-import moe.yumeyuka.yumehub.locale.GithubTxt
-import moe.yumeyuka.yumehub.ui.component.githubCodeLanguageForFilename
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorKind
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
-import moe.yumeyuka.yumehub.ui.navigation.GithubFileReadStatus
+import moe.yumeyuka.yumehub.locale.WorkspacesStrings
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
+import moe.yumeyuka.yumehub.ui.component.codeLanguageForFilename
+import moe.yumeyuka.yumehub.ui.navigation.EditorSessionKind
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorFileReadStatus
 import retrofit2.HttpException
 
 internal sealed interface WorkspacesLoad<out T> {
@@ -73,7 +73,7 @@ internal data class WorkspacesUiState(
     val entries: WorkspacesLoad<List<WorkspaceEntry>> = WorkspacesLoad.Loading,
     val commit: WorkspacesLoad<WorkspaceCommit?> = WorkspacesLoad.Loading,
     val updatedAt: Map<String, String> = emptyMap(),
-    val pendingEditor: GithubEditorSession? = null,
+    val pendingEditor: EditorSession? = null,
 )
 
 private data class WorkspaceTarget(
@@ -100,8 +100,8 @@ internal class WorkspacesViewModel(
     private val route: WorkspacesRoute,
     private val draftStore: CommentDraftStore,
 ) : ViewModel() {
-    private val strings: GithubStrings_Workspaces
-        get() = GithubTxt.current.Workspaces
+    private val strings: WorkspacesStrings
+        get() = CurrentAppStrings.current.Workspaces
 
     private var activeAccount = currentAccount()
     private var accountGeneration = 0L
@@ -122,7 +122,7 @@ internal class WorkspacesViewModel(
         val timestampsLoaded: Boolean = false,
     )
 
-    private var activeSession: GithubEditorSession? = null
+    private var activeSession: EditorSession? = null
     private var activePath: String? = null
     private var activeSha: String? = null
     private var originalSource = ""
@@ -537,7 +537,7 @@ internal class WorkspacesViewModel(
         anchor: String?,
         submodule: Boolean,
     ) {
-        val language = githubCodeLanguageForFilename(name)
+        val language = codeLanguageForFilename(name)
         val line = anchor?.takeIf { it.startsWith("L") }?.drop(1)?.toIntOrNull()?.takeIf { it > 0 }
         val markdownFile = language == "markdown" && line == null
         val canWrite = ref.startsWith("refs/heads/") && !submodule
@@ -558,7 +558,7 @@ internal class WorkspacesViewModel(
         var editorPath = path
         var editorUrl = url
         var openMarkdownLink: (String) -> Boolean = { false }
-        lateinit var session: GithubEditorSession
+        lateinit var session: EditorSession
         fun current(path: String = editorPath) =
             editorPath == path &&
                 activePath == path &&
@@ -568,9 +568,9 @@ internal class WorkspacesViewModel(
                 generation == tokenStore.sessionGeneration.value &&
                 mutableUiState.value.ref == ref
         session =
-            GithubEditorSession(
+            EditorSession(
                 title = name,
-                kind = if (markdownFile) GithubEditorKind.Markdown else GithubEditorKind.Code,
+                kind = if (markdownFile) EditorSessionKind.Markdown else EditorSessionKind.Code,
                 source = "",
                 language = language,
                 editable = false,
@@ -723,7 +723,7 @@ internal class WorkspacesViewModel(
         fun read(force: Boolean) {
             val targetPath = editorPath
             if (!current(targetPath)) return
-            session.fileReadStatus = GithubFileReadStatus.Loading
+            session.fileReadStatus = EditorFileReadStatus.Loading
             fileJob = viewModelScope.launch {
                 try {
                     val preview =
@@ -745,7 +745,7 @@ internal class WorkspacesViewModel(
                     if (!current(targetPath)) return@launch
                     if (preview.lines == null && (!markdownFile || preview.html == null)) {
                         session.fileReadStatus =
-                            GithubFileReadStatus.Failed(strings.Unavailable, null)
+                            EditorFileReadStatus.Failed(strings.Unavailable, null)
                     } else {
                         commit = preview.commit
                         session.readHtml = preview.html.takeIf { markdownFile }
@@ -758,7 +758,7 @@ internal class WorkspacesViewModel(
                 } catch (error: Exception) {
                     if (current(targetPath))
                         session.fileReadStatus =
-                            GithubFileReadStatus.Failed(error.readErrorMessage()) { read(true) }
+                            EditorFileReadStatus.Failed(error.readErrorMessage()) { read(true) }
                 }
             }
         }
@@ -797,12 +797,12 @@ internal class WorkspacesViewModel(
             true
         }
         if (submodule)
-            session.fileReadStatus = GithubFileReadStatus.Failed(strings.Unavailable, null)
+            session.fileReadStatus = EditorFileReadStatus.Failed(strings.Unavailable, null)
         else read(false)
         mutableUiState.value = mutableUiState.value.copy(pendingEditor = session)
     }
 
-    fun consumeEditor(session: GithubEditorSession): Boolean {
+    fun consumeEditor(session: EditorSession): Boolean {
         if (mutableUiState.value.pendingEditor !== session || !isCurrentAccount(activeAccount))
             return false
         mutableUiState.value = mutableUiState.value.copy(pendingEditor = null)
@@ -868,7 +868,7 @@ internal class WorkspacesViewModel(
                     session.update(
                         submitting = false,
                         submitEnabled = true,
-                        error = GithubTxt.current.Common.MutationNotSubmitted,
+                        error = CurrentAppStrings.current.Common.MutationNotSubmitted,
                     )
                 }
                 return@launch
@@ -930,8 +930,8 @@ internal class WorkspacesViewModel(
             } else if (activeSession === session) {
                 val unknown = cmd.phase == WritePhase.UNCERTAIN
                 session.update(submitting = false, submitEnabled = !unknown && cmd.phase != WritePhase.PENDING,
-                    error = if (unknown) GithubTxt.current.Common.MutationUncertain else capturedError?.writeErrorMessage()
-                        ?: cmd.message ?: GithubTxt.current.Common.MutationNotSubmitted)
+                    error = if (unknown) CurrentAppStrings.current.Common.MutationUncertain else capturedError?.writeErrorMessage()
+                        ?: cmd.message ?: CurrentAppStrings.current.Common.MutationNotSubmitted)
             }
         }
     }
@@ -1001,43 +1001,43 @@ internal class WorkspacesViewModel(
         when (this) {
             is RepositoryContentTimeoutException,
             is WorkspacesTimeoutException,
-            is TimeoutCancellationException -> GithubTxt.current.Repository.RequestTimeout
+            is TimeoutCancellationException -> CurrentAppStrings.current.Repository.RequestTimeout
             is WorkspacesFileNotFound -> strings.Unavailable
             is moe.yumeyuka.yumehub.data.repository.WorkspaceFileConflict ->
-                GithubTxt.current.Repository.FileConflict
+                CurrentAppStrings.current.Repository.FileConflict
             is WorkspacesGraphQlException,
-            is SerializationException -> GithubTxt.current.Repository.ParseFailed
+            is SerializationException -> CurrentAppStrings.current.Repository.ParseFailed
             is HttpException ->
                 when (code()) {
-                    401 -> GithubTxt.current.Repository.SessionExpired
-                    403 -> GithubTxt.current.Repository.ReadForbidden
-                    404 -> GithubTxt.current.Repository.ReadNotFound
-                    else -> GithubTxt.current.Repository.HttpFailed(code())
+                    401 -> CurrentAppStrings.current.Repository.SessionExpired
+                    403 -> CurrentAppStrings.current.Repository.ReadForbidden
+                    404 -> CurrentAppStrings.current.Repository.ReadNotFound
+                    else -> CurrentAppStrings.current.Repository.HttpFailed(code())
                 }
-            is IOException -> GithubTxt.current.Repository.NetworkFailed
+            is IOException -> CurrentAppStrings.current.Repository.NetworkFailed
             else -> strings.LoadFailed
         }
 
     private fun Throwable.writeErrorMessage(): String =
         when (this) {
             is moe.yumeyuka.yumehub.data.repository.WorkspaceFileConflict ->
-                GithubTxt.current.Repository.FileConflict
+                CurrentAppStrings.current.Repository.FileConflict
             is moe.yumeyuka.yumehub.data.repository.GithubPageException ->
-                message ?: GithubTxt.current.Repository.WriteRejected
+                message ?: CurrentAppStrings.current.Repository.WriteRejected
             is TimeoutCancellationException,
-            is WorkspacesTimeoutException -> GithubTxt.current.Repository.RequestTimeout
+            is WorkspacesTimeoutException -> CurrentAppStrings.current.Repository.RequestTimeout
             is HttpException ->
                 when (code()) {
-                    401 -> GithubTxt.current.Repository.SessionExpired
-                    403 -> GithubTxt.current.Repository.WriteForbidden
-                    404 -> GithubTxt.current.Repository.WriteNotFound
-                    409 -> GithubTxt.current.Repository.FileConflict
-                    422 -> GithubTxt.current.Repository.WriteRejected
-                    else -> GithubTxt.current.Repository.HttpFailed(code())
+                    401 -> CurrentAppStrings.current.Repository.SessionExpired
+                    403 -> CurrentAppStrings.current.Repository.WriteForbidden
+                    404 -> CurrentAppStrings.current.Repository.WriteNotFound
+                    409 -> CurrentAppStrings.current.Repository.FileConflict
+                    422 -> CurrentAppStrings.current.Repository.WriteRejected
+                    else -> CurrentAppStrings.current.Repository.HttpFailed(code())
                 }
-            is IOException -> GithubTxt.current.Repository.NetworkFailed
-            is SerializationException -> GithubTxt.current.Repository.ParseFailed
-            else -> GithubTxt.current.Repository.SaveFailed
+            is IOException -> CurrentAppStrings.current.Repository.NetworkFailed
+            is SerializationException -> CurrentAppStrings.current.Repository.ParseFailed
+            else -> CurrentAppStrings.current.Repository.SaveFailed
         }
 
     private companion object {

@@ -22,14 +22,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.*
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
@@ -43,8 +43,8 @@ internal fun RepositoryManagementSheet(
     onSave: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    val strings = LocalGithubStrings.current.Repository
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.Repository
+    val common = LocalAppStrings.current.Common
     val colors = GlasmioTheme.colors
     var displayed by remember { mutableStateOf(state.management) }
     LaunchedEffect(state.management) { state.management?.let { displayed = it } }
@@ -69,8 +69,8 @@ internal fun RepositoryManagementSheet(
             value != GlasmioSheetValue.Hidden || !blocking
         }
     val failure = state.management?.error
-    GithubLoadFailureToast(failure, failure.orEmpty())
-    GithubBottomSheet(
+    LoadFailureToast(failure, failure.orEmpty())
+    AppBottomSheet(
         visible = state.management != null,
         onDismissRequest = onDismiss,
         title = title,
@@ -83,11 +83,11 @@ internal fun RepositoryManagementSheet(
                 title = title,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss, enabled = !blocking) {
-                        GithubIcon(Lucide.X, contentDescription = common.Cancel)
+                        AppIcon(Lucide.X, contentDescription = common.Cancel)
                     }
                 },
                 actions = {
-                    GithubToolbarActions(
+                    ToolbarActions(
                         when (editor?.sheet) {
                             RepositorySheet.Description ->
                                 toolbarIcon(Lucide.Check, common.Save, canSave, onClick = onSave)
@@ -113,7 +113,7 @@ internal fun RepositoryManagementSheet(
         ) {
             when (editor?.sheet) {
                 RepositorySheet.Description ->
-                    GithubSection(strings.Description) {
+                    ListSection(strings.Description) {
                         BasicTextField(
                             state = rememberFormTextFieldState(editor.description, onDescription),
                             inputTransformation =
@@ -131,7 +131,7 @@ internal fun RepositoryManagementSheet(
                         )
                     }
                 RepositorySheet.Notifications ->
-                    GithubLoadingContent(
+                    LoadingContent(
                         loading = editor.loading,
                         placeholder = {
                             GlasmioGroupedList {

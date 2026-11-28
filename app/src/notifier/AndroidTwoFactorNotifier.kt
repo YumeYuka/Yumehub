@@ -12,7 +12,7 @@ import androidx.core.content.ContextCompat
 import moe.yumeyuka.yumehub.MainActivity
 import moe.yumeyuka.yumehub.R
 import moe.yumeyuka.yumehub.data.twofactor.TwoFactorNotifier
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 
 /** Android 侧实现：文案与通知渠道属于 UI 层，因此放在 :app 而不是 :data。 */
 class AndroidTwoFactorNotifier(private val context: Context) : TwoFactorNotifier {
@@ -22,7 +22,7 @@ class AndroidTwoFactorNotifier(private val context: Context) : TwoFactorNotifier
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                GithubTxt.current.TwoFactor.NotificationChannel,
+                CurrentAppStrings.current.TwoFactor.NotificationChannel,
                 NotificationManager.IMPORTANCE_HIGH,
             ),
         )
@@ -51,8 +51,8 @@ class AndroidTwoFactorNotifier(private val context: Context) : TwoFactorNotifier
         val notification =
             Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.github_mark)
-                .setContentTitle(GithubTxt.current.TwoFactor.NotificationTitle)
-                .setContentText(GithubTxt.current.TwoFactor.NotificationBody)
+                .setContentTitle(CurrentAppStrings.current.TwoFactor.NotificationTitle)
+                .setContentText(CurrentAppStrings.current.TwoFactor.NotificationBody)
                 .setContentIntent(pendingIntent)
                 .setCategory(Notification.CATEGORY_STATUS)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)

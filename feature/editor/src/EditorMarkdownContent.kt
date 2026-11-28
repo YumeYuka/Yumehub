@@ -47,47 +47,47 @@ import io.github.yumeyucca.lucide.Eye
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.Pencil
 import kotlinx.coroutines.flow.first
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubAnimatedIcon
-import moe.yumeyuka.yumehub.ui.component.GithubEditorDock
-import moe.yumeyuka.yumehub.ui.component.GithubEditorDockActionSize
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownEditorToolbar
-import moe.yumeyuka.yumehub.ui.component.GithubMarkdownPreview
-import moe.yumeyuka.yumehub.ui.component.LocalGithubEditorFocusReady
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AnimatedIcon
+import moe.yumeyuka.yumehub.ui.component.EditorDock
+import moe.yumeyuka.yumehub.ui.component.EditorDockActionSize
+import moe.yumeyuka.yumehub.ui.component.MarkdownEditorToolbar
+import moe.yumeyuka.yumehub.ui.component.MarkdownPreview
+import moe.yumeyuka.yumehub.ui.component.LocalEditorFocusReady
 import moe.yumeyuka.yumehub.ui.component.MarkdownEditAction
 import moe.yumeyuka.yumehub.ui.component.MarkdownEditorState
-import moe.yumeyuka.yumehub.ui.component.rememberGithubMarkdownSelectionModifier
+import moe.yumeyuka.yumehub.ui.component.rememberMarkdownSelectionModifier
 import moe.yumeyuka.yumehub.ui.component.text.GlasmioEditableText
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
-import moe.yumeyuka.yumehub.ui.navigation.GithubFileReadStatus
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorBackdropSource
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubEditorContentInsets
-import moe.yumeyuka.yumehub.ui.theme.GithubEditorFontFamily
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorFileReadStatus
+import moe.yumeyuka.yumehub.ui.navigation.LocalEditorBackdropSource
+import moe.yumeyuka.yumehub.ui.navigation.LocalEditorContentInsets
+import moe.yumeyuka.yumehub.ui.theme.EditorFontFamily
 
 @Composable
 internal fun EditorMarkdownContent(
-    session: GithubEditorSession,
+    session: EditorSession,
     state: MarkdownEditorState,
-    fileReadStatus: GithubFileReadStatus?,
+    fileReadStatus: EditorFileReadStatus?,
     modifier: Modifier = Modifier,
 ) {
     val colors = GlasmioTheme.colors
-    val contentInsets = LocalGithubEditorContentInsets.current
+    val contentInsets = LocalEditorContentInsets.current
     val editorContentHorizontalPadding = 16.dp
-    val commonStrings = LocalGithubStrings.current.Common
-    val markdownStrings = LocalGithubStrings.current.Markdown
+    val commonStrings = LocalAppStrings.current.Common
+    val markdownStrings = LocalAppStrings.current.Markdown
     var preview by rememberSaveable(session.id, session.pageUrl) { mutableStateOf(session.previewOnOpen) }
     var previousEditable by remember(session) { mutableStateOf(session.editable) }
     val focusRequester = remember(session) { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val focusReady = LocalGithubEditorFocusReady.current
+    val focusReady = LocalEditorFocusReady.current
     var editorPlaced by remember(session) { mutableStateOf(false) }
     var editorFocused by remember(session) { mutableStateOf(false) }
     val fileReady = fileReadStatus == null
     val enabled = fileReady && session.editable && !session.submitting && !session.closeRequested
     val selectionMenu =
-        rememberGithubMarkdownSelectionModifier(state, enabled, session::changeSource)
+        rememberMarkdownSelectionModifier(state, enabled, session::changeSource)
     LaunchedEffect(session, session.editable) {
         if (!previousEditable && session.editable && preview) {
             preview = false
@@ -111,7 +111,7 @@ internal fun EditorMarkdownContent(
     val dockBackdrop = rememberLayerBackdrop()
     val imeInsets = WindowInsets.ime
     val navigationInsets = WindowInsets.navigationBars
-    val dockHeight = GithubEditorDockActionSize
+    val dockHeight = EditorDockActionSize
     // 外层统一消费键盘和导航栏 inset；间距不随可见性切换，避免收起末段跳变。
     val dockBottomPadding = 12.dp
     val dockClearance = dockHeight + dockBottomPadding + 16.dp
@@ -122,7 +122,7 @@ internal fun EditorMarkdownContent(
             showEditor = !preview,
             modifier =
                 Modifier.matchParentSize()
-                    .then(LocalGithubEditorBackdropSource.current)
+                    .then(LocalEditorBackdropSource.current)
                     .glassBackdropSource(dockBackdrop)
                     .trackBackdropPosition(dockBackdrop)
                     .background(colors.elevatedBackground),
@@ -149,7 +149,7 @@ internal fun EditorMarkdownContent(
                     textStyle =
                         GlasmioTheme.textStyles.body.copy(
                             color = GlasmioTheme.colors.content,
-                            fontFamily = GithubEditorFontFamily,
+                            fontFamily = EditorFontFamily,
                             fontSize = 16.sp,
                             lineHeight = 24.sp,
                         ),
@@ -170,12 +170,12 @@ internal fun EditorMarkdownContent(
         val html = session.readHtml
         if (fileReady && preview && remember(source, html) { source.isBlank() && html.isNullOrBlank() }) {
             GlasmioListRow(
-                title = LocalGithubStrings.current.Repository.ContentEmpty,
+                title = LocalAppStrings.current.Repository.ContentEmpty,
                 modifier = Modifier.padding(top = contentInsets.calculateTopPadding()),
                 systemName = null,
             )
         } else if (fileReady && preview) {
-            GithubMarkdownPreview(
+            MarkdownPreview(
                 text = source,
                 html = html,
                 visible = true,
@@ -224,7 +224,7 @@ internal fun EditorMarkdownContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GithubEditorDock(height = dockHeight) {
+                EditorDock(height = dockHeight) {
                     GlasmioIconButton(
                         onClick = {
                             val nextPreview = !preview
@@ -242,7 +242,7 @@ internal fun EditorMarkdownContent(
                         sampleBackdrop = false,
                         size = dockHeight,
                     ) {
-                        GithubAnimatedIcon(
+                        AnimatedIcon(
                             imageVector = if (preview) Lucide.Pencil else Lucide.Eye,
                             contentDescription =
                                 when {
@@ -255,8 +255,8 @@ internal fun EditorMarkdownContent(
                         )
                     }
                 }
-                GithubEditorDock(modifier = Modifier.weight(1f), height = dockHeight) {
-                    GithubMarkdownEditorToolbar(
+                EditorDock(modifier = Modifier.weight(1f), height = dockHeight) {
+                    MarkdownEditorToolbar(
                         hasSelection = !state.value.selection.collapsed,
                         enabled = enabled && !preview,
                         onAction = applyFormatting,

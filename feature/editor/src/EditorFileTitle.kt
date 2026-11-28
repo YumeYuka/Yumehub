@@ -24,12 +24,12 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
 import kotlinx.coroutines.launch
-import moe.yumeyuka.yumehub.ui.navigation.GithubEditorSession
+import moe.yumeyuka.yumehub.ui.navigation.EditorSession
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
 /** 文件信息属于中间的标题菜单，与右侧编辑动作分开。 */
 @Composable
-internal fun EditorFileTitle(session: GithubEditorSession) {
+internal fun EditorFileTitle(session: EditorSession) {
     var expanded by remember(session) { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()

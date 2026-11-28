@@ -22,8 +22,8 @@ import io.github.neoruaa.glasmio.core.LocalGlassContentColor
 import io.github.neoruaa.glasmio.core.LocalGroupedListIconColor
 import io.github.neoruaa.glasmio.icons.GlasmioIconProvider
 import moe.yumeyuka.yumehub.data.storage.mmkv.DefaultAccentColorArgb
-import moe.yumeyuka.yumehub.locale.ProvideGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIconResolver
+import moe.yumeyuka.yumehub.locale.ProvideAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIconResolver
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
@@ -42,7 +42,7 @@ val AccentPalette: List<Color> =
         Color(0xFF8E8E93),
     )
 
-internal val LocalGithubTopBarBlurEnabled = compositionLocalOf { false }
+internal val LocalTopBarBlurEnabled = compositionLocalOf { false }
 
 @Composable
 fun YumehubTheme(
@@ -53,7 +53,7 @@ fun YumehubTheme(
     topBarBlurEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    ProvideGithubStrings {
+    ProvideAppStrings {
         val animatedAccent by
             animateColorAsState(accent, tween(durationMillis = 420), label = "accent")
         val colorScheme =
@@ -81,9 +81,9 @@ fun YumehubTheme(
                     )
                 }
             MiuixTheme(colors = miuixColors) {
-                CompositionLocalProvider(LocalGithubTopBarBlurEnabled provides topBarBlurEnabled) {
+                CompositionLocalProvider(LocalTopBarBlurEnabled provides topBarBlurEnabled) {
                     GlasmioIconProvider(
-                        resolver = GithubIconResolver,
+                        resolver = AppIconResolver,
                         defaultTint = {
                             LocalGroupedListIconColor.current
                                 ?: LocalGlassContentColor.current

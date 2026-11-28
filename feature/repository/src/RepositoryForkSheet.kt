@@ -21,10 +21,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
-import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
-import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -34,11 +31,12 @@ import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.yumeyucca.lucide.Check
 import io.github.yumeyucca.lucide.Lucide
 import io.github.yumeyucca.lucide.X
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubSection
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.ListSection
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.IconTilePlaceholder
+import moe.yumeyuka.yumehub.ui.component.MutationAcknowledgementDialog
 
 @Composable
 internal fun RepositoryForkSheet(
@@ -50,8 +48,8 @@ internal fun RepositoryForkSheet(
     onCreate: () -> Unit,
     onAcknowledgeUncertain: () -> Unit = {},
 ) {
-    val strings = LocalGithubStrings.current.Repository
-    val common = LocalGithubStrings.current.Common
+    val strings = LocalAppStrings.current.Repository
+    val common = LocalAppStrings.current.Common
     val context = LocalContext.current
     val colors = GlasmioTheme.colors
     val submitting = state?.submitting == true
@@ -74,7 +72,7 @@ internal fun RepositoryForkSheet(
             Toast.makeText(context, strings.ForkNameTaken(state.name), Toast.LENGTH_SHORT).show()
         }
     }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = state?.visible == true,
         onDismissRequest = onDismiss,
         title = strings.ForkRepository,
@@ -85,7 +83,7 @@ internal fun RepositoryForkSheet(
                 subtitle = state?.parent?.fullName,
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
-                        GithubIcon(Lucide.X, contentDescription = common.Close)
+                        AppIcon(Lucide.X, contentDescription = common.Close)
                     }
                 },
                 actions = {
@@ -120,12 +118,12 @@ internal fun RepositoryForkSheet(
                                 !uncertain &&
                                 !checking,
                     ) {
-                        GithubLoadingContent(
+                        LoadingContent(
                             loading = checking,
                             modifier = Modifier.size(23.dp),
                             placeholder = { IconTilePlaceholder(23.dp) },
                         ) {
-                            GithubIcon(Lucide.Check, contentDescription = strings.ForkCreate)
+                            AppIcon(Lucide.Check, contentDescription = strings.ForkCreate)
                         }
                     }
                 },
@@ -139,7 +137,7 @@ internal fun RepositoryForkSheet(
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                GithubSection(strings.ForkName) {
+                ListSection(strings.ForkName) {
                     GlasmioTextField(
                         value = state.name,
                         onValueChange = { name ->
@@ -159,7 +157,7 @@ internal fun RepositoryForkSheet(
                     )
                 }
                 state.parent.description?.takeIf(String::isNotBlank)?.let { description ->
-                    GithubSection(strings.Description) {
+                    ListSection(strings.Description) {
                         Text(
                             description,
                             style = GlasmioTheme.textStyles.body,
@@ -170,7 +168,7 @@ internal fun RepositoryForkSheet(
                 }
                 val branch = state.parent.defaultBranch
                 if (!branch.isNullOrBlank()) {
-                    GithubSection(strings.ForkSettings) {
+                    ListSection(strings.ForkSettings) {
                         GlasmioListRow(
                             title = strings.ForkDefaultBranchOnly(branch),
                             systemName = null,
@@ -212,27 +210,12 @@ internal fun RepositoryForkSheet(
         }
     }
     if (acknowledgeVisible && uncertain) {
-        GlasmioAlertDialog(
-            visible = true,
-            title = common.MutationUncertain,
-            message = common.MutationAcknowledgeWarning,
-            buttons =
-                listOf(
-                    GlasmioAlertButtonSpec(
-                        common.Cancel,
-                        onClick = { acknowledgeVisible = false },
-                        role = GlasmioAlertButtonRole.Cancel,
-                    ),
-                    GlasmioAlertButtonSpec(
-                        common.MutationAcknowledged,
-                        onClick = {
-                            acknowledgeVisible = false
-                            onAcknowledgeUncertain()
-                        },
-                        role = GlasmioAlertButtonRole.Default,
-                    ),
-                ),
-            onDismissRequest = { acknowledgeVisible = false },
+        MutationAcknowledgementDialog(
+            onDismiss = { acknowledgeVisible = false },
+            onAcknowledge = {
+                acknowledgeVisible = false
+                onAcknowledgeUncertain()
+            },
         )
     }
 }

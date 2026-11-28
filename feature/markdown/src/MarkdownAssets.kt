@@ -2,9 +2,9 @@ package moe.yumeyuka.yumehub.feature.markdown
 
 import android.content.res.AssetManager
 import java.io.InputStream
-import moe.yumeyuka.yumehub.ui.component.GithubTextAssetArchive
+import moe.yumeyuka.yumehub.ui.component.TextAssetArchive
 
-private val markdownArchive = GithubTextAssetArchive("github-markdown.xz")
+private val markdownArchive = TextAssetArchive("github-markdown.xz")
 
 internal fun AssetManager.openMarkdownAsset(name: String): InputStream =
     markdownArchive.open(this, "github-markdown/webview/$name")

@@ -6,7 +6,7 @@ import moe.yumeyuka.yumehub.core.model.GithubRepositoryLocation
 import moe.yumeyuka.yumehub.core.model.githubGitRefCandidates
 import moe.yumeyuka.yumehub.core.model.parseGithubLink
 import moe.yumeyuka.yumehub.data.repository.isRepositoryContentPath
-import moe.yumeyuka.yumehub.ui.component.githubCodeLanguageForFilename
+import moe.yumeyuka.yumehub.ui.component.codeLanguageForFilename
 
 internal fun resolveMarkdownEditorLink(
     url: String,
@@ -24,6 +24,6 @@ internal fun resolveMarkdownEditorLink(
             .firstOrNull { ref in it.qualifiedRefs }
             ?.path
             ?.takeIf(::isRepositoryContentPath) ?: return null
-    if (githubCodeLanguageForFilename(path.substringAfterLast('/')) != "markdown") return null
+    if (codeLanguageForFilename(path.substringAfterLast('/')) != "markdown") return null
     return GithubGitObject(ref, path, location.anchor)
 }

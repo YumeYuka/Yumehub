@@ -26,14 +26,14 @@ import kotlinx.coroutines.flow.debounce
 import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.RepositoryDto
 import moe.yumeyuka.yumehub.data.api.dto.UserDto
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.EmptyScene
-import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
-import moe.yumeyuka.yumehub.ui.component.GithubPagingContent
-import moe.yumeyuka.yumehub.ui.component.IdleGithubPagingRevalidation
+import moe.yumeyuka.yumehub.ui.component.EmptyState
+import moe.yumeyuka.yumehub.ui.component.PagingContent
+import moe.yumeyuka.yumehub.ui.component.IdlePagingRevalidation
 import moe.yumeyuka.yumehub.ui.component.isEmptyStateNetworkFailure
-import moe.yumeyuka.yumehub.ui.component.rememberGithubPagingSlots
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
+import moe.yumeyuka.yumehub.ui.component.rememberPagingSlots
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(FlowPreview::class)
@@ -54,20 +54,20 @@ fun ExplorePage(
     val filters = options?.filters.orEmpty()
     val settingsFailed by feed.settingsFailed.collectAsStateWithLifecycle()
     val feedKey = remember(options) { options?.let { feedPagingKey(it.filters, it.sort) } }
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     var filtersVisible by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val eventsWhileVisible =
         remember(feed, session, options, lifecycle) {
             feed.eventsFor(login, options).flowWithLifecycle(lifecycle, Lifecycle.State.RESUMED)
         }
-    GithubPagingContent(
+    PagingContent(
         source = eventsWhileVisible,
         contentKey = session to feedKey,
         revalidation =
             remember(feed, session, feedKey) {
                 if (login != null && feedKey != null) feed.revalidation(login, feedKey)
-                else IdleGithubPagingRevalidation
+                else IdlePagingRevalidation
             },
         onRetryRevalidation =
             if (login != null && feedKey != null) ({ feed.retryRevalidation(login, feedKey) })
@@ -76,7 +76,7 @@ fun ExplorePage(
     ) { paging ->
         val events = paging.items
         val slots =
-            rememberGithubPagingSlots(
+            rememberPagingSlots(
                 events,
                 "dashboard-feed",
                 paging.initialLoading,
@@ -95,7 +95,7 @@ fun ExplorePage(
                 }
             }
         }
-        GithubPage(
+        AppPage(
             title = strings.Explore.Title,
             back = false,
             listState = paging.listState,
@@ -104,7 +104,7 @@ fun ExplorePage(
             },
             itemSpacing = 12.dp,
             actions = {
-                moe.yumeyuka.yumehub.ui.component.GithubToolbarActions(
+                moe.yumeyuka.yumehub.ui.component.ToolbarActions(
                     moe.yumeyuka.yumehub.ui.component.toolbarIcon(
                         Lucide.Search,
                         strings.Common.Search,
@@ -134,7 +134,7 @@ fun ExplorePage(
             }
             if (scene != null) {
                 item(key = "explore-feed-empty") {
-                    GithubEmptyState(
+                    EmptyState(
                         scene = scene,
                         title = if (scene == EmptyScene.Offline) strings.Common.NoOfflineData else strings.Explore.EmptyFeed,
                         description = if (scene == EmptyScene.Offline) strings.Repository.NetworkFailed else null,
@@ -143,7 +143,7 @@ fun ExplorePage(
                     )
                 }
             }
-            if (options == null || filters.isEmpty()) return@GithubPage
+            if (options == null || filters.isEmpty()) return@AppPage
             FeedScreen(
                 slots = slots,
                 cards = cards,

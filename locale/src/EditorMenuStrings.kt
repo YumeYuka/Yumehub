@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_EditorMenu(
+public data class EditorMenuStrings(
     val More: String,
     val Expanded: String,
     val Collapsed: String,
@@ -15,8 +15,8 @@ public data class GithubStrings_EditorMenu(
     val Disabled: String,
 )
 
-internal val ZhHansEditorMenuStrings: GithubStrings_EditorMenu =
-    GithubStrings_EditorMenu(
+internal val ZhHansEditorMenuStrings: EditorMenuStrings =
+    EditorMenuStrings(
         More = "更多",
         Expanded = "已展开",
         Collapsed = "已折叠",
@@ -31,8 +31,8 @@ internal val ZhHansEditorMenuStrings: GithubStrings_EditorMenu =
         Disabled = "关闭",
     )
 
-internal val EnEditorMenuStrings: GithubStrings_EditorMenu =
-    GithubStrings_EditorMenu(
+internal val EnEditorMenuStrings: EditorMenuStrings =
+    EditorMenuStrings(
         More = "More",
         Expanded = "Expanded",
         Collapsed = "Collapsed",

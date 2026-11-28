@@ -31,7 +31,7 @@ import moe.yumeyuka.yumehub.data.repository.NotificationThreadState
 import moe.yumeyuka.yumehub.data.repository.NotificationsQuery
 import moe.yumeyuka.yumehub.data.repository.NotificationsRepository
 import moe.yumeyuka.yumehub.data.repository.NotificationsSnapshot
-import moe.yumeyuka.yumehub.locale.GithubTxt
+import moe.yumeyuka.yumehub.locale.CurrentAppStrings
 import retrofit2.HttpException
 
 enum class NotificationFilter(val includeRead: Boolean, val done: Boolean) {
@@ -109,7 +109,7 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     val uiState: StateFlow<NotificationsUiState> = mutableUiState.asStateFlow()
 
     init {
-        // 首次进入由 GithubRefreshEffect 统一触发，避免 init 与首次激活各请求一次第一页。
+        // 首次进入由 PageRefreshEffect 统一触发，避免 init 与首次激活各请求一次第一页。
         observeQuery(refresh = false)
         viewModelScope.launch {
             val coord = coordinator
@@ -488,19 +488,19 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
             val errorText =
                 when {
                     uncertainIds.isNotEmpty() && retryable.isEmpty() ->
-                        GithubTxt.current.Common.MutationUncertain
+                        CurrentAppStrings.current.Common.MutationUncertain
                     retryable.isNotEmpty() ->
                         if (action.threadIds.size == 1)
-                            GithubTxt.current.Notifications.ActionFailure(
+                            CurrentAppStrings.current.Notifications.ActionFailure(
                                 actionLabel,
-                                lastFailureMessage ?: GithubTxt.current.Notifications.RequestFailed,
+                                lastFailureMessage ?: CurrentAppStrings.current.Notifications.RequestFailed,
                             )
                         else
-                            GithubTxt.current.Notifications.PartialFailure(
+                            CurrentAppStrings.current.Notifications.PartialFailure(
                                 actionLabel,
                                 confirmedIds.size,
                                 retryable.size + uncertainIds.size,
-                                lastFailureMessage ?: GithubTxt.current.Notifications.RequestFailed,
+                                lastFailureMessage ?: CurrentAppStrings.current.Notifications.RequestFailed,
                             )
                     else -> null
                 }
@@ -525,10 +525,10 @@ class NotificationsViewModel(private val repository: NotificationsRepository) : 
     private val ThreadActionKind.label: String
         get() =
             when (this) {
-                ThreadActionKind.MarkRead -> GithubTxt.current.Notifications.MarkRead
-                ThreadActionKind.MarkUnread -> GithubTxt.current.Notifications.MarkUnread
-                ThreadActionKind.MarkDone -> GithubTxt.current.Notifications.MarkDone
-                ThreadActionKind.MarkUndone -> GithubTxt.current.Notifications.MoveToInbox
+                ThreadActionKind.MarkRead -> CurrentAppStrings.current.Notifications.MarkRead
+                ThreadActionKind.MarkUnread -> CurrentAppStrings.current.Notifications.MarkUnread
+                ThreadActionKind.MarkDone -> CurrentAppStrings.current.Notifications.MarkDone
+                ThreadActionKind.MarkUndone -> CurrentAppStrings.current.Notifications.MoveToInbox
             }
 
 }
@@ -537,13 +537,13 @@ internal fun Exception.messageForUser(): String =
     when (this) {
         is HttpException ->
             when (code()) {
-                401 -> GithubTxt.current.Notifications.SessionExpired
-                403 -> GithubTxt.current.Notifications.RequestForbidden
-                404 -> GithubTxt.current.Notifications.NotFound
-                429 -> GithubTxt.current.Notifications.RateLimited
-                else -> GithubTxt.current.Repository.HttpFailed(code())
+                401 -> CurrentAppStrings.current.Notifications.SessionExpired
+                403 -> CurrentAppStrings.current.Notifications.RequestForbidden
+                404 -> CurrentAppStrings.current.Notifications.NotFound
+                429 -> CurrentAppStrings.current.Notifications.RateLimited
+                else -> CurrentAppStrings.current.Repository.HttpFailed(code())
             }
-        is IOException -> GithubTxt.current.Repository.NetworkFailed
-        is SerializationException -> GithubTxt.current.Repository.ParseFailed
-        else -> GithubTxt.current.Notifications.RequestFailed
+        is IOException -> CurrentAppStrings.current.Repository.NetworkFailed
+        is SerializationException -> CurrentAppStrings.current.Repository.ParseFailed
+        else -> CurrentAppStrings.current.Notifications.RequestFailed
     }

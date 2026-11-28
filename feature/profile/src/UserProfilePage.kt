@@ -9,10 +9,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.yumeyuka.yumehub.data.cache.DataDomain
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.navigation.GithubPage
-import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
-import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.navigation.AppPage
+import moe.yumeyuka.yumehub.ui.navigation.PageRefreshEffect
+import moe.yumeyuka.yumehub.ui.navigation.AppRoute
 import moe.yumeyuka.yumehub.ui.navigation.readingItem
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
@@ -25,7 +25,7 @@ data class UserProfileRoute(
     val nodeId: String? = null,
     val instance: String = java.util.UUID.randomUUID().toString(),
     val organization: Boolean = false,
-) : GithubRoute
+) : AppRoute
 
 @Composable
 fun UserProfilePage(
@@ -39,11 +39,11 @@ fun UserProfilePage(
     onOpenOrganizations: (String) -> Unit,
     organization: Boolean = false,
 ) {
-    val strings = LocalGithubStrings.current
+    val strings = LocalAppStrings.current
     val viewModel: UserProfileViewModel =
         koinViewModel(parameters = { parametersOf(login, nodeId) })
     val state by viewModel.state.collectAsStateWithLifecycle()
-    GithubRefreshEffect(
+    PageRefreshEffect(
         viewModel,
         DataDomain.Profile,
         DataDomain.Relationships,
@@ -60,7 +60,7 @@ fun UserProfilePage(
             viewModel.dismissFollowError()
         }
     }
-    GithubPage(
+    AppPage(
         title = targetLogin.ifBlank { strings.Profile.ProfileLink },
         showTitle = false,
         itemSpacing = 12.dp,

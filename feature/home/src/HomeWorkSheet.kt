@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.feature.home
 
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.ui.component.ToolbarActions
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.core.GlasmioTheme
-import moe.yumeyuka.yumehub.ui.component.GithubBottomSheet
+import moe.yumeyuka.yumehub.ui.component.AppBottomSheet
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
@@ -46,14 +46,14 @@ import io.github.neoruaa.glasmio.ui.GlasmioSearchToolbar
 import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
 import io.github.neoruaa.glasmio.ui.GlasmioTopBar
 import io.github.yumeyucca.lucide.*
-import moe.yumeyuka.yumehub.locale.GithubStrings_Home
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
-import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
-import moe.yumeyuka.yumehub.ui.component.GithubSectionHeader
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
+import moe.yumeyuka.yumehub.locale.HomeStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
+import moe.yumeyuka.yumehub.ui.component.AppIcon
+import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.SectionHeader
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
 import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
 
 private enum class HomeEditTab {
     Work,
@@ -70,7 +70,7 @@ internal fun HomeWorkSheet(
     onChange: (HomeWorkLayout) -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val locale = LocalGithubStrings.current
+    val locale = LocalAppStrings.current
     val strings = locale.Home
     val common = locale.Common
     val edit by favorites.editState.collectAsStateWithLifecycle()
@@ -113,9 +113,9 @@ internal fun HomeWorkSheet(
                 HomeFavoritesEditError.Limit -> strings.FavoritesLimit
                 null -> ""
             }
-        GithubLoadFailureToast(edit.error, message)
+        LoadFailureToast(edit.error, message)
     }
-    GithubBottomSheet(
+    AppBottomSheet(
         visible = visible,
         onDismissRequest = dismiss,
         title = strings.EditHome,
@@ -129,7 +129,7 @@ internal fun HomeWorkSheet(
                 GlasmioTopBar(
                     title = if (showSearch) locale.MyRepositories.Search else strings.EditHome,
                     navigation = {
-                        GithubToolbarActions(
+                        ToolbarActions(
                             toolbarIcon(
                                 if (showSearch) Lucide.ChevronLeft else Lucide.X,
                                 if (showSearch) common.Back else common.Cancel,
@@ -145,7 +145,7 @@ internal fun HomeWorkSheet(
                         )
                     },
                     actions = {
-                        GithubToolbarActions(
+                        ToolbarActions(
                             if (tab == HomeEditTab.Favorites && !showSearch)
                                 toolbarIcon(Lucide.Search, common.Search, enabled && edit.draft != null) {
                                     query = TextFieldValue()
@@ -189,7 +189,7 @@ internal fun HomeWorkSheet(
             keyboard?.hide()
             favorites.finishSearch(apply = false)
         }
-        GithubBackHandler(enabled = visible && showSearch, onBack = cancelSearch)
+        AppBackHandler(enabled = visible && showSearch, onBack = cancelSearch)
         Box(Modifier.fillMaxSize()) {
             stateHolder.SaveableStateProvider(screen) {
                 if (screen == HomeEditTab.Work) {
@@ -235,7 +235,7 @@ internal fun HomeWorkSheet(
 @Composable
 private fun HomeWorkEditor(
     draft: HomeWorkLayout,
-    strings: GithubStrings_Home,
+    strings: HomeStrings,
     enabled: Boolean,
     onChange: (HomeWorkLayout) -> Unit,
 ) {
@@ -275,7 +275,7 @@ internal fun <T> HomeReorderGroup(
     title: String,
     items: List<T>,
     emptyTitle: String,
-    strings: GithubStrings_Home,
+    strings: HomeStrings,
     shown: Boolean,
     label: (T) -> String,
     leading: @Composable (T) -> Unit,
@@ -285,8 +285,8 @@ internal fun <T> HomeReorderGroup(
     onEmptyClick: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        GithubSectionHeader(title)
-        GithubLoadingContent(
+        SectionHeader(title)
+        LoadingContent(
             loading = loading,
             placeholder = { GlasmioGroupedList { TitleRowPlaceholder(showTopSeparator = false) } },
         ) {

@@ -9,10 +9,10 @@ import moe.yumeyuka.yumehub.core.model.WorkTarget
 import moe.yumeyuka.yumehub.data.api.dto.*
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.placeholders.FeedActivityPlaceholder
-import moe.yumeyuka.yumehub.ui.platform.rememberGithubUriHandler
+import moe.yumeyuka.yumehub.ui.platform.rememberPageLinkHandler
 
 internal fun LazyListScope.FeedScreen(
-    slots: GithubPagingSlots<FeedEventDto>,
+    slots: PagingSlots<FeedEventDto>,
     cards: SnapshotStateMap<String, MutableState<FeedCardState>>,
     initialCard: (FeedEventDto) -> FeedCardState?,
     onRetry: (FeedEventDto) -> Unit,
@@ -21,14 +21,14 @@ internal fun LazyListScope.FeedScreen(
     onOpenWork: (WorkTarget) -> Unit,
     onOpenUser: (UserDto) -> Unit,
 ) {
-    githubPagingItems(
+    pagingItems(
         slots,
         contentType = "feed-activity",
         placeholder = { FeedActivityPlaceholder() },
     ) { event ->
         val state =
             cards[event.cardKey()]?.value ?: remember(event, initialCard) { initialCard(event) }
-        val openUri = rememberGithubUriHandler()
+        val openUri = rememberPageLinkHandler()
         val repository = state?.repository
         val user = state?.user
         val work = state?.work ?: event.workItem()
@@ -57,6 +57,6 @@ internal fun LazyListScope.FeedScreen(
                 user != null -> ({ onOpenUser(user) })
                 else -> null
             }
-        GithubFeedActivity(event, state, { onRetry(event) }, { onToggle(event) }, open)
+        FeedActivity(event, state, { onRetry(event) }, { onToggle(event) }, open)
     }
 }

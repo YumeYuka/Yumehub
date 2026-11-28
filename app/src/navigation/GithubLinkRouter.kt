@@ -17,12 +17,12 @@ import moe.yumeyuka.yumehub.feature.worklist.WorkListRoute
 import moe.yumeyuka.yumehub.feature.workspaces.WorkspacesRoute
 
 /** 唯一 URL→页面映射。所有目标最终通过已有 navigator 进入同一条 Decompose 栈。 */
-internal fun GithubAppNavigationComponent.openLink(url: String): Boolean {
+internal fun AppNavigationComponent.openLink(url: String): Boolean {
     val target = parseGithubLink(url) ?: return false
     if (state.locked) return true
     when (target) {
-        GithubLinkTarget.Home -> openMainTab(GithubTab.Home)
-        GithubLinkTarget.Notifications -> openMainTab(GithubTab.Notifications)
+        GithubLinkTarget.Home -> openMainTab(MainTab.Home)
+        GithubLinkTarget.Notifications -> openMainTab(MainTab.Notifications)
         is GithubLinkTarget.Profile ->
             navigator.push(
                 UserProfileRoute(

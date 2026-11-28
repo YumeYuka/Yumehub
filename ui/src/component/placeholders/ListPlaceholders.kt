@@ -50,7 +50,7 @@ fun ListRowPlaceholder(modifier: Modifier = Modifier) {
     }
 }
 
-/** 正文覆盖占位：只画行块，外壳由 `GithubReadingGroup` 提供。 */
+/** 正文覆盖占位：只画行块，外壳由 `ReadingGroup` 提供。 */
 @Composable
 fun ReadingTextPlaceholder(modifier: Modifier = Modifier, lines: Int = 5) {
     Column(

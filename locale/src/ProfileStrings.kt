@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Profile(
+public data class ProfileStrings(
     val Title: String,
     val Settings: String,
     val SetAvatar: String,
@@ -88,8 +88,8 @@ public data class GithubStrings_Profile(
     val EmojiCategoryFlags: String,
 )
 
-internal val ZhHansProfileStrings: GithubStrings_Profile =
-    GithubStrings_Profile(
+internal val ZhHansProfileStrings: ProfileStrings =
+    ProfileStrings(
         Title = "我的",
         Settings = "设置",
         SetAvatar = "设置头像",
@@ -177,8 +177,8 @@ internal val ZhHansProfileStrings: GithubStrings_Profile =
         EmojiCategoryFlags = "旗帜",
     )
 
-internal val EnProfileStrings: GithubStrings_Profile =
-    GithubStrings_Profile(
+internal val EnProfileStrings: ProfileStrings =
+    ProfileStrings(
         Title = "Profile",
         Settings = "Settings",
         SetAvatar = "Set Photo",

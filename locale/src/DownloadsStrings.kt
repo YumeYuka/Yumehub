@@ -1,6 +1,6 @@
 package moe.yumeyuka.yumehub.locale
 
-public data class GithubStrings_Downloads(
+public data class DownloadsStrings(
     val TimeAndSize: (String?, String) -> String,
     val OpenFile: String,
     val ShareFile: String,
@@ -40,8 +40,8 @@ public data class GithubStrings_Downloads(
     val ExpectedDigest: (String) -> String,
 )
 
-internal val ZhHansDownloadsStrings: GithubStrings_Downloads =
-    GithubStrings_Downloads(
+internal val ZhHansDownloadsStrings: DownloadsStrings =
+    DownloadsStrings(
         TimeAndSize = { time, size -> "${time ?: "--:--"} | $size" },
         OpenFile = "打开",
         ShareFile = "分享",
@@ -81,8 +81,8 @@ internal val ZhHansDownloadsStrings: GithubStrings_Downloads =
         ExpectedDigest = { "预期校验值：$it" },
     )
 
-internal val EnDownloadsStrings: GithubStrings_Downloads =
-    GithubStrings_Downloads(
+internal val EnDownloadsStrings: DownloadsStrings =
+    DownloadsStrings(
         TimeAndSize = { time, size -> "${time ?: "--:--"} | $size" },
         OpenFile = "Open",
         ShareFile = "Share",

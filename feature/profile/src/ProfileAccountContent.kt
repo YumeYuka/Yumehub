@@ -27,8 +27,8 @@ import io.github.neoruaa.glasmio.ui.LocalGlasmioSidebarPressReset
 import io.github.neoruaa.glasmio.ui.glasmioGroupedListSeparator
 import io.github.yumeyucca.lucide.*
 import moe.yumeyuka.yumehub.data.api.dto.ProfileDto
-import moe.yumeyuka.yumehub.locale.GithubStrings_Profile
-import moe.yumeyuka.yumehub.locale.LocalGithubStrings
+import moe.yumeyuka.yumehub.locale.ProfileStrings
+import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.*
 import moe.yumeyuka.yumehub.ui.component.placeholders.*
 import moe.yumeyuka.yumehub.ui.component.skeleton.SkeletonSwap
@@ -38,7 +38,7 @@ import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 /** 静态居中资料头部、三个操作卡、资料卡、主页列表入口与直接渲染的 README。 */
 internal fun LazyListScope.ProfileAccountContent(
     state: ProfileUiState,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onRetryProfile: () -> Unit,
     onEditStatus: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -76,7 +76,7 @@ internal fun LazyListScope.ProfileAccountContent(
 /** 三个操作卡：设置头像、编辑信息、设置，横向等分。 */
 @Composable
 private fun ProfileActionCards(
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
     onOpenSettings: () -> Unit,
 ) {
     val openExternal = rememberExternalUriHandler()
@@ -124,7 +124,7 @@ private fun ProfileActionButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            GithubIcon(icon, contentDescription = null)
+            AppIcon(icon, contentDescription = null)
             Text(
                 label,
                 style = GlasmioTheme.textStyles.footnote.copy(fontSize = 12.sp),
@@ -139,10 +139,10 @@ private fun ProfileActionButton(
 @Composable
 internal fun ProfileDetailsSection(
     profile: ProfileDto?,
-    strings: GithubStrings_Profile,
+    strings: ProfileStrings,
 ) {
     // 外壳保留；已知资料按实际行数测量，未知时的估算仅用于加载阶段。
-    GithubLoadingCard(
+    LoadingCard(
         loading = profile == null,
         placeholder = { ProfileDetailsPlaceholder() },
     ) {
@@ -151,7 +151,7 @@ internal fun ProfileDetailsSection(
 }
 
 @Composable
-private fun ProfileDetailsRows(profile: ProfileDto, strings: GithubStrings_Profile) {
+private fun ProfileDetailsRows(profile: ProfileDto, strings: ProfileStrings) {
     val headline = profile.bio?.trim().orEmpty()
     val organization = profile.company?.trim().orEmpty()
     val location = profile.location?.trim().orEmpty()
@@ -189,13 +189,13 @@ internal fun ProfileReadmeContent(profile: ProfileDto?) {
         val path = it.readmePath ?: if (it.isOrganization) "profile/README.md" else "README.md"
         "$repositoryUrl/blob/HEAD/${Uri.encode(path, "/")}"
     }
-    GithubReadingGroup(documentKey = readme) {
+    ReadingGroup(documentKey = readme) {
         SkeletonSwap(
             loading = profile == null,
             placeholder = { ReadmePlaceholder() },
         ) {
             if (readme != null)
-                GithubMarkdown(
+                MarkdownBody(
                     text = "",
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     pageUrl = pageUrl,
@@ -213,7 +213,7 @@ internal fun ProfileRetryRow(message: String, retry: () -> Unit) {
     GlasmioGroupedList {
         GlasmioListRow(
             title = message,
-            detail = LocalGithubStrings.current.Common.Retry,
+            detail = LocalAppStrings.current.Common.Retry,
             systemName = null,
             onClick = retry,
         )
@@ -234,7 +234,7 @@ private fun ProfileDetailRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        GithubIcon(icon, contentDescription = null, size = 22.dp, tint = colors.secondaryContent)
+        AppIcon(icon, contentDescription = null, size = 22.dp, tint = colors.secondaryContent)
         Column(
             Modifier.weight(1f)
                 .fillMaxHeight()
