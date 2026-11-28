@@ -60,7 +60,7 @@ internal fun RepositoryNotificationOptions(
                             AppIcon(
                                 Lucide.Check,
                                 contentDescription = null,
-                                tint = colors.accent,
+                                tint = colors.content,
                             )
                     },
                 )
@@ -82,7 +82,7 @@ internal fun RepositoryNotificationOptions(
                     AppIcon(
                         Lucide.Check,
                         contentDescription = null,
-                        tint = colors.accent,
+                        tint = colors.content,
                     )
             },
         )
@@ -119,7 +119,7 @@ internal fun RepositoryNotificationOptions(
                                 AppIcon(
                                     Lucide.Check,
                                     contentDescription = null,
-                                    tint = colors.accent,
+                                    tint = colors.content,
                                 )
                         },
                     )

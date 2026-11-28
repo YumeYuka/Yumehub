@@ -39,6 +39,8 @@ import moe.yumeyuka.yumehub.locale.LocalAppStrings
 import moe.yumeyuka.yumehub.ui.component.CommitMessageFields
 import moe.yumeyuka.yumehub.ui.component.AppIcon
 import moe.yumeyuka.yumehub.ui.component.LoadFailureToast
+import moe.yumeyuka.yumehub.ui.component.placeholders.LoadingContent
+import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.MessageBodyField
 import retrofit2.HttpException
 
@@ -339,20 +341,21 @@ internal fun WorkSubscriptionSheet(
     val common = LocalAppStrings.current.Common
     val colors = GlasmioTheme.colors
     val subscriptionState = state.desiredSubscription ?: state.subscription?.state
+    var selectedState by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(visible, subscriptionState) {
+        if (visible) selectedState = subscriptionState
+    }
     val canSelect =
         state.subscription != null &&
             state.subscription.canSubscribe &&
             !state.subscriptionUpdating
     val options =
         listOf(
-            Triple("SUBSCRIBED", strings.SubscribeAll, strings.SubscribeAllDescription),
-            Triple(
-                "UNSUBSCRIBED",
-                strings.SubscribeParticipating,
-                strings.SubscribeParticipatingDescription,
-            ),
-            Triple("IGNORED", strings.SubscribeIgnoring, strings.SubscribeIgnoringDescription),
+            "SUBSCRIBED" to strings.SubscribeAll,
+            "UNSUBSCRIBED" to strings.SubscribeParticipating,
+            "IGNORED" to strings.SubscribeIgnoring,
         )
+    val canConfirm = canSelect && selectedState != null
     AppBottomSheet(
         visible = visible,
         onDismissRequest = onDismiss,
@@ -364,6 +367,17 @@ internal fun WorkSubscriptionSheet(
                 navigation = {
                     GlasmioIconButton(onClick = onDismiss) {
                         AppIcon(Lucide.X, contentDescription = common.Close)
+                    }
+                },
+                actions = {
+                    GlasmioIconButton(
+                        onClick = {
+                            selectedState?.let(onSelect)
+                            onDismiss()
+                        },
+                        enabled = canConfirm,
+                    ) {
+                        AppIcon(Lucide.Check, contentDescription = common.Confirm)
                     }
                 },
             )
@@ -384,34 +398,41 @@ internal fun WorkSubscriptionSheet(
                     )
                 }
             } else {
-                GlasmioGroupedList {
-                    options.forEachIndexed { index, (value, title, description) ->
-                        val selected = subscriptionState == value
-                        GlasmioListRow(
-                            title = title,
-                            subtitle = description,
-                            enabled = canSelect,
-                            modifier =
-                                Modifier.semantics {
-                                    role = Role.RadioButton
-                                    this.selected = selected
-                                },
-                            showTopSeparator = index > 0,
-                            showDisclosure = false,
-                            onClick = {
-                                onSelect(value)
-                                onDismiss()
-                            },
-                            trailing = {
-                                if (selected) {
-                                    AppIcon(
-                                        Lucide.Check,
-                                        contentDescription = null,
-                                        tint = colors.accent,
-                                    )
-                                }
-                            },
-                        )
+                LoadingContent(
+                    loading = state.subscription == null,
+                    placeholder = {
+                        GlasmioGroupedList {
+                            repeat(3) { TitleRowPlaceholder(showTopSeparator = it > 0) }
+                        }
+                    },
+                ) {
+                    if (state.subscription != null) {
+                        GlasmioGroupedList {
+                            options.forEachIndexed { index, (value, title) ->
+                                val selected = selectedState == value
+                                GlasmioListRow(
+                                    title = title,
+                                    enabled = canSelect,
+                                    modifier =
+                                        Modifier.semantics {
+                                            role = Role.RadioButton
+                                            this.selected = selected
+                                        },
+                                    showTopSeparator = index > 0,
+                                    showDisclosure = false,
+                                    onClick = { selectedState = value },
+                                    trailing = {
+                                        if (selected) {
+                                            AppIcon(
+                                                Lucide.Check,
+                                                contentDescription = null,
+                                                tint = colors.content,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }

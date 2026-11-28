@@ -70,7 +70,6 @@ internal fun WorkDetailToolbar(
             onClick = onSubscription,
             enabled =
                 !state.item?.nodeId.isNullOrBlank() &&
-                    (state.subscription != null || state.subscriptionError != null) &&
                     state.subscription?.canSubscribe != false,
             size = 48.dp,
         ) {
