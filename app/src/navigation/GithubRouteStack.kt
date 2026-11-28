@@ -54,7 +54,10 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 
 /** 以条目引用区分每次入栈；路由参数相同的页面也拥有独立子组件和页面状态。 */
-internal class GithubRouteEntry(val route: GithubRoute)
+internal class GithubRouteEntry(
+    val route: GithubRoute,
+    val onEntered: (() -> Unit)? = null,
+)
 
 /** 一条真实的 Decompose 子栈，以及向它发命令的 navigator。 */
 @Immutable
@@ -76,6 +79,7 @@ internal class RouteChild(
     val route: GithubRoute,
     private val navigator: GithubNavigator,
     componentContext: ComponentContext,
+    private val onEntered: (() -> Unit)?,
 ) : ComponentContext by componentContext, ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
 
@@ -84,6 +88,7 @@ internal class RouteChild(
     // 出栈先销毁 Decompose 子组件，退场页面在最后一帧后才离开组合。
     private var destroyed = false
     private var mounted = 0
+    private var entered = false
 
     /**
      * 是否为栈顶配置。只由 [routeStack] 的栈观察者写入，页面按需订阅自己的归属，不必订阅整条栈。
@@ -123,6 +128,12 @@ internal class RouteChild(
         val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = top)
         val entrance = pageState.skeletonEntrance
         val entryReady = LocalGithubRouteEntryReady.current
+        LaunchedEffect(top, entryReady) {
+            if (top && entryReady && !entered) {
+                entered = true
+                onEntered?.invoke()
+            }
+        }
         val entryKey: Any? = if (route is MainTabsRoute) null else LocalGithubHeaderEntryKey.current
         CompositionLocalProvider(
             LocalLifecycleOwner provides lifecycleOwner,
@@ -184,7 +195,12 @@ internal fun GithubNavigator.routeStack(
             initialStack = { initialRoutes.map(::GithubRouteEntry) },
             handleBackButton = true,
         ) { entry, childContext ->
-            RouteChild(route = entry.route, navigator = this, componentContext = childContext)
+            RouteChild(
+                route = entry.route,
+                navigator = this,
+                componentContext = childContext,
+                onEntered = entry.onEntered,
+            )
         }
     bind(stack)
     // 先于任何 Compose 订阅注册：栈一变，归属标记与栈值在同一次快照里更新。订阅与保留组件同寿命，无须取消。

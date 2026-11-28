@@ -1,10 +1,12 @@
 package moe.yumeyuka.yumehub.feature.notifications
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,15 +20,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.Text
-import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
-import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
-import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import io.github.neoruaa.glasmio.ui.GlasmioSearchToolbar
 import io.github.yumeyucca.lucide.ListFilter
 import io.github.yumeyucca.lucide.Lucide
@@ -35,8 +33,9 @@ import moe.yumeyuka.yumehub.core.model.CollaborationKind
 import moe.yumeyuka.yumehub.data.api.dto.NotificationDto
 import moe.yumeyuka.yumehub.data.cache.DataDomain
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
-import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubPagingSlotKeys
+import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
+import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
@@ -48,7 +47,14 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun NotificationsPage(
     showSelectionActions: Boolean,
-    onOpenWork: (owner: String, name: String, kind: CollaborationKind, number: Int) -> Unit,
+    onOpenWork:
+        (
+            owner: String,
+            name: String,
+            kind: CollaborationKind,
+            number: Int,
+            onEntered: () -> Unit,
+        ) -> Unit,
 ) {
     val strings = LocalGithubStrings.current.Notifications
     val common = LocalGithubStrings.current.Common
@@ -61,14 +67,16 @@ fun NotificationsPage(
         onRefresh = viewModel::revalidate,
     )
     val openLink = rememberGithubUriHandler()
-    val bottomPadding = requireNotNull(LocalGithubPageHost.current).bottomPadding
+    val host = requireNotNull(LocalGithubPageHost.current)
+    val bottomPadding = host.bottomPadding
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val searchFocus = remember { FocusRequester() }
     var searching by remember { mutableStateOf(false) }
-    var searchInput by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue())
-    }
+    var searchInput by
+        rememberSaveable(stateSaver = TextFieldValue.Saver) {
+            mutableStateOf(TextFieldValue())
+        }
     var filtersVisible by remember { mutableStateOf(false) }
     val hideKeyboard: () -> Unit = {
         focus.clearFocus()
@@ -81,6 +89,7 @@ fun NotificationsPage(
     var completionThreads by remember(viewModel) { mutableStateOf(emptySet<String>()) }
     var acknowledgeUncertainConfirm by remember(viewModel) { mutableStateOf(false) }
     var threadActions by remember(viewModel) { mutableStateOf<NotificationDto?>(null) }
+    var pendingOpened by remember(viewModel) { mutableStateOf<NotificationDto?>(null) }
     val completeSelection = { completionThreads = state.selectedThreadIds.toSet() }
     val query = searchInput.text.trim()
     val source = "${state.filter}:${state.repository}:${state.reasonFilter}:$query"
@@ -138,29 +147,48 @@ fun NotificationsPage(
             val anchor = rememberGlasmioMenuAnchorState()
             Box {
                 GithubToolbarActions(
-                    if (!state.isSelecting) toolbarIcon(Lucide.Search, common.Search) {
-                        if (searching) {
-                            searchFocus.requestFocus()
-                            keyboard?.show()
-                        } else {
-                            searching = true
+                    if (!state.isSelecting)
+                        toolbarIcon(Lucide.Search, common.Search) {
+                            if (searching) {
+                                searchFocus.requestFocus()
+                                keyboard?.show()
+                            } else {
+                                searching = true
+                            }
                         }
-                    } else null,
-                    if (!state.isSelecting) toolbarIcon(Lucide.ListFilter, strings.FilterTitle) {
-                        hideKeyboard()
-                        filtersVisible = true
-                    } else null,
+                    else null,
+                    if (!state.isSelecting)
+                        toolbarIcon(Lucide.ListFilter, strings.FilterTitle) {
+                            hideKeyboard()
+                            filtersVisible = true
+                        }
+                    else null,
                     if (selectionMenu) {
-                        val label = if (state.isProcessing) strings.Processing else strings.SelectedCount(state.selectedThreadIds.size)
-                        GlasmioHeaderAction("selection", "selection", label, { expanded = true }, !state.isProcessing, anchor) {
+                        val label =
+                            if (state.isProcessing) strings.Processing
+                            else strings.SelectedCount(state.selectedThreadIds.size)
+                        GlasmioHeaderAction(
+                            "selection",
+                            "selection",
+                            label,
+                            { expanded = true },
+                            !state.isProcessing,
+                            anchor,
+                        ) {
                             Text(label)
                         }
                     } else null,
                 )
-                if (selectionMenu) NotificationsSelectionMenu(
-                    state, anchor, expanded, { expanded = it },
-                    viewModel::endSelection, viewModel::markSelectedRead, completeSelection,
-                )
+                if (selectionMenu)
+                    NotificationsSelectionMenu(
+                        state,
+                        anchor,
+                        expanded,
+                        { expanded = it },
+                        viewModel::endSelection,
+                        viewModel::markSelectedRead,
+                        completeSelection,
+                    )
             }
         },
         bottomContent =
@@ -190,6 +218,7 @@ fun NotificationsPage(
             onLoadMore = viewModel::loadMore,
             onLoadPrevious = viewModel::loadPrevious,
             onOpenTarget = { target ->
+                val opened = pendingOpened ?: return@NotificationsScreen
                 when (target) {
                     is NotificationTarget.Issue ->
                         onOpenWork(
@@ -197,18 +226,30 @@ fun NotificationsPage(
                             target.repository,
                             CollaborationKind.Issue,
                             target.number,
-                        )
+                        ) {
+                            viewModel.markOpened(opened)
+                            pendingOpened = null
+                        }
                     is NotificationTarget.PullRequest ->
                         onOpenWork(
                             target.owner,
                             target.repository,
                             CollaborationKind.PullRequest,
                             target.number,
-                        )
-                    is NotificationTarget.Web -> openLink(target.url)
+                        ) {
+                            viewModel.markOpened(opened)
+                            pendingOpened = null
+                        }
+                    is NotificationTarget.Web -> {
+                        openLink(target.url)
+                        viewModel.markOpened(opened)
+                        pendingOpened = null
+                    }
                 }
             },
-            onOpenNotification = viewModel::markOpened,
+            onOpenNotification = { notification ->
+                if (host.navigationEnabled) pendingOpened = notification
+            },
             onThreadActions = { threadActions = it },
             onRetryAction = viewModel::retryAction,
             onRetryLoad = viewModel::revalidate,
@@ -238,8 +279,12 @@ fun NotificationsPage(
         notification = threadActions,
         preview = threadActions?.let(state.previews::get),
         isDone = state.filter == NotificationFilter.Done,
-        canChangeReadState = threadActions?.threadId !in state.pendingThreadIds && threadActions?.threadId !in state.uncertainThreadIds,
-        canChangeDoneState = threadActions?.threadId !in state.pendingThreadIds && threadActions?.threadId !in state.uncertainThreadIds,
+        canChangeReadState =
+            threadActions?.threadId !in state.pendingThreadIds &&
+                threadActions?.threadId !in state.uncertainThreadIds,
+        canChangeDoneState =
+            threadActions?.threadId !in state.pendingThreadIds &&
+                threadActions?.threadId !in state.uncertainThreadIds,
         onDismiss = { threadActions = null },
         onSetUnread = { id, unread ->
             threadActions = null

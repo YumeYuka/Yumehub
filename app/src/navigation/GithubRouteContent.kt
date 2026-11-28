@@ -242,8 +242,12 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
             NotificationsTabRoute ->
                 NotificationsPage(
                     showSelectionActions = args.topTabs,
-                    onOpenWork = { owner, name, kind, number ->
-                        openRoute(WorkDetailRoute(owner, name, kind, number))
+                    onOpenWork = { owner, name, kind, number, onEntered ->
+                        if (canNavigate())
+                            navigator.push(
+                                WorkDetailRoute(owner, name, kind, number),
+                                onEntered,
+                            )
                     },
                 )
             ExploreTabRoute ->
