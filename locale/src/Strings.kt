@@ -2,6 +2,7 @@ package moe.yumeyuka.yumehub.locale
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import cafe.adriel.lyricist.Lyricist
 import cafe.adriel.lyricist.ProvideStrings
@@ -33,8 +34,16 @@ public object GithubLocaleManager {
     public var activeStrings: GithubStrings = stringsFor(Locale.getDefault().toLanguageTag())
         private set
 
+    private val languageTagState =
+        mutableStateOf(Locale.getDefault().toLanguageTag().lowercase())
+
+    public val currentLanguageTag: String
+        get() = languageTagState.value
+
     public fun updateLocale(languageTag: String) {
-        activeStrings = stringsFor(languageTag)
+        val normalized = languageTag.lowercase()
+        activeStrings = stringsFor(normalized)
+        if (languageTagState.value != normalized) languageTagState.value = normalized
     }
 }
 
@@ -47,7 +56,7 @@ public object GithubTxt {
 @Composable
 public fun rememberGithubStrings(
     defaultLanguageTag: String = "zh-cn",
-    currentLanguageTag: String = Locale.getDefault().toLanguageTag().lowercase(),
+    currentLanguageTag: String = GithubLocaleManager.currentLanguageTag,
 ): Lyricist<GithubStrings> = rememberStrings(stringsByTag, defaultLanguageTag, currentLanguageTag)
 
 @Composable

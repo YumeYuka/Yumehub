@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.WindowInsets as AndroidWindowInsets
 import androidx.activity.ComponentActivity
@@ -29,6 +30,7 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.TokenStore
 import moe.yumeyuka.yumehub.navigation.GithubAppNavigationComponent
 import moe.yumeyuka.yumehub.navigation.restoreNavigation
 import moe.yumeyuka.yumehub.navigation.saveNavigation
+import moe.yumeyuka.yumehub.ui.platform.AppLanguageManager
 import org.koin.android.ext.android.inject
 
 class MainActivity : ComponentActivity() {
@@ -126,6 +128,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLanguageManager.sync(this)
     }
 
     override fun onNewIntent(intent: Intent) {
