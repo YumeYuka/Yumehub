@@ -29,7 +29,7 @@ permissions:
 jobs:
   format:
     name: ktfmt
-    if: github.event_name != 'push' || !github.event.deleted
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
