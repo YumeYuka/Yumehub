@@ -1,10 +1,6 @@
 package moe.yumeyuka.yumehub.feature.workspaces
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.rememberTransition
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -52,7 +48,6 @@ import moe.yumeyuka.yumehub.ui.component.GithubCommitSummary
 import moe.yumeyuka.yumehub.ui.component.GithubEmptyState
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
-import moe.yumeyuka.yumehub.ui.component.placeholders.GithubCardSizeSpec
 import moe.yumeyuka.yumehub.ui.component.placeholders.PlaceholderTokens
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspaceCommitPlaceholder
 import moe.yumeyuka.yumehub.ui.component.placeholders.WorkspacePlaceholderRow
@@ -63,7 +58,6 @@ import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRefreshEffect
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -218,31 +212,33 @@ private fun LazyListScope.workspacesScreen(
             ?: (state.entries as? WorkspacesLoad.Ready)?.refreshError
     if (directoryError != null) {
         item(key = "workspace-directory-error") {
-            GlasmioGroupedList { WorkspaceRetryRow(directoryError, onRetryEntries) }
+            GlasmioGroupedList(modifier = Modifier.padding(bottom = 12.dp)) {
+                WorkspaceRetryRow(directoryError, onRetryEntries)
+            }
         }
     }
     if (state.repository is WorkspacesLoad.Error) return
     item(key = "workspaces-commit") {
         GlasmioGroupedList(modifier = Modifier.padding(bottom = 12.dp)) {
-            CommitBlock(
-                state = state,
-                strings = strings,
-                enabled = enabled,
-                onRetry = onRetryCommit,
-                onOpenHistory = onOpenCommitHistory,
-            )
+            key(branchEpoch, state.path) {
+                CommitBlock(
+                    state = state,
+                    strings = strings,
+                    enabled = enabled,
+                    onRetry = onRetryCommit,
+                    onOpenHistory = onOpenCommitHistory,
+                )
+            }
         }
     }
+    if (state.entries is WorkspacesLoad.Error) return
     item(key = "workspaces-directory") {
         val density = LocalDensity.current
         val viewportHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
         // Sample the displayed frame on navigation, including an interrupted resize.
         val frameHeight = remember { intArrayOf(0) }
         GlasmioGroupedList {
-            Column(
-                Modifier.onSizeChanged { frameHeight[0] = it.height }
-                    .animateContentSize(GithubCardSizeSpec)
-            ) {
+            Column(Modifier.onSizeChanged { frameHeight[0] = it.height }) {
                 key(branchEpoch, state.path) {
                     val heldHeight = remember { frameHeight[0] }
                     val rowHeight = PlaceholderTokens.ListRowHeight
@@ -252,7 +248,7 @@ private fun LazyListScope.workspacesScreen(
                     val ready = state.entries as? WorkspacesLoad.Ready
                     SkeletonSwap(
                         loading = state.entries is WorkspacesLoad.Loading,
-                        entrance = true,
+                        // Only initial route entry forces a skeleton; cached directory switches render directly.
                         placeholder = {
                             Column(Modifier.height(placeholderHeight)) {
                                 repeat(kotlin.math.ceil(placeholderHeight / rowHeight).toInt()) {
@@ -297,29 +293,25 @@ private fun CommitBlock(
     onRetry: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
-    val target = if (state.repository is WorkspacesLoad.Loading) WorkspacesLoad.Loading else state.commit
-    val firstEntrance = LocalGithubSkeletonEntrance.current?.presented == false
-    val transitionState = remember {
-        MutableTransitionState(if (firstEntrance) WorkspacesLoad.Loading else target)
-    }
-    transitionState.targetState = target
-    val transition = rememberTransition(transitionState, label = "workspace-commit")
-    transition.AnimatedContent(
-        contentKey = { load -> if (load is WorkspacesLoad.Ready) load.value?.oid else load },
-    ) { commit ->
-        when (commit) {
-            WorkspacesLoad.Loading -> WorkspaceCommitPlaceholder()
-            is WorkspacesLoad.Error -> WorkspaceRetryRow(commit.message, onRetry)
+    val target =
+        if (state.repository is WorkspacesLoad.Loading) WorkspacesLoad.Loading else state.commit
+    SkeletonSwap(
+        loading = target is WorkspacesLoad.Loading,
+        placeholder = { WorkspaceCommitPlaceholder() },
+    ) {
+        when (target) {
+            WorkspacesLoad.Loading -> Unit
+            is WorkspacesLoad.Error -> WorkspaceRetryRow(target.message, onRetry)
             is WorkspacesLoad.Ready -> {
                 WorkspaceCommitCard(
-                    commit = commit.value,
+                    commit = target.value,
                     strings = strings,
-                    onClick = onOpenHistory.takeIf { enabled && commit.value?.oid != null && commit == target },
+                    onClick = onOpenHistory.takeIf { enabled && target.value?.oid != null },
                 )
             }
         }
+        (target as? WorkspacesLoad.Ready)?.refreshError?.let { WorkspaceRetryRow(it, onRetry) }
     }
-    (state.commit as? WorkspacesLoad.Ready)?.refreshError?.let { WorkspaceRetryRow(it, onRetry) }
 }
 
 @Composable
