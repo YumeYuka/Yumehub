@@ -1,7 +1,7 @@
 [versions]
 agp = "9.4.1"
 aaptProto = "9.4.1-15978811"
-protobuf = "3.25.9"
+protobuf = "4.36.2"
 kotlin = "2.4.21"
 ktfmt = "0.65"
 
@@ -19,12 +19,12 @@ mmkv = "2.4.3"
 sketch = "4.7.0"
 
 coroutines = "1.11.0"
-serialization = "1.12.0"
+serialization = "1.13.0"
 koin = "4.2.2"
 
 miuix = "0.9.5-e58b388f-SNAPSHOT"
 glasmio = "0.1.4"
-decompose = "3.5.0"
+decompose = "3.6.2"
 lucide = "1.0.0-SNAPSHOT"
 
 appauth = "0.11.1"
