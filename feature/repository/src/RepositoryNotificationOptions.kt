@@ -39,19 +39,14 @@ internal fun RepositoryNotificationOptions(
     val selectedTypes = if (subscription == "RELEASES_ONLY") setOf("RELEASE") else subscriptionTypes
     GlasmioGroupedList {
         listOf(
-                Triple(
-                    "UNSUBSCRIBED",
-                    strings.WatchParticipating,
-                    strings.WatchParticipatingDescription,
-                ),
-                Triple("SUBSCRIBED", strings.WatchAll, strings.WatchAllDescription),
-                Triple("IGNORED", strings.WatchIgnoring, strings.WatchIgnoringDescription),
+                "UNSUBSCRIBED" to strings.WatchParticipating,
+                "SUBSCRIBED" to strings.WatchAll,
+                "IGNORED" to strings.WatchIgnoring,
             )
-            .forEachIndexed { index, (value, label, description) ->
+            .forEachIndexed { index, (value, label) ->
                 val selected = subscription == value
                 GlasmioListRow(
                     title = label,
-                    subtitle = description,
                     modifier =
                         Modifier.semantics {
                             role = Role.RadioButton
@@ -74,7 +69,6 @@ internal fun RepositoryNotificationOptions(
     GlasmioGroupedList(modifier = Modifier.animateContentSize(GithubCardSizeSpec)) {
         GlasmioListRow(
             title = strings.WatchCustom,
-            subtitle = strings.WatchCustomDescription,
             modifier =
                 Modifier.semantics {
                     selected = custom

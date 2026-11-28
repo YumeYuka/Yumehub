@@ -281,6 +281,13 @@ internal class RepositoryOverviewViewModel(
         sheetJob?.cancel()
         val currentDescription =
             mutableState.value.descriptionOverride ?: repository.description.orEmpty()
+        val currentSubscription =
+            if (sheet == RepositorySheet.Notifications)
+                mutableState.value.pendingSubscription
+                    ?: overview.subscription?.let { value ->
+                        RepositorySubscriptionSelection(value, overview.subscriptionTypes.toSet())
+                    }
+            else null
         mutableState.value =
             mutableState.value.copy(
                 management =
@@ -288,16 +295,8 @@ internal class RepositoryOverviewViewModel(
                         sheet = sheet,
                         description = currentDescription,
                         originalDescription = currentDescription,
-                        subscription =
-                            if (sheet == RepositorySheet.Notifications)
-                                mutableState.value.pendingSubscription
-                                    ?: overview.subscription?.let { value ->
-                                        RepositorySubscriptionSelection(
-                                            value,
-                                            overview.subscriptionTypes.toSet(),
-                                        )
-                                    }
-                            else null,
+                        subscription = currentSubscription,
+                        loading = sheet == RepositorySheet.Notifications && currentSubscription == null,
                     ),
             )
         if (sheet == RepositorySheet.Description) {
@@ -305,6 +304,38 @@ internal class RepositoryOverviewViewModel(
             sheetJob = viewModelScope.launch {
                 val draft = drafts.loadOrNull(account, descriptionDraftKey) ?: return@launch
                 if (revision == draftRevision) updateSheet(sheet) { it.copy(description = draft) }
+            }
+        } else if (currentSubscription == null) {
+            sheetJob = viewModelScope.launch {
+                try {
+                    val loaded = source.load(account, owner, name)
+                    if (!active()) return@launch
+                    updateSheet(sheet) {
+                        it.copy(
+                            subscription =
+                                it.subscription
+                                    ?: mutableState.value.pendingSubscription
+                                    ?: loaded.subscription?.let { value ->
+                                        RepositorySubscriptionSelection(
+                                            value,
+                                            loaded.subscriptionTypes.toSet(),
+                                        )
+                                    },
+                            loading = false,
+                            error = null,
+                        )
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    updateSheet(sheet) { it.copy(loading = false) }
+                    if (active())
+                        mutableEvents.trySend(
+                            RepositoryOverviewEvent.Failed(
+                                GithubTxt.current.Repository.OperationFailed,
+                            ),
+                        )
+                }
             }
         }
     }

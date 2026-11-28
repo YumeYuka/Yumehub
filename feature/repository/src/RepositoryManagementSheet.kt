@@ -30,7 +30,7 @@ import moe.yumeyuka.yumehub.ui.component.GithubLoadFailureToast
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.component.GithubToolbarActions
 import moe.yumeyuka.yumehub.ui.component.placeholders.GithubLoadingContent
-import moe.yumeyuka.yumehub.ui.component.placeholders.ListRowPlaceholder
+import moe.yumeyuka.yumehub.ui.component.placeholders.TitleRowPlaceholder
 import moe.yumeyuka.yumehub.ui.component.rememberFormTextFieldState
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 
@@ -133,7 +133,11 @@ internal fun RepositoryManagementSheet(
                 RepositorySheet.Notifications ->
                     GithubLoadingContent(
                         loading = editor.loading,
-                        placeholder = { ListRowPlaceholder() },
+                        placeholder = {
+                            GlasmioGroupedList {
+                                repeat(3) { TitleRowPlaceholder(showTopSeparator = it > 0) }
+                            }
+                        },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             RepositoryNotificationOptions(
