@@ -30,6 +30,7 @@ import moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderEntryKey
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageBackdrop
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageState
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubSkeletonEntrance
+import moe.yumeyuka.yumehub.ui.navigation.githubFloatingBottomInset
 import moe.yumeyuka.yumehub.ui.navigation.recordGithubSkeletonEntrance
 
 /** 主标签同属主根路由，按标签保存列表偏移。 */
@@ -107,6 +108,7 @@ internal fun GithubMainScreen(navigator: GithubNavigator) {
                 selectedTab = currentTab,
                 onSelected = selectTab,
                 backdrop = args.bottomBarBackdrop,
+                bottomInset = githubFloatingBottomInset(args.navigationInset),
                 onOpenProfile = {
                     if (child.isTop && !component.state.locked) navigator.push(ProfileRoute)
                 },

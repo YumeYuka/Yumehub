@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop
@@ -68,6 +67,7 @@ import moe.yumeyuka.yumehub.feature.workspaces.WorkspacesRoute
 import moe.yumeyuka.yumehub.ui.navigation.GithubPageHost
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
 import moe.yumeyuka.yumehub.ui.navigation.LocalGithubPageHost
+import moe.yumeyuka.yumehub.ui.navigation.githubFloatingBottomInset
 import moe.yumeyuka.yumehub.ui.platform.LocalGithubLinkHandler
 import moe.yumeyuka.yumehub.ui.platform.rememberExternalUriHandler
 
@@ -168,9 +168,11 @@ internal fun GithubRouteContent(route: GithubRoute, navigator: GithubNavigator) 
     val openWork: (WorkTarget) -> Unit = { target ->
         openRoute(WorkDetailRoute(target.owner, target.repository, target.kind, target.number))
     }
-    // 只有标签根且底栏可见时为悬浮底栏留白；详情与 topTabs 根仅保留系统导航栏 inset。
+    // 只有标签根且底栏可见时在这里预留悬浮底栏的空间。
     val bottomPadding =
-        args.navigationInset + if (tab != null && !args.topTabs) NavigationBarClearance else 0.dp
+        if (tab != null && !args.topTabs) {
+            githubFloatingBottomInset(args.navigationInset) + NavigationBarClearance
+        } else args.navigationInset
     // host 只能按真正会变的入参重建，否则 CompositionLocal 每次都换人。
     val host =
         remember(child, route, navigator, bottomPadding, args.pageReports, pageOwner) {

@@ -2,12 +2,15 @@ package moe.yumeyuka.yumehub.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +21,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
@@ -178,6 +182,7 @@ internal fun GithubBottomBar(
     compactProgress: State<Float>,
     scrollHintProgress: State<Float>,
     onExpand: () -> Unit,
+    bottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     val mainTabItems = remember {
@@ -233,7 +238,11 @@ internal fun GithubBottomBar(
                         .padding(horizontal = BottomBarHorizontalPadding)
                         .padding(bottom = BottomBarBottomMargin)
                         .glasmioNavigationScrollHint(scrollHintProgress)
-                        .navigationBarsPadding(),
+                        .windowInsetsPadding(
+                            WindowInsets.navigationBars
+                                .only(WindowInsetsSides.Horizontal)
+                                .union(WindowInsets(bottom = bottomInset)),
+                        ),
             )
         }
     }

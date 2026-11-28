@@ -161,6 +161,8 @@ internal fun GithubListPage(
     val backdrop = LocalGithubPageBackdrop.current ?: rememberLayerBackdrop()
     var bottomContentHeight by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val effectiveBottomPadding =
+        if (bottomContent == null) bottomPadding else githubFloatingBottomInset(bottomPadding)
     val bottomClearance =
         if (bottomContent == null) 0.dp else with(density) { bottomContentHeight.toDp() }
     val barState = scrollBehavior.state
@@ -217,11 +219,16 @@ internal fun GithubListPage(
             },
         ) { topBarPadding ->
             val padding =
-                remember(topBarPadding, horizontalPadding, bottomPadding, bottomClearance) {
+                remember(
+                    topBarPadding,
+                    horizontalPadding,
+                    effectiveBottomPadding,
+                    bottomClearance,
+                ) {
                     githubListContentPadding(
                         topBarPadding,
                         horizontalPadding,
-                        bottomPadding + bottomClearance,
+                        effectiveBottomPadding + bottomClearance,
                     )
                 }
             Box(Modifier.fillMaxSize()) {
@@ -337,7 +344,7 @@ internal fun GithubListPage(
                         Box(
                             Modifier.align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .padding(bottom = bottomPadding)
+                                .padding(bottom = effectiveBottomPadding)
                                 .onSizeChanged { bottomContentHeight = it.height },
                         ) {
                             bottomContent()
