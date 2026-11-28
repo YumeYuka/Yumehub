@@ -40,13 +40,13 @@ import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import moe.yumeyuka.yumehub.core.model.githubWebUri
-import moe.yumeyuka.yumehub.ui.component.LocalGithubEditorFocusReady
-import moe.yumeyuka.yumehub.ui.navigation.GithubBackHandler
-import moe.yumeyuka.yumehub.ui.navigation.GithubHeaderMotionController
-import moe.yumeyuka.yumehub.ui.navigation.GithubNavigationHeaderOverlay
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubCardMotionEnabled
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubHeaderMotion
-import moe.yumeyuka.yumehub.ui.navigation.LocalGithubRouteEntryReady
+import moe.yumeyuka.yumehub.ui.component.LocalEditorFocusReady
+import moe.yumeyuka.yumehub.ui.navigation.AppBackHandler
+import moe.yumeyuka.yumehub.ui.navigation.HeaderMotionController
+import moe.yumeyuka.yumehub.ui.navigation.NavigationHeaderOverlay
+import moe.yumeyuka.yumehub.ui.navigation.LocalCardMotionEnabled
+import moe.yumeyuka.yumehub.ui.navigation.LocalHeaderMotion
+import moe.yumeyuka.yumehub.ui.navigation.LocalRouteEntryReady
 
 private const val MinPredictiveBackPercent = 1f
 private const val MaxPredictiveBackPercent = 100f
@@ -54,13 +54,13 @@ private const val MaxPredictiveBackPercent = 100f
 // Same Decompose composition as YumeYucca/YumeBox, AppNavContainer.kt (4a6bb76).
 private val yumePageAnimator = fade(tween(300)) + slide(tween(400)) + scale(tween(500))
 
-private fun githubStackAnimation(): StackAnimation<GithubRouteEntry, RouteChild> =
+private fun routeStackAnimation(): StackAnimation<RouteEntry, RouteChild> =
     // RouteChild already consumes pointer input on non-top pages, so the outgoing page cannot react.
     // Decompose's full-screen overlay would also block the page that just arrived until every
     // combined animator finishes (the 500 ms scale), which reads as dead taps after the slide.
-    stackAnimation(animator = GithubRouteEntryAnimator, disableInputDuringAnimation = false)
+    stackAnimation(animator = RouteEntryAnimator, disableInputDuringAnimation = false)
 
-private object GithubRouteEntryAnimator : StackAnimator {
+private object RouteEntryAnimator : StackAnimator {
     @Composable
     override fun invoke(
         direction: Direction,
@@ -75,9 +75,9 @@ private object GithubRouteEntryAnimator : StackAnimator {
             onFinished()
         }) { modifier ->
             CompositionLocalProvider(
-                LocalGithubRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
-                LocalGithubCardMotionEnabled provides (entering && finished),
-                LocalGithubEditorFocusReady provides (entering && finished),
+                LocalRouteEntryReady provides (direction != Direction.ENTER_FRONT || finished),
+                LocalCardMotionEnabled provides (entering && finished),
+                LocalEditorFocusReady provides (entering && finished),
             ) {
                 content(modifier)
             }
@@ -86,16 +86,16 @@ private object GithubRouteEntryAnimator : StackAnimator {
 }
 
 @OptIn(ExperimentalDecomposeApi::class)
-private fun githubPredictiveBackAnimation(
+private fun routePredictiveBackAnimation(
     backHandler: BackHandler,
     onBack: () -> Unit,
     amplitude: () -> Float,
-    headerMotion: GithubHeaderMotionController,
-    headerKey: (GithubRouteEntry) -> Any,
-): StackAnimation<GithubRouteEntry, RouteChild> =
+    headerMotion: HeaderMotionController,
+    headerKey: (RouteEntry) -> Any,
+): StackAnimation<RouteEntry, RouteChild> =
     predictiveBackAnimation(
         backHandler = backHandler,
-        fallbackAnimation = githubStackAnimation(),
+        fallbackAnimation = routeStackAnimation(),
         selector = { event, exit, enter ->
             val initial = event.scaled(amplitude())
             val motion = androidPredictiveBackAnimatableV1(initial)
@@ -135,19 +135,19 @@ private fun BackEvent.scaled(amplitude: Float): BackEvent =
  * Activity 配置重建复用组件；进程恢复仅接受当前会话的轻量路由参数。[predictiveBackEnabledAtLaunch] 在启动时
  * 取值，会话中切换会在栈存活期间换掉转场对象，所以该设置下次启动生效。
  */
-internal class GithubAppNavigationComponent(
+internal class AppNavigationComponent(
     val componentContext: ComponentContext,
     val predictiveBackEnabledAtLaunch: Boolean,
     predictiveBackPercent: Float,
     restored: RestoredNavigation? = null,
 ) {
-    val state = GithubNavigationState()
-    val navigator = GithubNavigator(state)
+    val state = AppNavigationState()
+    val navigator = AppNavigator(state)
 
     private var rootSession = 0
 
     val routeStack =
-        GithubRouteStack(
+        RouteStack(
             navigator = navigator,
             value =
                 navigator.routeStack(
@@ -156,13 +156,13 @@ internal class GithubAppNavigationComponent(
                 ),
         )
 
-    private var mainTabState by mutableStateOf(restored?.tab ?: GithubTab.Home)
+    private var mainTabState by mutableStateOf(restored?.tab ?: MainTab.Home)
     private var predictiveBackPercentState by
         mutableFloatStateOf(
             predictiveBackPercent.coerceIn(MinPredictiveBackPercent, MaxPredictiveBackPercent),
         )
     private var sessionLogin: String? = null
-    private var session: GithubNavigationSession? = null
+    private var session: NavigationSession? = null
 
     val navigationSessionId: String?
         get() = session?.navigationSessionId
@@ -189,13 +189,13 @@ internal class GithubAppNavigationComponent(
         return true
     }
 
-    fun openMainTab(tab: GithubTab) {
+    fun openMainTab(tab: MainTab) {
         if (state.locked) return
         navigator.returnToRoot()
         mainTabState = tab
     }
 
-    val mainTab: GithubTab
+    val mainTab: MainTab
         get() = mainTabState
 
     /** 手势进度实时读取，不因记住转场对象而冻结滑块设置。 */
@@ -208,7 +208,7 @@ internal class GithubAppNavigationComponent(
     }
 
     /** 主标签只在根上切换；被详情覆盖或提交中都不响应。 */
-    fun selectTab(tab: GithubTab) {
+    fun selectTab(tab: MainTab) {
         if (state.locked || !navigator.atRoot) return
         mainTabState = tab
     }
@@ -218,7 +218,7 @@ internal class GithubAppNavigationComponent(
     }
 
     /** 只从 AppRoot 的账号作用域绑定一次，绝不比较每个 tab 的 owner 包装对象。 */
-    fun bindSession(session: GithubNavigationSession, login: String) {
+    fun bindSession(session: NavigationSession, login: String) {
         if (this.session === session) return
         val previousSession = this.session
         val accountChanged = sessionLogin != null && sessionLogin != login
@@ -230,7 +230,7 @@ internal class GithubAppNavigationComponent(
         if (previousSession != null || accountChanged) resetStacks()
     }
 
-    fun endSession(session: GithubNavigationSession) {
+    fun endSession(session: NavigationSession) {
         if (this.session !== session) return
         pendingLink = null
         this.session = null
@@ -245,7 +245,7 @@ internal class GithubAppNavigationComponent(
     }
 
     private fun resetStacks() {
-        mainTabState = GithubTab.Home
+        mainTabState = MainTab.Home
         state.locked = false
         state.mainListStates.clear()
         rootSession += 1
@@ -254,8 +254,8 @@ internal class GithubAppNavigationComponent(
 }
 
 /** 账号 owner 真正清理时结束会话；配置重建复用该 VM，不触碰仍在栈里的子组件。 */
-internal class GithubNavigationSession(
-    private val component: GithubAppNavigationComponent,
+internal class NavigationSession(
+    private val component: AppNavigationComponent,
     login: String,
     val navigationSessionId: String?,
 ) : ViewModel() {
@@ -270,17 +270,17 @@ internal class GithubNavigationSession(
 
 /** 渲染保留组件里的根栈；外壳状态不经过这里，栈变化只重组栈宿主自己。 */
 @Composable
-internal fun GithubNavContainer(
-    component: GithubAppNavigationComponent,
+internal fun AppNavContainer(
+    component: AppNavigationComponent,
     modifier: Modifier = Modifier,
 ) {
     val commitBack = remember(component) { component::navigateBack }
     val initialKey = remember(component) { component.routeStack.value.value.active.configuration }
-    val headerMotion = remember(component) { GithubHeaderMotionController(initialKey) }
+    val headerMotion = remember(component) { HeaderMotionController(initialKey) }
     val animation =
         remember(component, headerMotion) {
             if (component.predictiveBackEnabledAtLaunch) {
-                githubPredictiveBackAnimation(
+                routePredictiveBackAnimation(
                     backHandler = component.componentContext.backHandler,
                     onBack = commitBack,
                     amplitude = { component.predictiveBackAmplitude },
@@ -290,22 +290,22 @@ internal fun GithubNavContainer(
                     },
                 )
             } else {
-                githubStackAnimation()
+                routeStackAnimation()
             }
         }
     val locked = component.state.locked
     // 提交锁吞掉系统返回：Decompose 的出栈回调在 Activity 创建时注册，排在这里之后才轮到；
     // 页面级处理则随下面的子 dispatcher 一并停用。
-    GithubBackHandler(enabled = locked) {}
+    AppBackHandler(enabled = locked) {}
     // MainActivity 显式提供原生 owner；宿主只建立同一事件树下的子 dispatcher。
     val parentDispatcherOwner =
         checkNotNull(LocalNavigationEventDispatcherOwner.current) {
-            "GithubNavContainer 必须由提供 NavigationEventDispatcher 的 Activity 托管"
+            "AppNavContainer 必须由提供 NavigationEventDispatcher 的 Activity 托管"
         }
     val dispatcherOwner = rememberChildDispatcherOwner(parentDispatcherOwner, enabled = !locked)
     CompositionLocalProvider(
         LocalNavigationEventDispatcherOwner provides dispatcherOwner,
-        LocalGithubHeaderMotion provides headerMotion,
+        LocalHeaderMotion provides headerMotion,
     ) {
         val navBackdrop = if (GlasmioTheme.appearance.usesBackdrop) rememberLayerBackdrop() else null
         Box(modifier.fillMaxSize()) {
@@ -318,14 +318,14 @@ internal fun GithubNavContainer(
                     )
                     .background(GlasmioTheme.colors.groupedBackground),
             ) {
-                GithubRouteStackHost(
+                RouteStackHost(
                     stack = component.routeStack,
                     animation = animation,
                     headerMotion = headerMotion,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            GithubNavigationHeaderOverlay(motion = headerMotion, backdrop = navBackdrop)
+            NavigationHeaderOverlay(motion = headerMotion, backdrop = navBackdrop)
         }
     }
 }
