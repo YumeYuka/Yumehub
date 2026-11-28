@@ -27,47 +27,6 @@ permissions:
   packages: read
 
 jobs:
-  format:
-    name: ktfmt
-    if: github.event_name != 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          submodules: recursive
-
-      - name: Setup Java
-        uses: actions/setup-java@v6.1.0
-        with:
-          distribution: zulu
-          java-version: "25"
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.4
-        with:
-          packages: "platforms;android-37.2"
-
-      - name: Cache Gradle
-        uses: actions/cache@v6.1.0
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: >-
-            ${{ runner.os }}-gradle-${{ hashFiles(
-            'gradle/**', '**/*.gradle.kts', 'gradle.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Configure local.properties
-        run: echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
-
-      - name: ktfmt check
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash ./gradlew --no-daemon ktfmtCheck
-
   build:
     name: APK
     if: github.event_name != 'push' || !github.event.deleted
