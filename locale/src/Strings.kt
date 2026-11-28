@@ -28,16 +28,26 @@ public fun stringsFor(languageTag: String): GithubStrings {
     return stringsByTag[lower] ?: stringsByTag[lower.substringBefore('-')] ?: ZhHansStrings
 }
 
+public object GithubLocaleManager {
+    @Volatile
+    public var activeStrings: GithubStrings = stringsFor(Locale.getDefault().toLanguageTag())
+        private set
+
+    public fun updateLocale(languageTag: String) {
+        activeStrings = stringsFor(languageTag)
+    }
+}
+
 /** Non-composable entry point for notifications, view models and other background code. */
 public object GithubTxt {
     public val current: GithubStrings
-        get() = stringsFor(Locale.getDefault().toLanguageTag())
+        get() = GithubLocaleManager.activeStrings
 }
 
 @Composable
 public fun rememberGithubStrings(
     defaultLanguageTag: String = "zh-cn",
-    currentLanguageTag: String = Locale.getDefault().toLanguageTag(),
+    currentLanguageTag: String = Locale.getDefault().toLanguageTag().lowercase(),
 ): Lyricist<GithubStrings> = rememberStrings(stringsByTag, defaultLanguageTag, currentLanguageTag)
 
 @Composable

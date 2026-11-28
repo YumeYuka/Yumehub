@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubSection
 import moe.yumeyuka.yumehub.ui.navigation.GithubPage
 import moe.yumeyuka.yumehub.ui.navigation.GithubRoute
@@ -20,12 +21,13 @@ fun SettingsPage(onSignOut: () -> Unit) {
     val viewModel: SettingsPageViewModel = koinViewModel()
     var showAccentPicker by rememberSaveable { mutableStateOf(false) }
     var showSignOutDialog by rememberSaveable { mutableStateOf(false) }
-    GithubPage(title = "设置") {
+    val strings = LocalGithubStrings.current
+    GithubPage(title = strings.Profile.Settings) {
         SettingsContent(viewModel, onShowAccentPicker = { showAccentPicker = true })
         item(key = "settings-account-actions") {
-            GithubSection("账户操作") {
+            GithubSection(strings.Settings.AccountActions) {
                 GlasmioListRow(
-                    title = "退出登录",
+                    title = strings.Settings.SignOut,
                     titleColor = GlasmioTheme.colors.destructive,
                     systemName = null,
                     onClick = { showSignOutDialog = true },

@@ -7,6 +7,7 @@ import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.theme.readableForeground
 
 @Composable
@@ -15,6 +16,7 @@ internal fun SettingsSignOutDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val strings = LocalGithubStrings.current
     val colors = LocalGlassColors.current
     // 深色弹层按钮会叠加更亮的玻璃材质，按更亮的灰底留出对比度余量。
     val buttonTint = if (colors.isDark) 0.28f else 0.12f
@@ -25,12 +27,12 @@ internal fun SettingsSignOutDialog(
         GlasmioAlertDialog(
             visible = visible,
             onDismissRequest = onDismiss,
-            title = "退出登录？",
-            message = "再次使用此账号需要重新登录。",
+            title = strings.Settings.ConfirmSignOut,
+            message = strings.Settings.SignOutHint,
             buttons =
                 listOf(
-                    GlasmioAlertButtonSpec("取消", onDismiss, GlasmioAlertButtonRole.Cancel),
-                    GlasmioAlertButtonSpec("退出登录", onConfirm, GlasmioAlertButtonRole.Destructive),
+                    GlasmioAlertButtonSpec(strings.Common.Cancel, onDismiss, GlasmioAlertButtonRole.Cancel),
+                    GlasmioAlertButtonSpec(strings.Settings.SignOut, onConfirm, GlasmioAlertButtonRole.Destructive),
                 ),
         )
     }

@@ -37,6 +37,7 @@ import moe.yumeyuka.yumehub.data.storage.mmkv.DefaultAccentColorArgb
 import moe.yumeyuka.yumehub.data.storage.mmkv.MaxPredictiveBackProgress
 import moe.yumeyuka.yumehub.data.storage.mmkv.MinPredictiveBackProgress
 import moe.yumeyuka.yumehub.data.storage.mmkv.ThemeMode
+import moe.yumeyuka.yumehub.locale.GithubStrings_Settings
 import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.GithubSection
@@ -46,7 +47,7 @@ internal fun LazyListScope.SettingsContent(
     viewModel: SettingsPageViewModel,
     onShowAccentPicker: () -> Unit,
 ) {
-    item(key = "settings-theme") { ThemeSection(viewModel) }
+    item(key = "settings-appearance") { AppearanceSection(viewModel) }
     item(key = "settings-accent") { AccentSection(viewModel, onShowAccentPicker) }
     item(key = "settings-downloads") { DownloadDirectorySection(viewModel) }
     item(key = "settings-interface") { InterfaceSection(viewModel) }
@@ -56,29 +57,31 @@ internal fun LazyListScope.SettingsContent(
 }
 
 @Composable
-private fun ThemeSection(viewModel: SettingsPageViewModel) {
+private fun AppearanceSection(viewModel: SettingsPageViewModel) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
-    GithubSection("外观") {
+    val strings = LocalGithubStrings.current.Settings
+    GithubSection(strings.Appearance) {
+        AppLanguageRow()
         GlasmioListRow(
-            title = "主题",
-            leading = { GithubIcon(themeMode.icon(), contentDescription = "主题") },
+            title = strings.Theme,
+            leading = { GithubIcon(themeMode.icon(), contentDescription = null) },
             trailing = {
                 SettingsPopUpButton(
                     selected = themeMode,
                     items = ThemeMode.entries,
                     onSelected = viewModel::setThemeMode,
-                    label = { it.label() },
+                    label = { it.label(strings) },
                 )
             },
         )
     }
 }
 
-private fun ThemeMode.label(): String =
+private fun ThemeMode.label(strings: GithubStrings_Settings): String =
     when (this) {
-        ThemeMode.System -> "跟随系统"
-        ThemeMode.Light -> "浅色"
-        ThemeMode.Dark -> "深色"
+        ThemeMode.System -> strings.System
+        ThemeMode.Light -> strings.Light
+        ThemeMode.Dark -> strings.Dark
     }
 
 private fun ThemeMode.icon(): ImageVector =
@@ -91,11 +94,12 @@ private fun ThemeMode.icon(): ImageVector =
 @Composable
 private fun AccentSection(viewModel: SettingsPageViewModel, onShowPicker: () -> Unit) {
     val accentArgb by viewModel.accentColor.collectAsStateWithLifecycle()
+    val strings = LocalGithubStrings.current.Settings
 
-    GithubSection("强调色") {
+    GithubSection(strings.Accent) {
         GlasmioListRow(
-            title = "强调色",
-            leading = { GithubIcon(Lucide.Palette, contentDescription = "强调色") },
+            title = strings.Accent,
+            leading = { GithubIcon(Lucide.Palette, contentDescription = null) },
             trailing = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -105,12 +109,12 @@ private fun AccentSection(viewModel: SettingsPageViewModel, onShowPicker: () -> 
                         Modifier.size(22.dp)
                             .background(Color(accentArgb), CircleShape)
                             .border(1.dp, GlasmioTheme.colors.separator, CircleShape)
-                            .semantics { contentDescription = "当前强调色" },
+                            .semantics { contentDescription = strings.CurrentAccent },
                     )
                     SettingsPopUpButton(
                         selected = accentArgb != DefaultAccentColorArgb,
                         items = listOf(false, true),
-                        label = { if (it) "自定义" else "默认" },
+                        label = { if (it) strings.Custom else strings.Default },
                         onSelected = { custom ->
                             if (custom) onShowPicker()
                             else viewModel.setAccentColor(DefaultAccentColorArgb)
@@ -152,18 +156,19 @@ internal fun SettingsDialogs(
     onDismiss: () -> Unit,
 ) {
     val accentArgb by viewModel.accentColor.collectAsStateWithLifecycle()
+    val strings = LocalGithubStrings.current.Settings
     GlasmioColorPicker(
         visible = showAccentPicker,
         selectedColor = Color(accentArgb),
         onColorSelected = { viewModel.setAccentColor(it.toArgb()) },
         onDismiss = onDismiss,
-        title = "强调色",
+        title = strings.Accent,
         labels =
             GlasmioColorPickerLabels(
-                grid = "网格",
-                spectrum = "光谱",
-                sliders = "滑块",
-                opacity = "不透明度",
+                grid = strings.Grid,
+                spectrum = strings.Spectrum,
+                sliders = strings.Sliders,
+                opacity = strings.Opacity,
             ),
     )
 }
@@ -178,27 +183,27 @@ private fun InterfaceSection(viewModel: SettingsPageViewModel) {
     val glassHdrEnabled by viewModel.glassHdrEnabled.collectAsStateWithLifecycle()
     val accent = GlasmioTheme.colors.accent
 
-    GithubSection("界面") {
+    GithubSection(strings.Interface) {
         ToggleRow(
-            title = "固定底栏",
-            subtitle = "滚动时保持底部导航栏展开",
+            title = strings.PinBottomBar,
+            subtitle = strings.PinBottomBarHint,
             checked = keepBottomBarExpanded,
             onCheckedChange = viewModel::setKeepBottomBarExpanded,
             tint = accent,
             icon = Lucide.PanelBottom,
         )
         ToggleRow(
-            title = "液态玻璃",
+            title = strings.LiquidGlass,
             icon = Lucide.Droplets,
-            subtitle = "玻璃表面的折射与高光效果",
+            subtitle = strings.LiquidGlassHint,
             checked = liquidGlassEnabled,
             onCheckedChange = viewModel::setLiquidGlassEnabled,
             tint = accent,
             enabled = !reduceTransparency,
         )
         ToggleRow(
-            title = "HDR 高光",
-            subtitle = "仅支持 HDR 的屏幕生效，切换会重建界面",
+            title = strings.Hdr,
+            subtitle = strings.HdrHint,
             checked = glassHdrEnabled,
             onCheckedChange = viewModel::setGlassHdrEnabled,
             enabled = liquidGlassEnabled && !reduceTransparency,
@@ -206,9 +211,9 @@ private fun InterfaceSection(viewModel: SettingsPageViewModel) {
             icon = Lucide.Sun,
         )
         ToggleRow(
-            title = "降低透明度",
+            title = strings.ReduceTransparency,
             icon = Lucide.Contrast,
-            subtitle = "用纯色替代毛玻璃",
+            subtitle = strings.ReduceTransparencyHint,
             checked = reduceTransparency,
             onCheckedChange = viewModel::setReduceTransparency,
             tint = accent,
@@ -232,11 +237,12 @@ private fun NavigationSection(viewModel: SettingsPageViewModel) {
     val predictiveBackEnabled by viewModel.predictiveBackEnabled.collectAsStateWithLifecycle()
     val progress by viewModel.predictiveBackMaxProgress.collectAsStateWithLifecycle()
     val accent = GlasmioTheme.colors.accent
+    val strings = LocalGithubStrings.current.Settings
 
-    GithubSection("导航") {
+    GithubSection(strings.Navigation) {
         ToggleRow(
-            title = "预测返回手势",
-            subtitle = "下次启动生效",
+            title = strings.PredictiveBack,
+            subtitle = strings.NextLaunch,
             checked = predictiveBackEnabled,
             onCheckedChange = viewModel::setPredictiveBackEnabled,
             tint = accent,
@@ -252,11 +258,12 @@ private fun NavigationSection(viewModel: SettingsPageViewModel) {
 @Composable
 private fun DiagnosticsSection(viewModel: SettingsPageViewModel) {
     val fpsCounter by viewModel.fpsCounter.collectAsStateWithLifecycle()
+    val strings = LocalGithubStrings.current.Settings
 
-    GithubSection("诊断") {
+    GithubSection(strings.Diagnostics) {
         ToggleRow(
-            title = "FPS 显示",
-            subtitle = "在右上角显示帧率与 1% Low",
+            title = strings.Fps,
+            subtitle = strings.FpsHint,
             checked = fpsCounter,
             onCheckedChange = viewModel::setFpsCounter,
             tint = GlasmioTheme.colors.accent,
@@ -274,7 +281,7 @@ private fun PredictiveBackProgressRow(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "预测返回幅度",
+                text = LocalGithubStrings.current.Settings.BackProgress,
                 style = GlasmioTheme.textStyles.body,
                 color = GlasmioTheme.colors.content,
                 modifier = Modifier.weight(1f),

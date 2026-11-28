@@ -1,6 +1,7 @@
 package moe.yumeyuka.yumehub
 
 import android.app.Application
+import android.content.res.Configuration
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 import moe.yumeyuka.yumehub.data.storage.mmkv.SettingsStore
 import moe.yumeyuka.yumehub.di.appModule
 import moe.yumeyuka.yumehub.ui.component.initializeGithubImageLoader
+import moe.yumeyuka.yumehub.ui.platform.AppLanguageManager
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.component.KoinComponent
@@ -29,6 +31,7 @@ class App : Application(), KoinComponent {
             androidContext(this@App)
             modules(appModule)
         }
+        AppLanguageManager.sync(this)
         storageStartup =
             CoroutineScope(Dispatchers.Main.immediate).async {
                 withContext(Dispatchers.IO) {
@@ -39,5 +42,10 @@ class App : Application(), KoinComponent {
                 }
                 storageReady = true
             }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLanguageManager.sync(this)
     }
 }

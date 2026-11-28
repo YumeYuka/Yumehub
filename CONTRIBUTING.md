@@ -25,6 +25,10 @@ formatting. Report the commands run and any checks not completed.
 Each branch push builds a debug APK. Download `apk-debug` from the workflow
 run's **Artifacts** section in [GitHub Actions](https://github.com/YumeYuka/Yumehub/actions).
 
+## Localization
+
+Use the shared string tables for UI text, including accessibility labels. When adding a key to an existing domain, update its English and Simplified Chinese tables in the domain's `*Strings.kt` file. Wire new domains into `GithubStrings.kt`, `EnStrings.kt`, and `ZhHansStrings.kt`; update `Strings.kt` when locale selection or fallback changes.
+
 ## Pull requests
 
 Keep each change focused. Describe its behavior, scope, and validation in the

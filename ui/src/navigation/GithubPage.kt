@@ -23,6 +23,7 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderGroup
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.yumeyucca.lucide.ChevronLeft
 import io.github.yumeyucca.lucide.Lucide
+import moe.yumeyuka.yumehub.locale.LocalGithubStrings
 import moe.yumeyuka.yumehub.ui.component.GithubIcon
 import moe.yumeyuka.yumehub.ui.component.toolbarIcon
 
@@ -121,6 +122,7 @@ fun GithubPage(
     val latestLocked = rememberUpdatedState(locked)
     val latestOnBack = rememberUpdatedState(onBack)
     val latestHost = rememberUpdatedState(host)
+    val backLabel = LocalGithubStrings.current.Common.Back
 
     val leadingGroup =
         if (back && headerMotion != null && headerEntryKey != null) {
@@ -132,7 +134,7 @@ fun GithubPage(
                         listOf(
                             toolbarIcon(
                                 icon = Lucide.ChevronLeft,
-                                label = "返回",
+                                label = backLabel,
                                 enabled = backEnabled,
                                 key = "navigation.back",
                             ) {
@@ -185,7 +187,7 @@ fun GithubPage(
                 onClick = { if (!locked && host.backEnabled) onBack?.invoke() ?: host.onBack() },
                 enabled = !locked && host.backButtonEnabled,
             ) {
-                GithubIcon(Lucide.ChevronLeft, contentDescription = "返回")
+                GithubIcon(Lucide.ChevronLeft, contentDescription = backLabel)
             }
         } else {
             leading()
